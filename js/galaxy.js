@@ -316,18 +316,44 @@ export function milkyWayEdgeCameraAim() {
   return { elevation: 0.04, azimuth: 1.15 };
 }
 
-/** Look from the far side of the Sun so M31 sits beyond the disk. */
-export function neighborhoodCameraAim() {
-  const aim = aimAwayFrom(neighborScenePosition(NEIGHBORS.find((item) => item.id === "m31")));
+function cameraPosition(aim, distance) {
+  const cosE = Math.cos(aim.elevation);
   return {
-    elevation: clamp(Math.max(aim.elevation, 0) + 0.34, -1.2, 1.2),
-    azimuth: aim.azimuth,
+    x: distance * cosE * Math.sin(aim.azimuth),
+    y: distance * Math.sin(aim.elevation),
+    z: distance * cosE * Math.cos(aim.azimuth),
   };
 }
 
+/** Angle from the look-at ray (Sun) to a scene point, for framing audits. */
+export function lookAngleTo(aim, distance, at) {
+  const cam = cameraPosition(aim, distance);
+  const look = { x: -cam.x, y: -cam.y, z: -cam.z };
+  const to = { x: at.x - cam.x, y: at.y - cam.y, z: at.z - cam.z };
+  const denom = (Math.hypot(look.x, look.y, look.z) * Math.hypot(to.x, to.y, to.z)) || 1;
+  const dot = (look.x * to.x + look.y * to.y + look.z * to.z) / denom;
+  return Math.acos(clamp(dot, -1, 1));
+}
+
+/**
+ * Stand beside the Sun–M31 line so Andromeda sits next to the disk,
+ * not stacked behind it.
+ */
+function neighborFamilyAim(azimuthNudge = 0, elevationNudge = 0) {
+  const m31 = neighborScenePosition(NEIGHBORS.find((item) => item.id === "m31"));
+  const away = aimAwayFrom(m31);
+  return {
+    elevation: clamp(0.7 + elevationNudge, -1.2, 1.2),
+    azimuth: away.azimuth + 0.88 + azimuthNudge,
+  };
+}
+
+export function neighborhoodCameraAim() {
+  return neighborFamilyAim();
+}
+
 export function localGroupCameraAim() {
-  const aim = neighborhoodCameraAim();
-  return { elevation: clamp(aim.elevation + 0.42, -1.2, 1.2), azimuth: aim.azimuth + 0.35 };
+  return neighborFamilyAim(0.14, -0.06);
 }
 
 /** Oblique look so the Local Group family and Virgo both sit in frame. */
@@ -901,9 +927,11 @@ function createNeighbors(THREE, group, maps) {
       color: neighbor.id === "m31" ? 0xf4f0ea : 0xffffff,
       transparent: true,
       depthWrite: false,
+      depthTest: false,
       opacity: 0.96,
       toneMapped: false,
     }));
+    sprite.renderOrder = 4;
     if (neighbor.id === "m31") {
       new THREE.TextureLoader().load(SKY_ASSETS.andromeda, (loaded) => {
         loaded.colorSpace = THREE.SRGBColorSpace;

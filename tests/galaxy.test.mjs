@@ -31,12 +31,15 @@ import {
   galacticCenterScenePosition,
   galaxyOpacity,
   heliocentricGalactic,
+  localGroupCameraAim,
   localGroupMemberOpacity,
+  lookAngleTo,
   milkyWayToScene,
   milkyWayUnitsPerKpc,
   cmbSkyOpacity,
   farGalaxySkyOpacity,
   nearClusterOpacity,
+  neighborhoodCameraAim,
   neighborOpacity,
   neighborScenePosition,
   scaleLayer,
@@ -113,6 +116,30 @@ test("nearby galaxies keep SIMBAD positions and published distances", () => {
   const lmcGal = equatorialToGalactic(lmc.raDeg, lmc.decDeg);
   assert.ok(Math.abs(((lmcGal.lDeg + 180) % 360) - ((lmc.lDeg + 180) % 360)) < 0.1);
   assert.ok(Math.abs(lmcGal.bDeg - lmc.bDeg) < 0.1);
+});
+
+test("neighborhood and Local Group looks keep Andromeda beside the Milky Way", () => {
+  const halfFov = (52 * Math.PI) / 180 / 2;
+  const m31 = neighborScenePosition(findNeighbor("m31"));
+  const lmc = neighborScenePosition(findNeighbor("lmc"));
+  const smc = neighborScenePosition(findNeighbor("smc"));
+  const looks = [
+    [neighborhoodCameraAim(), CONFIG.neighborhoodViewDistance, "neighborhood"],
+    [localGroupCameraAim(), CONFIG.localGroupViewDistance, "localgroup"],
+  ];
+  for (const [aim, distance, name] of looks) {
+    const andromeda = lookAngleTo(aim, distance, m31);
+    assert.ok(
+      andromeda > 0.2,
+      `${name} must not stack Andromeda behind the disk (${andromeda})`,
+    );
+    assert.ok(
+      andromeda < halfFov - 0.06,
+      `${name} must keep Andromeda in frame (${andromeda})`,
+    );
+    assert.ok(lookAngleTo(aim, distance, lmc) < halfFov - 0.06, `${name} LMC`);
+    assert.ok(lookAngleTo(aim, distance, smc) < halfFov - 0.06, `${name} SMC`);
+  }
 });
 
 test("galaxy scales are kpc mappings and do not reuse solar AU units", async () => {
