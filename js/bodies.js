@@ -120,6 +120,43 @@ export const BODIES = Object.freeze([
     color: "#d07a55",
   },
   {
+    id: "phobos",
+    name: "Phobos",
+    kind: "moon",
+    parent: "mars",
+    // JPL SSD phys_par mean radius; MAR099 mean elements at J2000.
+    radiusKm: 11.08,
+    orbitKm: 9375,
+    eccentricity: 0.0151,
+    inclinationDeg: 1.1,
+    nodeDeg: 169.2,
+    periDeg: 216.3,
+    meanAnomalyDeg: 189.7,
+    orbitDays: 0.31891,
+    rotationHours: 7.6538,
+    tiltDeg: 0,
+    texture: "assets/textures/phobos.jpg",
+    color: "#8a7a6c",
+  },
+  {
+    id: "deimos",
+    name: "Deimos",
+    kind: "moon",
+    parent: "mars",
+    radiusKm: 6.2,
+    orbitKm: 23457,
+    eccentricity: 0.00033,
+    inclinationDeg: 1.8,
+    nodeDeg: 54.3,
+    periDeg: 0,
+    meanAnomalyDeg: 205,
+    orbitDays: 1.26244,
+    rotationHours: 30.2986,
+    tiltDeg: 0.9,
+    texture: "assets/textures/deimos.jpg",
+    color: "#9a8d7c",
+  },
+  {
     id: "ceres",
     name: "Ceres",
     kind: "dwarf",
@@ -367,19 +404,55 @@ export function ringTextureU(radius, inner, outer) {
   return (radius - inner) / span;
 }
 
-export function visualMoonDistance(body, parent) {
+/** Moons of one parent, inner orbit first. Physical order is orbitKm. */
+export function moonsOf(parentId) {
+  return BODIES
+    .filter((body) => body.kind === "moon" && body.parent === parentId)
+    .slice()
+    .sort((a, b) => a.orbitKm - b.orbitKm);
+}
+
+/** Visual radius the moon's path must stay outside: globe, rings, and the moon itself. */
+export function moonClearance(body, parent) {
   const parentVisual = visualRadius(parent.radiusKm);
   const moonVisual = visualRadius(body.radiusKm);
   const ringOuter = visualRingRadius(parent, parent.ringOuterKm);
   const ringClearance = ringOuter > 0 ? ringOuter * 1.5 + moonVisual : 0;
-  const clearance = Math.max(
-    parentVisual + moonVisual + CONFIG.moonPad,
-    ringClearance,
-  );
+  return Math.max(parentVisual + moonVisual + CONFIG.moonPad, ringClearance);
+}
+
+function mappedMoonDistance(body, parent) {
+  const parentVisual = visualRadius(parent.radiusKm);
+  const moonVisual = visualRadius(body.radiusKm);
+  const ringOuter = visualRingRadius(parent, parent.ringOuterKm);
+  const clearance = moonClearance(body, parent);
   const radii = body.orbitKm / parent.radiusKm;
   const spread = clearance + CONFIG.moonSpread * Math.log2(1 + radii);
   const cap = Math.max(parentVisual, ringOuter) * CONFIG.moonOrbitCap + moonVisual;
   return Math.min(Math.max(spread, clearance), cap);
+}
+
+/**
+ * Visual moon distance keeps published periods and orbital order.
+ * The log map + cap is only a first guess; parent/ring clearance and a
+ * readable sibling gap win when the cap would stack moons.
+ */
+export function visualMoonDistance(body, parent) {
+  const siblings = moonsOf(parent.id);
+  let previousOrbit = 0;
+  let previousRadius = 0;
+  for (const moon of siblings) {
+    const moonVisual = visualRadius(moon.radiusKm);
+    const mapped = mappedMoonDistance(moon, parent);
+    const siblingFloor = previousOrbit > 0
+      ? previousOrbit + previousRadius + moonVisual + CONFIG.moonSiblingGap
+      : 0;
+    const orbit = Math.max(mapped, moonClearance(moon, parent), siblingFloor);
+    if (moon.id === body.id) return orbit;
+    previousOrbit = orbit;
+    previousRadius = moonVisual;
+  }
+  return mappedMoonDistance(body, parent);
 }
 
 export function visualSemiMajor(body, parent) {

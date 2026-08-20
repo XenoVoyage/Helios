@@ -9,7 +9,7 @@
  * invent fake AU values. sizeScale / sizePower size the spheres the same way.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20a",
+  VERSION: "v2026.8.20b",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 1.75,
@@ -18,7 +18,9 @@ export const CONFIG = Object.freeze({
   orbitScale: 40,
   orbitPower: 0.45,
   moonPad: 1,
-  moonSpread: 1.45,
+  moonSpread: 2.2,
+  // Extra visual space between sibling moon paths after radii are reserved.
+  moonSiblingGap: 1.2,
   moonOrbitCap: 7,
   defaultDaysPerSecond: 1 / 24,
   minDaysPerSecond: 1 / 24,

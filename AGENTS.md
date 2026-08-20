@@ -31,7 +31,7 @@ Do not add managers, services, factories, event buses, plugin systems, accounts,
 - Three.js owns graphics primitives only. Orbits, time, and focus live in our modules.
 - Touch is required: one-finger orbit, pinch zoom, tap-to-select, 44px controls, no hover-only UI.
 - Desktop: mouse orbit/zoom, click-to-select, Space / `+` / `-` / Escape.
-- v1 bodies are exactly those listed in `js/bodies.js`. Do not add extra moons.
+- v1 bodies are exactly those listed in `js/bodies.js`: Sun, 8 planets, the Moon, Phobos, Deimos, Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, and Ceres. Do not add extra moons.
 
 ## Verification
 
