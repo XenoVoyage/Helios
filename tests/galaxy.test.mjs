@@ -310,6 +310,7 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.doesNotMatch(galaxySource, /Perseus-Pisces/);
   assert.match(galaxySource, /cosmic-web/);
   assert.match(galaxySource, /cmb-shell/);
+  assert.match(galaxySource, /export function createGalaxyLayer/);
   assert.match(galaxySource, /far-galaxy-sky/);
   assert.match(galaxySource, /near-clusters/);
   assert.match(galaxySource, /mw-disk-edge/);

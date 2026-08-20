@@ -47,13 +47,13 @@ export const CONFIG = Object.freeze({
   minDistance: 2.4,
   // Solar overview / Kuiper camera cap. Further zoom is the galaxy layer.
   solarMaxDistance: 1650,
-  maxDistance: 168000,
+  maxDistance: 158000,
   mwViewDistance: 4000,
   neighborhoodViewDistance: 14500,
   localGroupViewDistance: 26000,
   virgoViewDistance: 46000,
-  webViewDistance: 88000,
-  universeViewDistance: 150000,
+  webViewDistance: 72000,
+  universeViewDistance: 140000,
   galaxyFadeStart: 1650,
   galaxyFadeEnd: 2150,
   // kpc → scene for the Milky Way disk. Not the AU orbit curve.
@@ -72,7 +72,7 @@ export const CONFIG = Object.freeze({
   // Visual core mark for the cluster, not a 1:1 member catalog.
   virgoMarkRadiusMpc: 2.2,
   // Fourth compressed scale for the local cosmic web. Input is catalog Mpc.
-  webScale: 4000,
+  webScale: 5200,
   webPower: 0.42,
   // Visual local-web radius. Laniakea-scale, not a 1:1 160 Mpc diameter.
   webRadiusMpc: 80,
