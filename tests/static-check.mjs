@@ -73,9 +73,41 @@ assert.equal(typeof three.WebGLRenderer, "function");
 assert.equal(typeof three.Scene, "function");
 assert.equal(typeof three.TextureLoader, "function");
 
+const required = [
+  "sun",
+  "mercury",
+  "venus",
+  "earth",
+  "moon",
+  "mars",
+  "phobos",
+  "deimos",
+  "ceres",
+  "jupiter",
+  "io",
+  "europa",
+  "ganymede",
+  "callisto",
+  "saturn",
+  "titan",
+  "uranus",
+  "neptune",
+  "triton",
+  "pluto",
+];
+assert.deepEqual(BODIES.map((body) => body.id).sort(), [...required].sort());
+
 for (const body of BODIES) {
   await stat(path.join(root, body.texture));
   if (body.ring) await stat(path.join(root, body.ring));
+}
+assert.match(findBodyTexture("phobos"), /assets\/textures\/phobos\.jpg/);
+assert.match(findBodyTexture("deimos"), /assets\/textures\/deimos\.jpg/);
+
+function findBodyTexture(id) {
+  const body = BODIES.find((item) => item.id === id);
+  assert.ok(body, id);
+  return body.texture;
 }
 
 console.log("static-check ok");

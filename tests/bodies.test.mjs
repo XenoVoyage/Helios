@@ -6,6 +6,8 @@ import {
   describeBody,
   findBody,
   keplerOffset,
+  moonClearance,
+  moonsOf,
   ringTextureU,
   solveKepler,
   visualMoonDistance,
@@ -21,6 +23,8 @@ const required = [
   "earth",
   "moon",
   "mars",
+  "phobos",
+  "deimos",
   "jupiter",
   "saturn",
   "uranus",
@@ -52,6 +56,22 @@ test("catalog includes the v1 bodies with published periods, spins, and tilts", 
   assert.ok(findBody("earth").orbitDays > 365 && findBody("earth").orbitDays < 366);
   assert.ok(findBody("jupiter").tiltDeg < 5);
   assert.ok(findBody("uranus").tiltDeg > 90);
+
+  const phobos = findBody("phobos");
+  const deimos = findBody("deimos");
+  assert.equal(phobos.parent, "mars");
+  assert.equal(deimos.parent, "mars");
+  assert.ok(phobos.radiusKm > 10 && phobos.radiusKm < 12);
+  assert.ok(deimos.radiusKm > 5 && deimos.radiusKm < 7.5);
+  assert.ok(phobos.orbitKm > 9000 && phobos.orbitKm < 9800);
+  assert.ok(deimos.orbitKm > 22000 && deimos.orbitKm < 24000);
+  assert.ok(phobos.orbitKm < deimos.orbitKm);
+  assert.ok(phobos.orbitDays > 0.3 && phobos.orbitDays < 0.33);
+  assert.ok(deimos.orbitDays > 1.2 && deimos.orbitDays < 1.3);
+  assert.ok(Math.abs(phobos.rotationHours - phobos.orbitDays * 24) < 0.01);
+  assert.ok(Math.abs(deimos.rotationHours - deimos.orbitDays * 24) < 0.01);
+  assert.ok(phobos.tiltDeg >= 0 && phobos.tiltDeg < 1);
+  assert.ok(deimos.tiltDeg >= 0 && deimos.tiltDeg < 2);
 });
 
 test("Kepler's equation recovers a circular and an eccentric orbit", () => {
@@ -102,11 +122,60 @@ test("moons stay outside their parent and the belt sits between Mars and Jupiter
     const parent = findBody(moon.parent);
     const orbit = visualMoonDistance(moon, parent);
     assert.ok(orbit > visualRadius(parent.radiusKm) + visualRadius(moon.radiusKm));
+    assert.ok(orbit >= moonClearance(moon, parent) - 1e-12);
   }
   const mars = visualOrbit(findBody("mars").orbitAu);
   const jupiter = visualOrbit(findBody("jupiter").orbitAu);
   const ceres = visualOrbit(findBody("ceres").orbitAu);
   assert.ok(ceres > mars && ceres < jupiter);
+});
+
+test("sibling moon visual orbits keep a readable gap and do not clip", () => {
+  const parents = [...new Set(BODIES.filter((body) => body.kind === "moon").map((body) => body.parent))];
+  for (const parentId of parents) {
+    const parent = findBody(parentId);
+    const siblings = moonsOf(parentId);
+    let previous = null;
+    for (const moon of siblings) {
+      const orbit = visualMoonDistance(moon, parent);
+      const moonR = visualRadius(moon.radiusKm);
+      const ringOuter = visualRingRadius(parent, parent.ringOuterKm);
+      assert.ok(orbit > visualRadius(parent.radiusKm) + moonR + CONFIG.moonPad - 1e-12);
+      if (ringOuter > 0) {
+        assert.ok(orbit > ringOuter + moonR);
+      }
+      if (previous) {
+        const gap = orbit - previous.orbit - previous.radius - moonR;
+        assert.ok(
+          gap + 1e-12 >= CONFIG.moonSiblingGap,
+          `${previous.id} and ${moon.id} visual gap ${gap}`,
+        );
+        assert.ok(orbit > previous.orbit);
+      }
+      previous = { id: moon.id, orbit, radius: moonR };
+    }
+  }
+
+  const mars = findBody("mars");
+  const jupiter = findBody("jupiter");
+  const phobos = findBody("phobos");
+  const deimos = findBody("deimos");
+  const phobosOrbit = visualMoonDistance(phobos, mars);
+  const deimosOrbit = visualMoonDistance(deimos, mars);
+  assert.ok(phobosOrbit < deimosOrbit);
+  assert.ok(visualRadius(phobos.radiusKm) < visualRadius(mars.radiusKm) * 0.12);
+  assert.ok(visualRadius(deimos.radiusKm) < visualRadius(mars.radiusKm) * 0.1);
+  for (const id of ["io", "europa", "ganymede", "callisto"]) {
+    const galilean = visualMoonDistance(findBody(id), jupiter);
+    assert.ok(deimosOrbit < galilean, `${id} should sit farther from Jupiter than Deimos from Mars`);
+  }
+
+  const earth = findBody("earth");
+  const moon = findBody("moon");
+  const moonOrbit = visualMoonDistance(moon, earth);
+  const earthToMars = visualOrbit(findBody("mars").orbitAu) - visualOrbit(earth.orbitAu);
+  assert.ok(moonOrbit < earthToMars * 0.6);
+  assert.ok(moonOrbit < visualOrbit(earth.orbitAu) * 0.15);
 });
 
 test("Saturn rings are a NASA annulus and Titan stays outside them", () => {
