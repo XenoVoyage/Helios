@@ -35,7 +35,7 @@ Do not add managers, services, factories, event buses, plugin systems, accounts,
 
 ## Verification
 
-- `npm test` runs the static contract check and the body/scale/Kepler tests.
+- `npm test` runs the static contract check, body/scale/Kepler tests, and an HTTP smoke of the Pages path.
 - `npm run serve` is the Pages-equivalent local path: `http://127.0.0.1:4173/Helios/`.
 - Add a regression for a confirmed math or catalog defect.
 - Audit desktop and touch before calling a change done. Browser automation is not physical-device proof.

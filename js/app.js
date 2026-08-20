@@ -82,7 +82,9 @@ function boot() {
   paintClock();
   paintCard();
 
-  if (!createRenderer()) {
+  try {
+    if (!createRenderer()) throw new Error("WebGL unavailable");
+  } catch {
     ui.unsupported.hidden = false;
     return;
   }
@@ -113,9 +115,13 @@ function boot() {
 
   bindInput();
   resize();
+  if (!renderer.domElement.width || !renderer.domElement.height) {
+    ui.unsupported.hidden = false;
+    return;
+  }
   placeCamera(1);
   lastStamp = performance.now();
-  renderer.setAnimationLoop(tick);
+  requestAnimationFrame(tick);
   say("Helios is ready. Drag to orbit, pinch or scroll to zoom, tap a world to focus.");
 }
 
@@ -212,7 +218,6 @@ function createBodyNode(body) {
 }
 
 function createOrbitLine(body) {
-  if (body.id === "sun") return new THREE.Group();
   const parent = findBody(body.parent);
   const points = [];
   for (let i = 0; i <= 160; i += 1) {
@@ -344,7 +349,7 @@ function onPointerMove(event) {
   if (state.pinching && pointerIds.size >= 2) {
     const gap = pointerGap();
     if (state.pinchStart > 0) {
-        zoomTo(state.pinchDistance * (gap / state.pinchStart));
+      zoomTo(state.pinchDistance * (gap / state.pinchStart));
     }
     return;
   }
@@ -516,6 +521,7 @@ function tick(now) {
   updateLabels();
   paintClock();
   renderer.render(scene, camera);
+  requestAnimationFrame(tick);
 }
 
 function updateBodies() {

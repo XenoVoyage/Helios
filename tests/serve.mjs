@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const basePath = "/Helios/";
 const hostname = "127.0.0.1";
-const port = 4173;
+const port = Number(process.env.PORT || 4173);
 const mimeTypes = new Map([
   [".css", "text/css; charset=utf-8"],
   [".html", "text/html; charset=utf-8"],
