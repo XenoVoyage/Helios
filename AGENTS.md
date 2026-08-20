@@ -42,8 +42,10 @@ Do not add managers, services, factories, event buses, plugin systems, accounts,
 
 ## Git
 
-Treat `main` as protected. Work on a short-lived branch and open a draft pull request when the work is ready.
+Treat `main` as protected. Never push to it, force-push it, delete it, or bypass it.
 
-Agents must not merge. Until the first playable phase is on `main`, **Smarty** (the coordinating developer) may merge this repository. After that phase, merge only with a new explicit authorization.
+Work on a short-lived `agent/<description>` branch from the current default-branch head. Open a draft pull request when the work is ready. Required CI must pass on that pull request before merge.
+
+Agents must not merge and must not change GitHub repository settings. Until the first playable phase is on `main`, **Smarty** (the coordinating developer) may merge this repository after required checks pass. After that phase, merge only with a new explicit authorization. Smarty enables branch protection in the GitHub UI; this repository only supplies the files and the `Test` workflow.
 
 Draft PRs must include how to run tests and what was verified on desktop and touch.
