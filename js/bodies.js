@@ -386,6 +386,12 @@ export function visualRadius(radiusKm) {
   return CONFIG.sizeScale * (radiusKm / CONFIG.earthRadiusKm) ** CONFIG.sizePower;
 }
 
+/** Displayed globe size. Moons use a visual-only shrink so siblings stay readable. */
+export function visualBodyRadius(body) {
+  const radius = visualRadius(body.radiusKm);
+  return body.kind === "moon" ? radius * CONFIG.moonSizeScale : radius;
+}
+
 export function visualOrbit(orbitAu) {
   if (orbitAu <= 0) return 0;
   return CONFIG.visualScale * CONFIG.orbitScale * orbitAu ** CONFIG.orbitPower;
@@ -414,16 +420,16 @@ export function moonsOf(parentId) {
 
 /** Visual radius the moon's path must stay outside: globe, rings, and the moon itself. */
 export function moonClearance(body, parent) {
-  const parentVisual = visualRadius(parent.radiusKm);
-  const moonVisual = visualRadius(body.radiusKm);
+  const parentVisual = visualBodyRadius(parent);
+  const moonVisual = visualBodyRadius(body);
   const ringOuter = visualRingRadius(parent, parent.ringOuterKm);
-  const ringClearance = ringOuter > 0 ? ringOuter * 1.5 + moonVisual : 0;
+  const ringClearance = ringOuter > 0 ? ringOuter + moonVisual + CONFIG.moonRingGap : 0;
   return Math.max(parentVisual + moonVisual + CONFIG.moonPad, ringClearance);
 }
 
 function mappedMoonDistance(body, parent) {
-  const parentVisual = visualRadius(parent.radiusKm);
-  const moonVisual = visualRadius(body.radiusKm);
+  const parentVisual = visualBodyRadius(parent);
+  const moonVisual = visualBodyRadius(body);
   const ringOuter = visualRingRadius(parent, parent.ringOuterKm);
   const clearance = moonClearance(body, parent);
   const radii = body.orbitKm / parent.radiusKm;
@@ -442,7 +448,7 @@ export function visualMoonDistance(body, parent) {
   let previousOrbit = 0;
   let previousRadius = 0;
   for (const moon of siblings) {
-    const moonVisual = visualRadius(moon.radiusKm);
+    const moonVisual = visualBodyRadius(moon);
     const mapped = mappedMoonDistance(moon, parent);
     const siblingFloor = previousOrbit > 0
       ? previousOrbit + previousRadius + moonVisual + CONFIG.moonSiblingGap
@@ -516,14 +522,37 @@ export function keplerOffset(body, parent, days) {
 export function describeBody(body) {
   const orbit = Math.abs(body.orbitDays);
   const rotationDays = Math.abs(body.rotationHours) / 24;
+  const retrograde = body.orbitDays < 0 || body.rotationHours < 0;
+  const radiusLabel = `${formatRadius(body.radiusKm)} km radius`;
+  const orbitLabel = orbit ? `${formatNumber(orbit)} day orbit` : "Center of the system";
+  const spinLabel = `${formatNumber(rotationDays)} day spin`;
+  const tiltLabel = `${formatNumber(body.tiltDeg)}° tilt`;
+  const facts = [radiusLabel];
+  if (!orbit) {
+    facts.push(orbitLabel);
+  } else if (body.kind === "moon") {
+    facts.push(`${formatRadius(body.orbitKm)} km orbit`);
+    facts.push(orbitLabel);
+  } else {
+    facts.push(`${formatAu(body.orbitAu)} AU orbit`);
+    facts.push(orbitLabel);
+  }
+  facts.push(spinLabel, tiltLabel);
+  if (orbit) {
+    facts.push(`e ${formatEcc(body.eccentricity)}`);
+    facts.push(`${formatNumber(body.inclinationDeg)}° inclination`);
+  }
+  if (retrograde) facts.push("Retrograde");
   return {
     id: body.id,
     name: body.name,
     kind: body.kind,
-    orbitLabel: orbit ? `${formatNumber(orbit)} day orbit` : "Center of the system",
-    spinLabel: `${formatNumber(rotationDays)} day spin`,
-    tiltLabel: `${formatNumber(body.tiltDeg)}° tilt`,
-    retrograde: body.orbitDays < 0 || body.rotationHours < 0,
+    radiusLabel,
+    orbitLabel,
+    spinLabel,
+    tiltLabel,
+    facts,
+    retrograde,
   };
 }
 
@@ -531,4 +560,22 @@ function formatNumber(value) {
   if (value >= 100) return value.toFixed(0);
   if (value >= 10) return value.toFixed(1);
   return value.toFixed(2);
+}
+
+function formatRadius(km) {
+  if (km >= 100) return String(Math.round(km));
+  return formatNumber(km);
+}
+
+function formatAu(value) {
+  if (value >= 10) return value.toFixed(1);
+  if (value >= 1) return value.toFixed(2);
+  return value.toFixed(3);
+}
+
+function formatEcc(value) {
+  if (value >= 0.1) return value.toFixed(3);
+  if (value >= 0.01) return value.toFixed(3);
+  if (value >= 0.001) return value.toFixed(4);
+  return value.toFixed(5);
 }

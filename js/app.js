@@ -6,16 +6,22 @@ import {
   findBody,
   keplerOffset,
   ringTextureU,
+  visualBodyRadius,
   visualOrbit,
-  visualRadius,
   visualRingRadius,
 } from "./bodies.js";
 import {
   attachSkyToCamera,
   createCelestialSphere,
   placeCameraForSkyLook,
+  setConstellationsVisible,
   wantsEarthSkyLook,
 } from "./sky.js";
+import {
+  bindFocusHelpers,
+  createFocusHelpers,
+  setHelperVisibility,
+} from "./helpers.js";
 
 const DEG = Math.PI / 180;
 const pointerIds = new Map();
@@ -31,6 +37,11 @@ const state = {
   playing: true,
   daysPerSecond: CONFIG.defaultDaysPerSecond,
   focusedId: "sun",
+  selectedId: null,
+  showConstellations: true,
+  showOrbitHelper: false,
+  showAxisHelper: false,
+  showSpinHelper: false,
   azimuth: CONFIG.cameraAzimuth,
   elevation: CONFIG.cameraElevation,
   distance: CONFIG.cameraDistance,
@@ -46,7 +57,9 @@ let renderer;
 let scene;
 let camera;
 let celestial;
-let belt;
+let asteroidBelt;
+let kuiperBelt;
+let helpers;
 let lastStamp = 0;
 const earthSkyLook = wantsEarthSkyLook();
 
@@ -83,6 +96,10 @@ function boot() {
   ui.cardKind = $("card-kind");
   ui.cardMeta = $("card-meta");
   ui.cardClose = $("card-close");
+  ui.sky = $("sky-button");
+  ui.helperOrbit = $("helper-orbit");
+  ui.helperAxis = $("helper-axis");
+  ui.helperSpin = $("helper-spin");
   ui.status = $("status-live");
   ui.unsupported = $("unsupported");
   ui.version = $("version-label");
@@ -90,6 +107,7 @@ function boot() {
   ui.version.textContent = CONFIG.VERSION;
   paintSpeed();
   paintClock();
+  paintSkyButton();
   paintCard();
 
   try {
@@ -104,8 +122,30 @@ function boot() {
   camera = new THREE.PerspectiveCamera(52, 1, 0.05, CONFIG.cameraFar);
   celestial = createCelestialSphere(THREE);
   scene.add(celestial);
-  belt = createBelt();
-  scene.add(belt);
+  asteroidBelt = createBeltField({
+    count: CONFIG.beltCount,
+    innerAu: CONFIG.beltInnerAu,
+    outerAu: CONFIG.beltOuterAu,
+    height: 1.8,
+    color: 0xb7b3a8,
+    size: 0.1,
+    opacity: 0.7,
+    seed: 88421,
+  });
+  kuiperBelt = createBeltField({
+    count: CONFIG.kuiperCount,
+    innerAu: CONFIG.kuiperInnerAu,
+    outerAu: CONFIG.kuiperOuterAu,
+    height: 16,
+    color: 0x7f8ca3,
+    size: 0.16,
+    opacity: 0.48,
+    seed: 11973,
+  });
+  scene.add(asteroidBelt);
+  scene.add(kuiperBelt);
+  helpers = createFocusHelpers(THREE);
+  scene.add(helpers.group);
   // Faint fill so the night side is readable. Day, night, and terminator
   // come from the Sun point light, not from this ambient.
   scene.add(new THREE.AmbientLight(0x1a2436, 0.025));
@@ -141,6 +181,8 @@ function boot() {
   if (earthSkyLook) {
     state.playing = false;
     state.focusedId = "earth";
+    state.selectedId = "earth";
+    bindSelectionHelpers();
     paintSpeed();
     paintCard();
   }
@@ -178,7 +220,7 @@ function loadMap(path) {
 }
 
 function createBodyNode(body) {
-  const radius = visualRadius(body.radiusKm);
+  const radius = visualBodyRadius(body);
   const segments = body.id === "sun" ? 64 : body.kind === "moon" ? 32 : 48;
   const pivot = new THREE.Group();
   pivot.name = body.id;
@@ -197,14 +239,16 @@ function createBodyNode(body) {
   mesh.userData.bodyId = body.id;
   tilt.add(mesh);
 
+  let glow = null;
   if (body.id === "sun") {
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: createGlowMap(),
       color: 0xffc35a,
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     }));
+    glow.userData.bodyId = body.id;
     glow.scale.set(radius * 6.4, radius * 6.4, 1);
     pivot.add(glow);
   }
@@ -221,7 +265,7 @@ function createBodyNode(body) {
   label.hidden = true;
   ui.labels.append(label);
 
-  return { body, pivot, tilt, mesh, label, radius };
+  return { body, pivot, tilt, mesh, label, radius, glow };
 }
 
 function createRing(body) {
@@ -267,18 +311,17 @@ function createOrbitLine(body) {
   );
 }
 
-function createBelt() {
-  const count = CONFIG.beltCount;
+function createBeltField({ count, innerAu, outerAu, height, color, size, opacity, seed }) {
   const positions = new Float32Array(count * 3);
-  const rand = seedRandom(88421);
-  const inner = visualOrbit(CONFIG.beltInnerAu);
-  const outer = visualOrbit(CONFIG.beltOuterAu);
+  const rand = seedRandom(seed);
+  const inner = visualOrbit(innerAu);
+  const outer = visualOrbit(outerAu);
   for (let i = 0; i < count; i += 1) {
     const radius = Math.sqrt(inner * inner + (outer * outer - inner * inner) * rand());
     const angle = rand() * Math.PI * 2;
-    const height = (rand() - 0.5) * 1.8;
+    const lift = (rand() - 0.5) * height;
     positions[i * 3] = Math.cos(angle) * radius;
-    positions[i * 3 + 1] = height;
+    positions[i * 3 + 1] = lift;
     positions[i * 3 + 2] = Math.sin(angle) * radius;
   }
   const geometry = new THREE.BufferGeometry();
@@ -286,7 +329,7 @@ function createBelt() {
   const group = new THREE.Group();
   group.add(new THREE.Points(
     geometry,
-    new THREE.PointsMaterial({ color: 0xb7b3a8, size: 0.1, sizeAttenuation: true, transparent: true, opacity: 0.7 }),
+    new THREE.PointsMaterial({ color, size, sizeAttenuation: true, transparent: true, opacity }),
   ));
   return group;
 }
@@ -316,10 +359,14 @@ function bindInput() {
     paintSpeed();
   });
   ui.reset.addEventListener("click", resetView);
-  ui.cardClose.addEventListener("click", () => focusBody("sun"));
+  ui.cardClose.addEventListener("click", resetView);
+  ui.sky.addEventListener("click", toggleConstellations);
+  ui.helperOrbit.addEventListener("click", () => toggleHelper("showOrbitHelper"));
+  ui.helperAxis.addEventListener("click", () => toggleHelper("showAxisHelper"));
+  ui.helperSpin.addEventListener("click", () => toggleHelper("showSpinHelper"));
   ui.labels.addEventListener("click", (event) => {
     const button = event.target.closest("[data-body-id]");
-    if (button) focusBody(button.dataset.bodyId);
+    if (button) selectBody(button.dataset.bodyId);
   });
 
   const canvas = ui.viewport;
@@ -422,28 +469,69 @@ function pickAt(clientX, clientY) {
   ndc.x = ((clientX - bounds.left) / bounds.width) * 2 - 1;
   ndc.y = -((clientY - bounds.top) / bounds.height) * 2 + 1;
   raycaster.setFromCamera(ndc, camera);
-  const meshes = [...nodes.values()].map((node) => node.mesh);
-  const hit = raycaster.intersectObjects(meshes, false)[0];
-  if (hit?.object.userData.bodyId) focusBody(hit.object.userData.bodyId);
+  const pickables = [...nodes.values()].flatMap((node) => (
+    node.glow ? [node.mesh, node.glow] : [node.mesh]
+  ));
+  const hit = raycaster.intersectObjects(pickables, false)[0];
+  if (hit?.object.userData.bodyId) {
+    selectBody(hit.object.userData.bodyId);
+    return;
+  }
+  clearSelection();
 }
 
-function focusBody(id) {
+function selectBody(id) {
   const node = nodes.get(id);
   if (!node) return;
   state.focusedId = id;
+  state.selectedId = id;
   const ideal = Math.max(node.radius * 7.5, 5.5);
   state.distance = clamp(ideal, CONFIG.minDistance, CONFIG.maxDistance);
+  bindSelectionHelpers();
   paintCard();
   say(`Focused ${node.body.name}`);
 }
 
+function clearSelection() {
+  if (!state.selectedId) return;
+  state.selectedId = null;
+  paintCard();
+  say("Selection cleared");
+}
+
 function resetView() {
   state.focusedId = "sun";
+  state.selectedId = null;
   state.azimuth = CONFIG.cameraAzimuth;
   state.elevation = CONFIG.cameraElevation;
   state.distance = CONFIG.cameraDistance;
   paintCard();
   say("Returned to the overview");
+}
+
+function toggleConstellations() {
+  state.showConstellations = !state.showConstellations;
+  setConstellationsVisible(celestial, state.showConstellations);
+  paintSkyButton();
+  say(state.showConstellations ? "Constellations on" : "Constellations off");
+}
+
+function toggleHelper(key) {
+  state[key] = !state[key];
+  paintCard();
+}
+
+function bindSelectionHelpers() {
+  if (!helpers || !state.selectedId) return;
+  const node = nodes.get(state.selectedId);
+  if (!node) return;
+  const parentNode = node.body.parent ? nodes.get(node.body.parent) : null;
+  bindFocusHelpers(THREE, helpers, {
+    body: node.body,
+    node,
+    parentNode,
+    scene,
+  });
 }
 
 function togglePlay() {
@@ -485,13 +573,44 @@ function paintClock() {
   ui.clock.textContent = new Date(stamp).toISOString().slice(0, 10);
 }
 
+function paintSkyButton() {
+  ui.sky.textContent = "Constellations";
+  ui.sky.setAttribute("aria-pressed", String(state.showConstellations));
+}
+
+function paintHelperButtons() {
+  const selected = Boolean(state.selectedId);
+  const body = selected ? findBody(state.selectedId) : null;
+  const hasOrbit = Boolean(body?.orbitDays);
+  ui.helperOrbit.hidden = !hasOrbit;
+  ui.helperOrbit.setAttribute("aria-pressed", String(state.showOrbitHelper && hasOrbit));
+  ui.helperAxis.setAttribute("aria-pressed", String(state.showAxisHelper));
+  ui.helperSpin.setAttribute("aria-pressed", String(state.showSpinHelper));
+  if (helpers) {
+    setHelperVisibility(helpers, {
+      selected,
+      orbit: state.showOrbitHelper && hasOrbit,
+      axis: state.showAxisHelper,
+      spin: state.showSpinHelper,
+    });
+  }
+}
+
 function paintCard() {
-  const body = findBody(state.focusedId);
+  const body = state.selectedId ? findBody(state.selectedId) : null;
+  if (!body) {
+    ui.card.hidden = true;
+    if (helpers) {
+      setHelperVisibility(helpers, { selected: false, orbit: false, axis: false, spin: false });
+    }
+    return;
+  }
   const info = describeBody(body);
-  ui.card.hidden = body.id === "sun";
+  ui.card.hidden = false;
   ui.cardName.textContent = info.name;
   ui.cardKind.textContent = kindLabel(info.kind);
-  ui.cardMeta.textContent = [info.orbitLabel, info.spinLabel, info.tiltLabel].join(" · ");
+  ui.cardMeta.textContent = info.facts.join(" · ");
+  paintHelperButtons();
 }
 
 function kindLabel(kind) {
@@ -518,7 +637,8 @@ function tick(now) {
   lastStamp = now;
   if (state.playing) state.days += dt * state.daysPerSecond;
   updateBodies();
-  belt.rotation.y = state.days * (Math.PI * 2) / 1682;
+  asteroidBelt.rotation.y = state.days * (Math.PI * 2) / 1682;
+  kuiperBelt.rotation.y = state.days * (Math.PI * 2) / 90560;
   placeCamera(1 - Math.exp(-CONFIG.focusLerp * dt));
   updateLabels();
   paintClock();
@@ -571,7 +691,7 @@ function updateLabels() {
     const show = onScreen && canShowLabel(node.body, focused);
     node.label.hidden = !show;
     if (!show) continue;
-    node.label.classList.toggle("is-active", node.body.id === state.focusedId);
+    node.label.classList.toggle("is-active", node.body.id === state.selectedId);
     node.label.style.transform = `translate(-50%, -120%) translate(${(projected.x * 0.5 + 0.5) * width}px, ${(-projected.y * 0.5 + 0.5) * height}px)`;
   }
 }

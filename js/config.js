@@ -9,7 +9,7 @@
  * invent fake AU values. sizeScale / sizePower size the spheres the same way.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20c",
+  VERSION: "v2026.8.20d",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 1.75,
@@ -17,22 +17,29 @@ export const CONFIG = Object.freeze({
   sizePower: 0.55,
   orbitScale: 40,
   orbitPower: 0.45,
-  moonPad: 1,
-  moonSpread: 2.2,
+  moonPad: 0.4,
+  moonSpread: 0.45,
   // Extra visual space between sibling moon paths after radii are reserved.
-  moonSiblingGap: 1.2,
-  moonOrbitCap: 7,
+  moonSiblingGap: 1.05,
+  moonOrbitCap: 6,
+  // Moons sit just outside rings; do not push them to 1.5× the ring radius.
+  moonRingGap: 0.25,
+  moonSizeScale: 0.72,
   defaultDaysPerSecond: 1 / 24,
   minDaysPerSecond: 1 / 24,
   maxDaysPerSecond: 400,
+  // Debris fields: sparse point clouds, not rock catalogs. One owner for both.
   beltCount: 2400,
   beltInnerAu: 2.2,
   beltOuterAu: 3.3,
-  cameraDistance: 340,
+  kuiperCount: 880,
+  kuiperInnerAu: 30.2,
+  kuiperOuterAu: 50,
+  cameraDistance: 460,
   cameraElevation: 0.5,
   cameraAzimuth: 0.55,
   minDistance: 2.4,
-  maxDistance: 720,
+  maxDistance: 980,
   // Celestial sphere sits around the camera; far plane must clear it.
   skyRadius: 2000,
   cameraFar: 4200,

@@ -10,6 +10,7 @@ import {
   moonsOf,
   ringTextureU,
   solveKepler,
+  visualBodyRadius,
   visualMoonDistance,
   visualOrbit,
   visualRadius,
@@ -52,10 +53,17 @@ test("catalog includes the v1 bodies with published periods, spins, and tilts", 
     }
   }
   assert.ok(findBody("venus").rotationHours < 0);
+  assert.ok(findBody("uranus").rotationHours < 0);
+  assert.ok(findBody("pluto").rotationHours < 0);
   assert.ok(findBody("triton").orbitDays < 0);
+  assert.ok(findBody("triton").rotationHours < 0);
   assert.ok(findBody("earth").orbitDays > 365 && findBody("earth").orbitDays < 366);
   assert.ok(findBody("jupiter").tiltDeg < 5);
-  assert.ok(findBody("uranus").tiltDeg > 90);
+  assert.ok(findBody("venus").tiltDeg > 170 && findBody("venus").tiltDeg < 180);
+  assert.ok(findBody("uranus").tiltDeg > 90 && findBody("uranus").tiltDeg < 100);
+  assert.ok(findBody("pluto").tiltDeg > 120 && findBody("pluto").tiltDeg < 125);
+  assert.equal(findBody("sun").tiltDeg, 7.25);
+  assert.equal(findBody("sun").kind, "star");
 
   const phobos = findBody("phobos");
   const deimos = findBody("deimos");
@@ -138,7 +146,7 @@ test("sibling moon visual orbits keep a readable gap and do not clip", () => {
     let previous = null;
     for (const moon of siblings) {
       const orbit = visualMoonDistance(moon, parent);
-      const moonR = visualRadius(moon.radiusKm);
+      const moonR = visualBodyRadius(moon);
       const ringOuter = visualRingRadius(parent, parent.ringOuterKm);
       assert.ok(orbit > visualRadius(parent.radiusKm) + moonR + CONFIG.moonPad - 1e-12);
       if (ringOuter > 0) {
@@ -193,13 +201,47 @@ test("Saturn rings are a NASA annulus and Titan stays outside them", () => {
   assert.equal(ringTextureU(outer, inner, outer), 1);
   assert.ok(Math.abs(ringTextureU((inner + outer) / 2, inner, outer) - 0.5) < 1e-12);
   const titanOrbit = visualMoonDistance(titan, saturn);
-  assert.ok(titanOrbit > outer * 1.5 + visualRadius(titan.radiusKm));
+  const titanR = visualBodyRadius(titan);
+  assert.ok(titanOrbit > outer + titanR);
+  assert.ok(
+    titanOrbit < outer * 1.5 + titanR,
+    `Titan should sit closer than the old 1.5× ring rule (${titanOrbit} vs ${outer * 1.5 + titanR})`,
+  );
+});
+
+test("Kuiper belt sits outside Neptune and contains Pluto's orbit", () => {
+  assert.equal(CONFIG.visualScale, 1.75);
+  const neptune = visualOrbit(findBody("neptune").orbitAu);
+  const pluto = visualOrbit(findBody("pluto").orbitAu);
+  const inner = visualOrbit(CONFIG.kuiperInnerAu);
+  const outer = visualOrbit(CONFIG.kuiperOuterAu);
+  assert.ok(CONFIG.kuiperInnerAu > findBody("neptune").orbitAu);
+  assert.ok(CONFIG.kuiperOuterAu > findBody("pluto").orbitAu);
+  assert.ok(inner > neptune);
+  assert.ok(inner < pluto);
+  assert.ok(outer > pluto);
+  assert.ok(CONFIG.maxDistance > outer);
+  assert.ok(CONFIG.kuiperCount < CONFIG.beltCount);
 });
 
 test("describeBody keeps public facts readable", () => {
   const earth = describeBody(findBody("earth"));
   assert.match(earth.orbitLabel, /day orbit/);
   assert.match(earth.tiltLabel, /tilt/);
+  assert.match(earth.radiusLabel, /6371/);
+  assert.ok(earth.facts.some((fact) => /AU orbit/.test(fact)));
+  assert.ok(earth.facts.some((fact) => /^e /.test(fact)));
   assert.equal(earth.retrograde, false);
   assert.equal(describeBody(findBody("venus")).retrograde, true);
+  assert.ok(describeBody(findBody("triton")).facts.includes("Retrograde"));
+
+  const sun = describeBody(findBody("sun"));
+  assert.equal(sun.kind, "star");
+  assert.match(sun.radiusLabel, /695700/);
+  assert.equal(sun.orbitLabel, "Center of the system");
+  assert.match(sun.tiltLabel, /7\.25/);
+  assert.match(sun.spinLabel, /spin/);
+  assert.equal(sun.retrograde, false);
+  assert.ok(sun.facts.includes("Center of the system"));
+  assert.ok(!sun.facts.includes("Retrograde"));
 });

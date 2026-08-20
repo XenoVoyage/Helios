@@ -388,17 +388,41 @@ function createAndromeda(THREE, radius) {
   return sprite;
 }
 
+/** World-unit sprite size so names stay readable at overview, not 8px specks. */
+export const CONSTELLATION_LABEL = Object.freeze({
+  canvasWidth: 1024,
+  canvasHeight: 256,
+  fontPx: 96,
+  scaleX: 240,
+  scaleY: 60,
+});
+
+export function constellationLabelPixelHeight(
+  viewportHeight = 1080,
+  fovDeg = 52,
+  radius = CONFIG.skyRadius * 0.96,
+) {
+  const visible = 2 * radius * Math.tan((fovDeg * Math.PI / 180) / 2);
+  return CONSTELLATION_LABEL.scaleY / visible * viewportHeight;
+}
+
 function makeLabelMap(THREE, text) {
+  const width = CONSTELLATION_LABEL.canvasWidth;
+  const height = CONSTELLATION_LABEL.canvasHeight;
   const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 64;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, 256, 64);
-  ctx.font = "600 28px ui-sans-serif, system-ui, sans-serif";
+  ctx.clearRect(0, 0, width, height);
+  ctx.font = `700 ${CONSTELLATION_LABEL.fontPx}px ui-sans-serif, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillStyle = "rgba(161, 177, 189, 0.82)";
-  ctx.fillText(text, 128, 32);
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 12;
+  ctx.strokeStyle = "rgba(2, 5, 12, 0.88)";
+  ctx.fillStyle = "rgba(214, 244, 250, 0.96)";
+  ctx.strokeText(text, width / 2, height / 2);
+  ctx.fillText(text, width / 2, height / 2);
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace;
   return map;
@@ -416,14 +440,22 @@ function createConstellationLabels(THREE, radius) {
       map: makeLabelMap(THREE, constellation.name),
       transparent: true,
       depthWrite: false,
-      opacity: 0.7,
+      opacity: 0.94,
+      sizeAttenuation: true,
     }));
     sprite.position.set(at.x, at.y, at.z);
-    sprite.scale.set(48, 12, 1);
+    sprite.scale.set(CONSTELLATION_LABEL.scaleX, CONSTELLATION_LABEL.scaleY, 1);
     sprite.frustumCulled = false;
     group.add(sprite);
   }
   return group;
+}
+
+export function setConstellationsVisible(sky, visible) {
+  const lines = sky.getObjectByName("constellation-lines");
+  const labels = sky.getObjectByName("constellation-labels");
+  if (lines) lines.visible = visible;
+  if (labels) labels.visible = visible;
 }
 
 export function createCelestialSphere(THREE, radius = CONFIG.skyRadius) {
