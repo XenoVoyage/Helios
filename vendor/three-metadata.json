@@ -1,0 +1,13 @@
+{
+  "package": "three",
+  "version": "0.185.0",
+  "license": "MIT",
+  "source": "https://www.npmjs.com/package/three",
+  "module": {
+    "path": "vendor/three.module.min.js",
+    "bytes": 365552
+  },
+  "licenseFile": {
+    "path": "vendor/THREE-LICENSE"
+  }
+}
