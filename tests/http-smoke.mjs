@@ -40,10 +40,14 @@ try {
     "assets/sky/milky-way.jpg",
     "assets/sky/andromeda.png",
     "assets/sky/cmb.jpg",
+    "docs/assets/helios-overview.webp",
   ];
   for (const relative of paths) {
     const response = await fetch(base + relative);
     assert.equal(response.status, 200, relative || "index.html");
+    if (relative.endsWith(".webp")) {
+      assert.match(response.headers.get("content-type") ?? "", /image\/webp/);
+    }
   }
 
   const html = await (await fetch(base)).text();

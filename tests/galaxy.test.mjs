@@ -395,6 +395,9 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /quietAndromedaMap|andromeda\.png/);
   assert.doesNotMatch(galaxySource, /kind === "andromeda"/);
   assert.doesNotMatch(galaxySource, /lineWidth = 13/);
+  assert.doesNotMatch(galaxySource, /smc: galaxySprite/);
+  assert.doesNotMatch(galaxySource, /kind === "smc"/);
+  assert.doesNotMatch(galaxySource, /export \{\s*CMB_SHELL/);
   assert.match(galaxySource, /farGalaxySkyOpacity/);
   assert.match(galaxySource, /cmbSkyOpacity/);
   assert.match(galaxySource, /toneMapped:\s*false/);
