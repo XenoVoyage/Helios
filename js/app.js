@@ -26,14 +26,15 @@ import {
   createGalaxyLayer,
   galaxyOpacity,
   localGroupCameraAim,
+  milkyWayCameraAim,
   neighborhoodCameraAim,
   requestedGalaxyLook,
   scaleLayer,
   setGalaxyLayerVisible,
   solarOpacity,
-  superclusterCameraAim,
   universeCameraAim,
   virgoCameraAim,
+  webCameraAim,
 } from "./galaxy.js";
 
 const DEG = Math.PI / 180;
@@ -208,7 +209,10 @@ function boot() {
   } else {
     const galaxyLook = requestedGalaxyLook();
     if (galaxyLook === "milkyway") {
+      const aim = milkyWayCameraAim();
       state.distance = CONFIG.mwViewDistance;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
       state.focusedId = "sun";
     } else if (galaxyLook === "neighborhood") {
       const aim = neighborhoodCameraAim();
@@ -228,9 +232,9 @@ function boot() {
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
-    } else if (galaxyLook === "supercluster") {
-      const aim = superclusterCameraAim();
-      state.distance = CONFIG.superclusterViewDistance;
+    } else if (galaxyLook === "web") {
+      const aim = webCameraAim();
+      state.distance = CONFIG.webViewDistance;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
@@ -788,9 +792,9 @@ function paintScaleLayer() {
     if (layer === "milkyway") say("Milky Way. The Sun sits in the Orion Arm.");
     else if (layer === "neighborhood") say("Nearby galaxies.");
     else if (layer === "localgroup") say("Local Group.");
-    else if (layer === "virgo") say("Virgo Cluster. The Local Group is a pin; Virgo is the nearest large cluster.");
-    else if (layer === "supercluster") say("Nearby superclusters. We sit in Laniakea.");
-    else if (layer === "universe") say("Observable universe. You are here.");
+    else if (layer === "virgo") say("Virgo Cluster. The Local Group is a nearby family; Virgo is the nearest large cluster.");
+    else if (layer === "web") say("Cosmic web. The Milky Way sits in this neighborhood of clusters.");
+    else if (layer === "universe") say("Observable universe. The CMB is the last-scattering surface.");
     else if (layer === "solar") say("Solar system.");
   }
 }

@@ -18,7 +18,7 @@ Read this file at the start of every task. It is the repository-local contract f
 | Scene, camera, input, HUD | `js/app.js` |
 | Focus orbit / axis / spin marks | `js/helpers.js` |
 | Celestial sphere | `js/sky.js`, `js/sky-catalog.js`, `assets/sky/` |
-| Galactic neighborhood, Local Group, Virgo, superclusters, observable universe | `js/galaxy.js`, `js/galaxy-catalog.js` |
+| Galactic neighborhood, Local Group, Virgo, cosmic web, CMB / observable universe | `js/galaxy.js`, `js/galaxy-catalog.js` |
 | Semantic shell and CSP | `index.html` |
 | Presentation | `styles.css` |
 | Public version label | `VERSION.txt` (`js/config.js` must match) |

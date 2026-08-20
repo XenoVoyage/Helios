@@ -39,6 +39,7 @@ try {
     "assets/textures/saturn-ring.png",
     "assets/sky/milky-way.jpg",
     "assets/sky/andromeda.png",
+    "assets/sky/cmb.jpg",
   ];
   for (const relative of paths) {
     const response = await fetch(base + relative);

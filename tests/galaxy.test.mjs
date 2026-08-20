@@ -7,6 +7,7 @@ import { CONFIG } from "../js/config.js";
 import { visualOrbit } from "../js/bodies.js";
 import { equatorialToGalactic } from "../js/sky.js";
 import {
+  CMB_SHELL,
   GALACTIC_CENTER,
   LANIAKEA,
   LOCAL_GROUP,
@@ -15,20 +16,18 @@ import {
   OBSERVABLE_UNIVERSE,
   SPIRAL_ARMS,
   SUN_GALACTIC,
-  SUPERCLUSTERS,
   VIRGO_CLUSTER,
   findLocalGroupMember,
   findNeighbor,
   findSpiralArm,
-  findSupercluster,
   localGroupFamily,
 } from "../js/galaxy-catalog.js";
 import {
   armPointKpc,
   farthestNeighborhoodDistance,
-  farthestSuperclusterDistance,
   farthestUniverseDistance,
   farthestVirgoDistance,
+  farthestWebDistance,
   galacticCenterScenePosition,
   galaxyOpacity,
   heliocentricGalactic,
@@ -40,16 +39,16 @@ import {
   solarOpacity,
   spiralRadiusKpc,
   sunScenePosition,
-  superclusterOpacity,
-  superclusterScenePosition,
   universeOpacity,
   virgoOpacity,
   virgoScenePosition,
   visualMilkyWay,
   visualNeighborhood,
-  visualSupercluster,
   visualUniverse,
   visualVirgo,
+  visualWeb,
+  webHubScenePosition,
+  webOpacity,
 } from "../js/galaxy.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -114,19 +113,19 @@ test("galaxy scales are kpc mappings and do not reuse solar AU units", async () 
   assert.equal(visualMilkyWay(SUN_GALACTIC.rKpc), CONFIG.mwScale * SUN_GALACTIC.rKpc ** CONFIG.mwPower);
   assert.equal(visualNeighborhood(780), CONFIG.neighborhoodScale * 780 ** CONFIG.neighborhoodPower);
   assert.equal(visualVirgo(16500), CONFIG.virgoScale * (16500 / 1000) ** CONFIG.virgoPower);
-  assert.equal(visualSupercluster(99), CONFIG.superclusterScale * 99 ** CONFIG.superclusterPower);
+  assert.equal(visualWeb(16.5), CONFIG.webScale * 16.5 ** CONFIG.webPower);
   assert.equal(visualUniverse(14.25), CONFIG.universeScale * 14.25 ** CONFIG.universePower);
   assert.notEqual(visualMilkyWay(1), visualOrbit(1));
   assert.notEqual(visualNeighborhood(1), visualOrbit(1));
   assert.notEqual(visualVirgo(1000), visualOrbit(1));
   assert.notEqual(visualVirgo(1000), visualNeighborhood(1));
   assert.notEqual(visualVirgo(1000), visualMilkyWay(1));
-  assert.notEqual(visualSupercluster(16.5), visualVirgo(16500));
-  assert.notEqual(visualSupercluster(16.5), visualOrbit(1));
+  assert.notEqual(visualWeb(16.5), visualVirgo(16500));
+  assert.notEqual(visualWeb(16.5), visualOrbit(1));
   assert.notEqual(visualUniverse(1), visualOrbit(1));
   assert.notEqual(visualUniverse(1), 1);
   assert.notEqual(visualUniverse(14.25), 14.25);
-  assert.notEqual(visualUniverse(14.25), visualSupercluster(200));
+  assert.notEqual(visualUniverse(14.25), visualWeb(80));
   assert.notEqual(visualMilkyWay(8.178), visualNeighborhood(8.178));
   assert.notEqual(visualNeighborhood(16500), visualVirgo(16500));
   assert.ok(visualNeighborhood(findNeighbor("m31").distanceKpc) > visualNeighborhood(findNeighbor("lmc").distanceKpc));
@@ -151,8 +150,8 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.ok(CONFIG.neighborhoodViewDistance > CONFIG.mwViewDistance);
   assert.ok(CONFIG.localGroupViewDistance > CONFIG.neighborhoodViewDistance);
   assert.ok(CONFIG.virgoViewDistance > CONFIG.localGroupViewDistance);
-  assert.ok(CONFIG.superclusterViewDistance > CONFIG.virgoViewDistance);
-  assert.ok(CONFIG.universeViewDistance > CONFIG.superclusterViewDistance);
+  assert.ok(CONFIG.webViewDistance > CONFIG.virgoViewDistance);
+  assert.ok(CONFIG.universeViewDistance > CONFIG.webViewDistance);
   assert.ok(CONFIG.maxDistance >= CONFIG.universeViewDistance);
   assert.ok(CONFIG.neighborhoodViewDistance > CONFIG.mwViewDistance * 2);
   assert.equal(scaleLayer(CONFIG.cameraDistance), "solar");
@@ -162,7 +161,7 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.equal(scaleLayer(CONFIG.neighborhoodViewDistance), "neighborhood");
   assert.equal(scaleLayer(CONFIG.localGroupViewDistance), "localgroup");
   assert.equal(scaleLayer(CONFIG.virgoViewDistance), "virgo");
-  assert.equal(scaleLayer(CONFIG.superclusterViewDistance), "supercluster");
+  assert.equal(scaleLayer(CONFIG.webViewDistance), "web");
   assert.equal(scaleLayer(CONFIG.universeViewDistance), "universe");
   assert.equal(solarOpacity(CONFIG.cameraDistance), 1);
   assert.equal(galaxyOpacity(CONFIG.cameraDistance), 0);
@@ -173,9 +172,9 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.equal(localGroupMemberOpacity(CONFIG.localGroupViewDistance), 1);
   assert.equal(virgoOpacity(CONFIG.localGroupViewDistance), 0);
   assert.equal(virgoOpacity(CONFIG.virgoViewDistance), 1);
-  assert.equal(superclusterOpacity(CONFIG.virgoViewDistance), 0);
-  assert.equal(superclusterOpacity(CONFIG.superclusterViewDistance), 1);
-  assert.equal(universeOpacity(CONFIG.superclusterViewDistance), 0);
+  assert.equal(webOpacity(CONFIG.virgoViewDistance), 0);
+  assert.equal(webOpacity(CONFIG.webViewDistance), 1);
+  assert.equal(universeOpacity(CONFIG.webViewDistance), 0);
   assert.equal(universeOpacity(CONFIG.universeViewDistance), 1);
 });
 
@@ -183,7 +182,7 @@ test("camera far plane clears the neighborhood and spiral math stays Reid-like",
   const farthest = Math.max(
     farthestNeighborhoodDistance(),
     farthestVirgoDistance(),
-    farthestSuperclusterDistance(),
+    farthestWebDistance(),
     farthestUniverseDistance(),
   );
   assert.ok(CONFIG.cameraFar > CONFIG.maxDistance);
@@ -261,34 +260,32 @@ test("Virgo Cluster keeps the published 16.5 Mpc M87 position", () => {
   assert.ok(CONFIG.cameraFar > farthestVirgoDistance() + CONFIG.maxDistance * 0.25);
 });
 
-test("nearby superclusters keep SIMBAD cores and cited distances", () => {
+test("cosmic web keeps Laniakea published size and drops named supercluster pins", async () => {
   assert.equal(LANIAKEA.name, "Laniakea");
   assert.equal(LANIAKEA.also, "Virgo Supercluster");
   assert.equal(LANIAKEA.home, true);
   assert.equal(LANIAKEA.diameterMpc, 160);
-  assert.equal(SUPERCLUSTERS.length, 3);
-  const expected = {
-    "perseus-pisces": { distanceMpc: 72, center: "ACO 426" },
-    coma: { distanceMpc: 99, center: "ACO 1656" },
-    shapley: { distanceMpc: 200, center: "ACO 3558" },
-  };
-  for (const [id, want] of Object.entries(expected)) {
-    const item = findSupercluster(id);
-    assert.ok(item, id);
-    assert.equal(item.distanceMpc, want.distanceMpc);
-    assert.equal(item.center, want.center);
-    const gal = equatorialToGalactic(item.raDeg, item.decDeg);
-    const lGap = Math.abs(((gal.lDeg + 180) % 360) - ((item.lDeg + 180) % 360));
-    assert.ok(lGap < 0.05, `${id} galactic longitude`);
-    assert.ok(Math.abs(gal.bDeg - item.bDeg) < 0.05, `${id} galactic latitude`);
-  }
-  const perseus = superclusterScenePosition(findSupercluster("perseus-pisces"));
-  const shapley = superclusterScenePosition(findSupercluster("shapley"));
-  assert.ok(Math.hypot(shapley.x, shapley.y, shapley.z) > Math.hypot(perseus.x, perseus.y, perseus.z));
-  assert.ok(Math.abs(Math.hypot(perseus.x, perseus.y, perseus.z) - visualSupercluster(72)) < 1e-6);
-  assert.ok(visualSupercluster(200) > visualSupercluster(99));
-  assert.ok(visualSupercluster(99) > visualSupercluster(72));
-  assert.ok(farthestSuperclusterDistance() >= visualSupercluster(200));
+  const catalogSource = await readFile(path.join(root, "js/galaxy-catalog.js"), "utf8");
+  const galaxySource = await readFile(path.join(root, "js/galaxy.js"), "utf8");
+  assert.doesNotMatch(catalogSource, /SUPERCLUSTERS/);
+  assert.doesNotMatch(catalogSource, /Perseus-Pisces/);
+  assert.doesNotMatch(catalogSource, /\bComa\b/);
+  assert.doesNotMatch(catalogSource, /Shapley/);
+  assert.doesNotMatch(galaxySource, /You are here/);
+  assert.doesNotMatch(galaxySource, /solar-circle/);
+  assert.doesNotMatch(galaxySource, /Perseus-Pisces/);
+  assert.match(galaxySource, /cosmic-web/);
+  assert.match(galaxySource, /cmb-shell/);
+  assert.equal(visualWeb(CONFIG.webRadiusMpc), CONFIG.webScale * CONFIG.webRadiusMpc ** CONFIG.webPower);
+  assert.ok(visualWeb(80) > visualWeb(16.5));
+  assert.ok(farthestWebDistance() >= visualWeb(CONFIG.webRadiusMpc));
+  const virgoHub = webHubScenePosition({
+    lDeg: VIRGO_CLUSTER.lDeg,
+    bDeg: VIRGO_CLUSTER.bDeg,
+    distanceMpc: VIRGO_CLUSTER.distanceMpc,
+  });
+  assert.ok(Math.abs(Math.hypot(virgoHub.x, virgoHub.y, virgoHub.z) - visualWeb(16.5)) < 1e-6);
+  assert.notEqual(visualWeb(16.5), visualVirgo(16500));
 });
 
 test("observable universe keeps the Planck 2018 comoving radius", () => {
@@ -301,7 +298,10 @@ test("observable universe keeps the Planck 2018 comoving radius", () => {
     visualUniverse(OBSERVABLE_UNIVERSE.comovingRadiusGpc),
     CONFIG.universeScale * 14.25 ** CONFIG.universePower,
   );
-  assert.ok(farthestUniverseDistance() > farthestSuperclusterDistance());
+  assert.equal(CMB_SHELL.name, "CMB");
+  assert.equal(CMB_SHELL.comovingRadiusGpc, OBSERVABLE_UNIVERSE.comovingRadiusGpc);
+  assert.equal(CMB_SHELL.map, "assets/sky/cmb.jpg");
+  assert.ok(farthestUniverseDistance() > farthestWebDistance());
   assert.ok(CONFIG.cameraFar > farthestUniverseDistance() + CONFIG.maxDistance * 0.25);
   assert.ok(CONFIG.maxDistance >= CONFIG.universeViewDistance);
 });

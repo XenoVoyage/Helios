@@ -3,7 +3,7 @@
  * js/galaxy.js; tunables live in js/config.js.
  *
  * Distances are kiloparsecs unless a published Mpc or Gpc figure is also
- * stored (Virgo, nearby superclusters, the observable universe). Coordinates
+ * stored (Virgo, Laniakea, the observable universe / CMB shell). Coordinates
  * are IAU galactic (l, b) and equatorial J2000. Do not convert these through
  * the solar-system AU curve.
  */
@@ -271,8 +271,8 @@ export const VIRGO_CLUSTER = Object.freeze({
 /**
  * We sit in Laniakea (Tully, Courtois, Hoffman, Pomarède 2014, Nature 513,
  * 71). The historical Virgo / Local Supercluster is part of that basin.
- * Diameter ~160 Mpc. The pin is our location, not the Great Attractor /
- * Norma Cluster ~70 Mpc away.
+ * Diameter ~160 Mpc. The extra-zoom web marks our location as the Milky
+ * Way hub, not the Great Attractor / Norma Cluster ~70 Mpc away.
  */
 export const LANIAKEA = Object.freeze({
   id: "laniakea",
@@ -283,52 +283,10 @@ export const LANIAKEA = Object.freeze({
 });
 
 /**
- * A few well-known nearby superclusters. Not a cluster dump. Each pin is
- * the named core cluster: SIMBAD ICRS / IAU galactic J2000.
- *
- * Perseus-Pisces: Perseus Cluster (ACO 426). NED mean redshift-independent
- * distance 71.7 Mpc.
- * Coma Supercluster: Coma Cluster (ACO 1656). Common literature 99 Mpc.
- * Shapley Concentration: ACO 3558 (Shapley 8). Proust et al. 2006
- * conventional ~200 Mpc; SIMBAD z = 0.0474.
- */
-export const SUPERCLUSTERS = Object.freeze([
-  {
-    id: "perseus-pisces",
-    name: "Perseus-Pisces",
-    center: "ACO 426",
-    raDeg: 49.948333,
-    decDeg: 41.515,
-    lDeg: 150.5724,
-    bDeg: -13.2594,
-    distanceMpc: 72,
-  },
-  {
-    id: "coma",
-    name: "Coma",
-    center: "ACO 1656",
-    raDeg: 194.935,
-    decDeg: 27.912472,
-    lDeg: 56.4856,
-    bDeg: 87.9993,
-    distanceMpc: 99,
-  },
-  {
-    id: "shapley",
-    name: "Shapley",
-    center: "ACO 3558",
-    raDeg: 202.013333,
-    decDeg: -31.526389,
-    lDeg: 312.0057,
-    bDeg: 30.6994,
-    distanceMpc: 200,
-  },
-]);
-
-/**
- * Planck 2018 ΛCDM particle-horizon radius (Aghanim et al. 2020, A&A 641,
- * A6). Comoving radius ~46.5 billion ly (~14.25 Gpc). 1 Gpc = 3.26156 Gly.
- * Hubble constant and age are not displayed.
+ * Planck 2018 ΛCDM particle-horizon / last-scattering radius (Aghanim et al.
+ * 2020, A&A 641, A6). Comoving radius ~46.5 billion ly (~14.25 Gpc).
+ * 1 Gpc = 3.26156 Gly. The CMB shell uses this radius. Hubble constant and
+ * age are not displayed.
  */
 export const OBSERVABLE_UNIVERSE = Object.freeze({
   comovingRadiusGly: 46.5,
@@ -336,12 +294,15 @@ export const OBSERVABLE_UNIVERSE = Object.freeze({
   lyPerGpc: 3.26156,
 });
 
+/** Last-scattering surface. Same comoving radius as the observable universe. */
+export const CMB_SHELL = Object.freeze({
+  name: "CMB",
+  comovingRadiusGpc: OBSERVABLE_UNIVERSE.comovingRadiusGpc,
+  map: "assets/sky/cmb.jpg",
+});
+
 export function findNeighbor(id) {
   return NEIGHBORS.find((item) => item.id === id) ?? null;
-}
-
-export function findSupercluster(id) {
-  return SUPERCLUSTERS.find((item) => item.id === id) ?? null;
 }
 
 export function findLocalGroupMember(id) {

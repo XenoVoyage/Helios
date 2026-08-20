@@ -2,7 +2,7 @@
  * Canonical tunables. VERSION must match VERSION.txt.
  *
  * NASA / JPL catalog numbers stay in js/bodies.js. Galactic kpc, Virgo Mpc,
- * supercluster Mpc, and the Planck Gpc radius stay in js/galaxy-catalog.js.
+ * web Mpc, and the Planck Gpc / CMB radius stay in js/galaxy-catalog.js.
  * Only visual scale, the galaxy kpc / cluster / universe mapping, and the
  * time slider may diverge from 1:1. Time is not tied to scale.
  *
@@ -10,11 +10,11 @@
  * curve (orbitScale * AU^orbitPower). Raise it to spread the system; do not
  * invent fake AU values. sizeScale / sizePower size the spheres the same way.
  * Moons share that size curve (moonSizeScale 1). Galaxy zoom uses mwScale /
- * neighborhoodScale / virgoScale / superclusterScale / universeScale; those
- * are kpc, compressed-Mpc, or compressed-Gpc mappings, not AU.
+ * neighborhoodScale / virgoScale / webScale / universeScale; those are kpc,
+ * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20h",
+  VERSION: "v2026.8.20i",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -52,7 +52,7 @@ export const CONFIG = Object.freeze({
   neighborhoodViewDistance: 13000,
   localGroupViewDistance: 21000,
   virgoViewDistance: 30000,
-  superclusterViewDistance: 42000,
+  webViewDistance: 42000,
   universeViewDistance: 58000,
   galaxyFadeStart: 1650,
   galaxyFadeEnd: 2150,
@@ -67,10 +67,12 @@ export const CONFIG = Object.freeze({
   virgoPower: 0.5,
   // Visual core mark for the cluster, not a 1:1 member catalog.
   virgoMarkRadiusMpc: 2.2,
-  // Fourth compressed scale for nearby superclusters. Input is catalog Mpc.
-  superclusterScale: 1800,
-  superclusterPower: 0.42,
-  // Visual Laniakea glow. Not the published 160 Mpc diameter.
+  // Fourth compressed scale for the local cosmic web. Input is catalog Mpc.
+  webScale: 1800,
+  webPower: 0.42,
+  // Visual local-web radius. Laniakea-scale, not a 1:1 160 Mpc diameter.
+  webRadiusMpc: 80,
+  // Visual home-hub glow. Not the published Laniakea diameter.
   laniakeaMarkRadiusMpc: 10,
   // Fifth compressed scale for the observable universe. Input is catalog Gpc.
   universeScale: 7200,
