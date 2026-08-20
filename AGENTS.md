@@ -27,7 +27,7 @@ Do not add managers, services, factories, event buses, plugin systems, accounts,
 ## Product boundaries
 
 - Helios is a local interactive orrery. GitHub Pages serves the repository root from `/Helios/`.
-- Runtime is HTML, CSS, ES modules, and the pinned Three.js file in `vendor/`.
+- Runtime is HTML, CSS, ES modules, and the pinned Three.js modules in `vendor/` (`three.module.min.js` plus its `three.core.min.js` import).
 - Three.js owns graphics primitives only. Orbits, time, and focus live in our modules.
 - Touch is required: one-finger orbit, pinch zoom, tap-to-select, 44px controls, no hover-only UI.
 - Desktop: mouse orbit/zoom, click-to-select, Space / `+` / `-` / Escape.
