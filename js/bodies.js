@@ -386,10 +386,9 @@ export function visualRadius(radiusKm) {
   return CONFIG.sizeScale * (radiusKm / CONFIG.earthRadiusKm) ** CONFIG.sizePower;
 }
 
-/** Displayed globe size. Moons use a visual-only shrink so siblings stay readable. */
+/** Displayed globe size. Moons share the size curve; moonSizeScale is 1. */
 export function visualBodyRadius(body) {
-  const radius = visualRadius(body.radiusKm);
-  return body.kind === "moon" ? radius * CONFIG.moonSizeScale : radius;
+  return visualRadius(body.radiusKm) * (body.kind === "moon" ? CONFIG.moonSizeScale : 1);
 }
 
 export function visualOrbit(orbitAu) {

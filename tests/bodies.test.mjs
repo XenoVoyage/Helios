@@ -114,10 +114,11 @@ test("visual scale compresses distances more than sizes", () => {
   const visualSize = sunR / earthR;
   const trueDist = findBody("pluto").orbitAu / findBody("earth").orbitAu;
   const visualDist = visualOrbit(findBody("pluto").orbitAu) / visualOrbit(findBody("earth").orbitAu);
-  assert.ok(visualSize < trueSize / 6);
-  assert.ok(visualDist < trueDist / 4);
+  assert.ok(visualSize < trueSize);
+  assert.ok(visualDist < trueDist);
+  assert.ok(trueDist / visualDist > trueSize / visualSize);
+  assert.ok(trueSize / visualSize > 2);
   assert.ok(trueDist / visualDist > 3);
-  assert.ok(trueSize / visualSize > 5);
   const earth = visualOrbit(findBody("earth").orbitAu);
   const jupiter = visualOrbit(findBody("jupiter").orbitAu);
   const saturn = visualOrbit(findBody("saturn").orbitAu);
@@ -209,8 +210,62 @@ test("Saturn rings are a NASA annulus and Titan stays outside them", () => {
   );
 });
 
+test("visualScale is the one planet-spacing knob", () => {
+  assert.ok(CONFIG.visualScale > 1);
+  assert.equal(visualOrbit(1), CONFIG.visualScale * CONFIG.orbitScale);
+  const mars = findBody("mars");
+  const earth = findBody("earth");
+  const venus = findBody("venus");
+  assert.equal(
+    visualOrbit(mars.orbitAu) / visualOrbit(earth.orbitAu),
+    mars.orbitAu ** CONFIG.orbitPower / earth.orbitAu ** CONFIG.orbitPower,
+  );
+  assert.ok(visualOrbit(earth.orbitAu) - visualOrbit(venus.orbitAu) > 0);
+  assert.ok(visualOrbit(mars.orbitAu) - visualOrbit(earth.orbitAu) > 0);
+});
+
+test("inner-planet gaps stay larger than the Moon path, and sizes read closer to true", () => {
+  const sun = findBody("sun");
+  const mercury = findBody("mercury");
+  const venus = findBody("venus");
+  const earth = findBody("earth");
+  const moon = findBody("moon");
+  const mars = findBody("mars");
+  const jupiter = findBody("jupiter");
+
+  const venusEarthGap = visualOrbit(earth.orbitAu) - visualOrbit(venus.orbitAu);
+  const moonOrbit = visualMoonDistance(moon, earth);
+  assert.ok(venusEarthGap > moonOrbit * 3);
+  assert.ok(moonOrbit / venusEarthGap < 0.33);
+  assert.ok(moonOrbit < visualOrbit(earth.orbitAu) * 0.15);
+
+  const earthR = visualBodyRadius(earth);
+  const moonR = visualBodyRadius(moon);
+  const sunR = visualBodyRadius(sun);
+  const jupiterR = visualBodyRadius(jupiter);
+  const trueMoonRatio = moon.radiusKm / earth.radiusKm;
+  const visualMoonRatio = moonR / earthR;
+  // v2026.8.20d: sizePower 0.55, moonSizeScale 0.72.
+  const previousMoonRatio = 0.352;
+  const previousSunRatio = 13.21;
+  const previousJupiterRatio = 3.73;
+  assert.ok(moonR < earthR);
+  assert.equal(CONFIG.moonSizeScale, 1);
+  assert.equal(visualBodyRadius(moon), visualRadius(moon.radiusKm));
+  assert.ok(visualMoonRatio < previousMoonRatio);
+  assert.ok(Math.abs(visualMoonRatio - trueMoonRatio) < Math.abs(previousMoonRatio - trueMoonRatio));
+  assert.ok(sunR / earthR > previousSunRatio);
+  assert.ok(jupiterR / earthR > previousJupiterRatio);
+
+  const mercuryOrbit = visualOrbit(mercury.orbitAu);
+  assert.ok(mercuryOrbit > sunR + visualBodyRadius(mercury) + CONFIG.moonPad);
+  assert.ok(mercuryOrbit / sunR > 2.4);
+
+  const earthToMars = visualOrbit(mars.orbitAu) - visualOrbit(earth.orbitAu);
+  assert.ok(venusEarthGap > 0 && earthToMars > venusEarthGap);
+});
+
 test("Kuiper belt sits outside Neptune and contains Pluto's orbit", () => {
-  assert.equal(CONFIG.visualScale, 1.75);
   const neptune = visualOrbit(findBody("neptune").orbitAu);
   const pluto = visualOrbit(findBody("pluto").orbitAu);
   const inner = visualOrbit(CONFIG.kuiperInnerAu);
@@ -221,6 +276,9 @@ test("Kuiper belt sits outside Neptune and contains Pluto's orbit", () => {
   assert.ok(inner < pluto);
   assert.ok(outer > pluto);
   assert.ok(CONFIG.maxDistance > outer);
+  assert.ok(CONFIG.cameraDistance > pluto);
+  assert.ok(CONFIG.maxDistance < CONFIG.skyRadius);
+  assert.ok(CONFIG.cameraFar > CONFIG.skyRadius);
   assert.ok(CONFIG.kuiperCount < CONFIG.beltCount);
 });
 
