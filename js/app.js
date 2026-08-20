@@ -551,7 +551,7 @@ function canvasFocus() {
 }
 
 function pickAt(clientX, clientY) {
-  if (solarOpacity(state.distance) < 0.45) {
+  if (scaleLayer(state.distance) !== "solar") {
     clearSelection();
     return;
   }
@@ -833,7 +833,7 @@ function updateLabels() {
     for (const node of nodes.values()) node.label.hidden = true;
     return;
   }
-  const hidePlanets = solarOpacity(state.distance) < 0.45;
+  const hidePlanets = scaleLayer(state.distance) !== "solar";
   const width = window.innerWidth;
   const height = window.innerHeight;
   const focused = findBody(state.focusedId);

@@ -915,12 +915,12 @@ function createSunPin(THREE, group) {
     color: 0xffffff,
     blending: THREE.AdditiveBlending,
   }));
-  pin.scale.set(42, 42, 1);
+  pin.scale.set(240, 240, 1);
   pin.name = "sun-pin";
   pin.position.set(0, 0, 0);
   pin.frustumCulled = false;
   group.add(pin);
-  group.add(labelSprite(THREE, "Sun", { x: 0, y: visualDiskHalfHeight() + 56, z: 0 }, 0.86));
+  group.add(labelSprite(THREE, "Sun", { x: 0, y: visualDiskHalfHeight() + 220, z: 0 }, 3.4));
 }
 
 function neighborSpriteSize(neighbor) {
@@ -930,7 +930,7 @@ function neighborSpriteSize(neighbor) {
 }
 
 function neighborSizeBoost(neighbor) {
-  if (neighbor.id === "m31") return 1.55;
+  if (neighbor.id === "m31") return 2.15;
   if (neighbor.id === "lmc") return 1.85;
   if (neighbor.id === "smc") return 1.7;
   return 1.2;
@@ -1002,7 +1002,7 @@ function createNeighbors(THREE, group, maps) {
     const label = neighbor.messier ? `${neighbor.name} (${neighbor.messier})` : neighbor.name;
     const lift = size * aspect * 0.65 + 48;
     const side = neighbor.id === "smc" ? 180 : neighbor.id === "lmc" ? -80 : 0;
-    const labelScale = neighbor.id === "lmc" || neighbor.id === "smc" ? 2.35 : 2.6;
+    const labelScale = neighbor.id === "lmc" || neighbor.id === "smc" ? 4.8 : neighbor.id === "m31" ? 5.2 : 4.4;
     cluster.add(labelSprite(THREE, label, { x: at.x + side, y: at.y + lift, z: at.z }, labelScale));
   }
   group.add(cluster);
@@ -1038,7 +1038,7 @@ function createLocalGroupMembers(THREE, group, maps) {
       THREE,
       member.name,
       { x: at.x + side, y: at.y + lift, z: at.z },
-      2.8,
+      4.6,
     ));
   }
   group.add(family);
@@ -1190,7 +1190,7 @@ function createVirgoCluster(THREE, group, maps) {
     THREE,
     "Virgo Cluster",
     { x: at.x, y: at.y + mark * 0.82, z: at.z },
-    6.8,
+    11,
   ));
   group.add(cluster);
 }
@@ -1232,7 +1232,7 @@ function pushFilament(positions, colors, a, b, count, rand, warm = 0, scatterSca
       );
       const dense = Math.sin(t * Math.PI);
       const heat = clamp(0.08 + warm * 0.62 + dense * 0.58 * (0.5 + rand() * 0.5), 0, 1);
-      colors.push(0.28 + 0.72 * heat, 0.18 + 0.42 * heat, 0.22 + 0.55 * (1 - heat));
+      colors.push(0.2 + 0.8 * heat, 0.12 + 0.38 * heat, 0.16 + 0.72 * (1 - heat));
     }
   }
 }
@@ -1423,84 +1423,65 @@ function createCmbShell(THREE, group) {
   group.add(shell);
 }
 
-function paintSkyFace(size, seed) {
+function farGalaxySkyMap(THREE) {
+  const width = 2048;
+  const height = 1024;
   const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#02050c";
-  ctx.fillRect(0, 0, size, size);
-  const rand = seedRandom(seed);
-  for (let i = 0; i < 5200; i += 1) {
-    const x = rand() * size;
-    const y = rand() * size;
+  ctx.fillRect(0, 0, width, height);
+  const rand = seedRandom(4608);
+  for (let i = 0; i < 14000; i += 1) {
+    const x = rand() * width;
+    const y = rand() * height;
     const warm = rand();
     stampSoft(
       ctx,
       x,
       y,
-      1.1 + rand() * 2.8,
-      `rgba(${Math.floor(160 + 90 * warm)}, ${Math.floor(170 + 55 * warm)}, ${Math.floor(215 - 35 * warm)}, ${0.32 + rand() * 0.48})`,
+      0.8 + rand() * 2.4,
+      `rgba(${Math.floor(150 + 95 * warm)}, ${Math.floor(165 + 55 * warm)}, ${Math.floor(215 - 40 * warm)}, ${0.28 + rand() * 0.5})`,
     );
   }
-  for (let i = 0; i < 360; i += 1) {
-    const x = rand() * size;
-    const y = rand() * size;
+  for (let i = 0; i < 420; i += 1) {
+    const x = rand() * width;
+    const y = rand() * height;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(rand() * Math.PI);
-    ctx.scale(1, 0.32 + rand() * 0.28);
-    stampSoft(ctx, 0, 0, 5 + rand() * 8, "rgba(220, 200, 170, 0.42)");
+    ctx.scale(1, 0.3 + rand() * 0.28);
+    stampSoft(ctx, 0, 0, 4 + rand() * 7, "rgba(220, 200, 170, 0.4)");
     ctx.restore();
   }
-  return canvas;
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 4;
+  return map;
 }
 
 function createFarGalaxySky(THREE, group) {
   const sky = new THREE.Group();
   sky.name = "far-galaxy-sky";
   const radius = visualUniverse(CMB_SHELL.comovingRadiusGpc);
-  const cube = new THREE.CubeTexture([0, 1, 2, 3, 4, 5].map((face) => paintSkyFace(768, 8100 + face * 131)));
-  cube.colorSpace = THREE.SRGBColorSpace;
-  cube.needsUpdate = true;
-  const material = new THREE.ShaderMaterial({
-    uniforms: {
-      tCube: { value: cube },
-      opacity: { value: 0.88 },
-    },
-    vertexShader: `
-      varying vec3 vDir;
-      void main() {
-        vDir = position;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform samplerCube tCube;
-      uniform float opacity;
-      varying vec3 vDir;
-      void main() {
-        vec4 tex = texture(tCube, normalize(vDir));
-        gl_FragColor = vec4(tex.rgb, tex.a * opacity);
-      }
-    `,
-    side: THREE.BackSide,
-    transparent: true,
-    depthWrite: false,
-    toneMapped: false,
-  });
-  material.opacity = 0.88;
-  material.userData.keepOpacity = 0.88;
-  const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 96, 64), material);
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(radius, 96, 64),
+    unlitBasic(THREE, {
+      map: farGalaxySkyMap(THREE),
+      opacity: 0.88,
+      side: THREE.BackSide,
+    }),
+  );
   sphere.name = "far-galaxy-shell";
   sphere.frustumCulled = false;
   sky.add(sphere);
-  const count = 3600;
+  const count = 6200;
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
   const rand = seedRandom(31415);
   for (let i = 0; i < count; i += 1) {
-    const r = radius * (0.78 + rand() * 0.2);
+    const r = radius * (0.84 + rand() * 0.14);
     const theta = rand() * Math.PI * 2;
     const phi = Math.acos(2 * rand() - 1);
     positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
@@ -1511,8 +1492,8 @@ function createFarGalaxySky(THREE, group) {
     colors[i * 3 + 1] = 0.72 + 0.18 * warm;
     colors[i * 3 + 2] = 0.92 - 0.18 * warm;
   }
-  addPoints(THREE, sky, "far-galaxy-points", positions, colors, 3.6, 0.7, false, THREE.AdditiveBlending);
-  addPoints(THREE, sky, "far-galaxy-glow", positions, colors, 48, 0.28, true, THREE.AdditiveBlending);
+  addPoints(THREE, sky, "far-galaxy-points", positions, colors, 4.2, 0.78, false, THREE.AdditiveBlending);
+  addPoints(THREE, sky, "far-galaxy-glow", positions, colors, 72, 0.32, true, THREE.AdditiveBlending);
   group.add(sky);
 }
 

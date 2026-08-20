@@ -387,8 +387,8 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /mw-disk-edge/);
   assert.match(galaxySource, /mw-halo/);
   assert.match(galaxySource, /Large Magellanic Cloud|neighbor\.name/);
-  assert.match(galaxySource, /CubeTexture/);
-  assert.match(galaxySource, /samplerCube/);
+  assert.match(galaxySource, /farGalaxySkyMap/);
+  assert.match(galaxySource, /CanvasTexture/);
   assert.match(galaxySource, /toneMapped:\s*false/);
   assert.match(galaxySource, /AdditiveBlending/);
   assert.match(galaxySource, /SKY_ASSETS\.andromeda/);

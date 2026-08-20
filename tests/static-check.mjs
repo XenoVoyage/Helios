@@ -74,6 +74,7 @@ assert.match(app, /webViewDistance/);
 assert.match(app, /universeViewDistance/);
 assert.match(app, /paintConstellations/);
 assert.match(app, /ui\.sky\.hidden/);
+assert.match(app, /hidePlanets = scaleLayer\(state\.distance\) !== "solar"/);
 assert.match(galaxy, /visualVirgo/);
 assert.match(galaxy, /visualWeb/);
 assert.match(galaxy, /visualUniverse/);
