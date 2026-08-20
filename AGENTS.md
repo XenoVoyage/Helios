@@ -16,6 +16,7 @@ Read this file at the start of every task. It is the repository-local contract f
 | Runtime tunables and visual scale | `js/config.js` |
 | Body catalog, Kepler math, visual mapping | `js/bodies.js` |
 | Scene, camera, input, HUD | `js/app.js` |
+| Celestial sphere | `js/sky.js`, `js/sky-catalog.js`, `assets/sky/` |
 | Semantic shell and CSP | `index.html` |
 | Presentation | `styles.css` |
 | Public version label | `VERSION.txt` (`js/config.js` must match) |

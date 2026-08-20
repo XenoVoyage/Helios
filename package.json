@@ -1,12 +1,12 @@
 {
   "name": "helios",
-  "version": "2026.8.20-b",
+  "version": "2026.8.20-c",
   "private": true,
   "type": "module",
   "description": "Interactive 3D solar system.",
   "license": "MIT",
   "scripts": {
-    "test": "node tests/static-check.mjs && node --test tests/bodies.test.mjs && node tests/http-smoke.mjs",
+    "test": "node tests/static-check.mjs && node --test tests/bodies.test.mjs tests/sky.test.mjs && node tests/http-smoke.mjs",
     "serve": "node tests/serve.mjs"
   }
 }

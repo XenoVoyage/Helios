@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.8.20b](https://img.shields.io/badge/version-v2026.8.20b-66f7ff)](VERSION.txt)
+[![Version v2026.8.20c](https://img.shields.io/badge/version-v2026.8.20c-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D orrery of the solar system.
@@ -16,6 +16,7 @@ Helios is a local page: no accounts, no telemetry, and no CDN.
 | Detail | Summary |
 | --- | --- |
 | Worlds | Sun, 8 planets, the Moon, Phobos, Deimos, Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, and Ceres |
+| Sky | Hipparcos bright stars, IAU constellation lines, a Milky Way band, and Andromeda at M31 |
 | Belt | A field between Mars and Jupiter, not a catalog of rocks |
 | Time | Independent of the visual scale. Default and minimum are 1 simulated hour per real second |
 | Play with | Mouse, keyboard, or touch |
@@ -44,6 +45,6 @@ Then open `http://127.0.0.1:4173/Helios/`. Opening `index.html` through a local 
 
 ## Credits
 
-Planet, Sun, Moon, and Ceres maps are [Solar System Scope](https://www.solarsystemscope.com/textures/) textures (CC BY 4.0), based on NASA elevation and imagery. Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, Phobos, and Deimos maps are from [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources). Orbital and physical values follow NASA / JPL published figures, including the [planetary fact sheet](https://nssdc.gsfc.nasa.gov/planetary/factsheet/) and [JPL satellite elements](https://ssd.jpl.nasa.gov/sats/elem/). Three.js is vendored under MIT.
+Planet, Sun, Moon, and Ceres maps are [Solar System Scope](https://www.solarsystemscope.com/textures/) textures (CC BY 4.0), based on NASA elevation and imagery. Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, Phobos, and Deimos maps are from [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources). Bright-star positions are a Hipparcos / Yale Bright Star subset compiled in [HYG](https://www.astronexus.com/projects/hyg) (ESA Hipparcos I/239). Constellation stick figures are the [IAU / Alan MacRobert figures](https://www.iau.org/public/themes/constellations/) (CC BY 4.0). The Milky Way band is [ESA Gaia DR2](https://sci.esa.int/web/gaia/-/60196-gaia-s-sky-in-colour-equirectangular-projection) all-sky colour in galactic coordinates (ESA/Gaia/DPAC; CC BY-SA 3.0 IGO). Andromeda is NASA / JPL-Caltech [Spitzer PIA04921](https://images.nasa.gov/details/PIA04921). Orbital and physical values follow NASA / JPL published figures, including the [planetary fact sheet](https://nssdc.gsfc.nasa.gov/planetary/factsheet/) and [JPL satellite elements](https://ssd.jpl.nasa.gov/sats/elem/). Three.js is vendored under MIT.
 
 Released under the [MIT License](LICENSE).

@@ -9,7 +9,7 @@
  * invent fake AU values. sizeScale / sizePower size the spheres the same way.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20b",
+  VERSION: "v2026.8.20c",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 1.75,
@@ -33,6 +33,9 @@ export const CONFIG = Object.freeze({
   cameraAzimuth: 0.55,
   minDistance: 2.4,
   maxDistance: 720,
+  // Celestial sphere sits around the camera; far plane must clear it.
+  skyRadius: 2000,
+  cameraFar: 4200,
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
   focusLerp: 6,
