@@ -476,7 +476,8 @@ function hubSprite(THREE) {
 }
 
 function galaxyKind(id) {
-  if (id === "m31" || id === "m33") return "spiral";
+  if (id === "m31") return "andromeda";
+  if (id === "m33") return "spiral";
   if (id === "lmc") return "lmc";
   if (id === "smc" || id === "wlm" || id === "ic10" || id === "ngc6822") return "irregular";
   return "elliptical";
@@ -489,7 +490,45 @@ function galaxySprite(THREE, kind, seed = 1) {
   const ctx = canvas.getContext("2d");
   const rand = seedRandom(7000 + seed * 97);
   ctx.translate(128, 128);
-  if (kind === "spiral") {
+  if (kind === "andromeda") {
+    ctx.rotate(-0.38);
+    ctx.scale(1, 0.62);
+    const disk = ctx.createRadialGradient(0, 0, 4, 0, 0, 120);
+    disk.addColorStop(0, "rgba(255, 236, 200, 1)");
+    disk.addColorStop(0.14, "rgba(230, 200, 160, 0.7)");
+    disk.addColorStop(0.45, "rgba(140, 170, 230, 0.42)");
+    disk.addColorStop(1, "rgba(40, 50, 90, 0)");
+    ctx.fillStyle = disk;
+    ctx.beginPath();
+    ctx.arc(0, 0, 120, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineCap = "round";
+    for (let arm = 0; arm < 2; arm += 1) {
+      ctx.beginPath();
+      for (let i = 0; i <= 64; i += 1) {
+        const t = i / 64;
+        const a = arm * Math.PI + t * 4.8;
+        const r = 14 + t * 102;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = "rgba(190, 220, 255, 0.88)";
+      ctx.lineWidth = 13;
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255, 220, 170, 0.5)";
+      ctx.lineWidth = 5;
+      ctx.stroke();
+    }
+    const bulge = ctx.createRadialGradient(0, 0, 2, 0, 0, 34);
+    bulge.addColorStop(0, "rgba(255, 244, 214, 1)");
+    bulge.addColorStop(1, "rgba(255, 176, 80, 0)");
+    ctx.fillStyle = bulge;
+    ctx.beginPath();
+    ctx.arc(0, 0, 34, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (kind === "spiral") {
     ctx.rotate(-0.5 + rand() * 0.2);
     ctx.scale(1, 0.42 + rand() * 0.08);
     const disk = ctx.createRadialGradient(0, 0, 4, 0, 0, 118);
@@ -912,7 +951,7 @@ function createSunPin(THREE, group) {
 function neighborSpriteSize(neighbor) {
   const visual = visualNeighborhood(neighbor.distanceKpc);
   const size = (neighbor.radiusKpc / neighbor.distanceKpc) * visual * 2.2;
-  if (neighbor.id === "m31") return Math.max(7200, size * 7.2);
+  if (neighbor.id === "m31") return Math.max(8600, size * 8.4);
   return Math.max(160, size);
 }
 
@@ -932,22 +971,35 @@ function createNeighbors(THREE, group, maps) {
       toneMapped: false,
     }));
     sprite.renderOrder = 4;
-    if (neighbor.id === "m31") {
-      new THREE.TextureLoader().load(SKY_ASSETS.andromeda, (loaded) => {
-        loaded.colorSpace = THREE.SRGBColorSpace;
-        loaded.anisotropy = 4;
-        sprite.material.map = loaded;
-        sprite.material.needsUpdate = true;
-      });
-    }
     sprite.position.set(at.x, at.y, at.z);
     const boost = neighbor.id === "m31" ? 1 : neighbor.id === "lmc" ? 1.85 : neighbor.id === "smc" ? 1.7 : 1.2;
     const size = neighborSpriteSize(neighbor) * boost;
-    const aspect = neighbor.id === "m31" ? 0.42 : neighbor.id === "m33" ? 0.46 : 0.68;
+    const aspect = neighbor.id === "m31" ? 0.58 : neighbor.id === "m33" ? 0.46 : 0.68;
     sprite.scale.set(size, size * aspect, 1);
     sprite.name = neighbor.id;
     sprite.frustumCulled = false;
     cluster.add(sprite);
+    if (neighbor.id === "m31") {
+      new THREE.TextureLoader().load(SKY_ASSETS.andromeda, (loaded) => {
+        loaded.colorSpace = THREE.SRGBColorSpace;
+        loaded.anisotropy = 4;
+        const overlay = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: loaded,
+          color: 0xfff2e4,
+          transparent: true,
+          depthWrite: false,
+          depthTest: false,
+          opacity: 0.78,
+          toneMapped: false,
+        }));
+        overlay.position.set(at.x, at.y, at.z);
+        overlay.scale.set(size, size * aspect, 1);
+        overlay.name = "m31-spitzer";
+        overlay.renderOrder = 5;
+        overlay.frustumCulled = false;
+        cluster.add(overlay);
+      });
+    }
     const label = neighbor.messier ? `${neighbor.name} (${neighbor.messier})` : neighbor.name;
     const lift = size * aspect * 0.65 + 48;
     const side = neighbor.id === "smc" ? 180 : neighbor.id === "lmc" ? -80 : 0;
@@ -1469,6 +1521,7 @@ export function createGalaxyLayer(THREE) {
   group.visible = false;
   const maps = {
     spiral: galaxySprite(THREE, "spiral", 1),
+    andromeda: galaxySprite(THREE, "andromeda", 6),
     elliptical: galaxySprite(THREE, "elliptical", 2),
     irregular: galaxySprite(THREE, "irregular", 3),
     lmc: galaxySprite(THREE, "lmc", 4),
