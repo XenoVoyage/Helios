@@ -14,7 +14,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20j",
+  VERSION: "v2026.8.20k",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -47,13 +47,13 @@ export const CONFIG = Object.freeze({
   minDistance: 2.4,
   // Solar overview / Kuiper camera cap. Further zoom is the galaxy layer.
   solarMaxDistance: 1650,
-  maxDistance: 158000,
+  maxDistance: 270000,
   mwViewDistance: 4000,
   neighborhoodViewDistance: 14500,
   localGroupViewDistance: 26000,
   virgoViewDistance: 46000,
-  webViewDistance: 72000,
-  universeViewDistance: 140000,
+  webViewDistance: 90000,
+  universeViewDistance: 190000,
   galaxyFadeStart: 1650,
   galaxyFadeEnd: 2150,
   // kpc → scene for the Milky Way disk. Not the AU orbit curve.
@@ -79,11 +79,11 @@ export const CONFIG = Object.freeze({
   // Visual home-hub glow. Not the published Laniakea diameter.
   laniakeaMarkRadiusMpc: 3.6,
   // Fifth compressed scale for the observable universe. Input is catalog Gpc.
-  universeScale: 15500,
+  universeScale: 42000,
   universePower: 0.48,
   // Celestial sphere sits around the camera; far plane must clear the universe layer.
   skyRadius: 2000,
-  cameraFar: 480000,
+  cameraFar: 960000,
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
   focusLerp: 6,

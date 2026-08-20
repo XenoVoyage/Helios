@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.8.20j](https://img.shields.io/badge/version-v2026.8.20j-66f7ff)](VERSION.txt)
+[![Version v2026.8.20k](https://img.shields.io/badge/version-v2026.8.20k-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D orrery of the solar system.
@@ -25,7 +25,7 @@ An interactive 3D orrery of the solar system.
 
 ![Observable universe filled with a cosmic web and a Planck-style CMB last-scattering shell, labeled Milky Way.](docs/assets/helios-universe.webp)
 
-Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch or scroll to zoom. Play, pause, and change the speed of time from the bar at the bottom. Click empty space to close the body card. Zoom out past the solar overview and the orrery fades to a Sun pin on a thick Milky Way disk against a faint far-galaxy sky, then nearby galaxies, a short Local Group, the Virgo Cluster with more clusters still in frame, a stretched cosmic web of filaments, and only after that the CMB / observable-universe shell. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
+Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch or scroll to zoom. Play, pause, and change the speed of time from the bar at the bottom. Click empty space to close the body card. Zoom out past the solar overview and the orrery fades to a Sun pin on a luminous Milky Way disk against a far-galaxy sky that stays up through Virgo and turns microwave, then nearby galaxies including Andromeda as its own spiral, a short Local Group, the Virgo Cluster, a colored cosmic web of filaments inside a last-scattering shell you approach and can leave. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
 
 Helios is a local page: no accounts, no telemetry, and no CDN.
 
@@ -34,7 +34,7 @@ Helios is a local page: no accounts, no telemetry, and no CDN.
 | Detail | Summary |
 | --- | --- |
 | Worlds | Sun, 8 planets, the Moon, Phobos, Deimos, Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, and Ceres |
-| Sky | Hipparcos bright stars, IAU constellation lines, a Milky Way band, and Andromeda at M31. Extra zoom-out shows a thick Milky Way disk, nearby galaxies, a short Local Group, Virgo with neighboring clusters, a stretched cosmic web, and only then a CMB / observable-universe shell; that map is not the sky |
+| Sky | Hipparcos bright stars, IAU constellation lines, a Milky Way band, and Andromeda at M31. Extra zoom-out shows a luminous Milky Way disk, nearby galaxies, a short Local Group, Virgo still under a universe sky, a colored cosmic web, and a CMB shell you approach and leave; that map is not the sky |
 | Belts | Asteroid field between Mars and Jupiter; Kuiper field from about 30–50 AU. Sparse points, not rock catalogs |
 | Time | Independent of the visual scale. Default and minimum are 1 simulated hour per real second |
 | Play with | Mouse, keyboard, or touch |

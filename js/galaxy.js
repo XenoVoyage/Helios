@@ -1,8 +1,8 @@
 /**
- * Extra-zoom map: a thick 3D Milky Way, nearby galaxies against a faint
- * far-galaxy sky, a short Local Group, Virgo with more clusters around it,
- * a dense cosmic web, and only after that the CMB / observable-universe
- * shell.
+ * Extra-zoom map: a luminous 3D Milky Way, nearby galaxies against a
+ * far-galaxy sky that stays up through Virgo and turns microwave, a short
+ * Local Group, Virgo with more clusters around it, a colored cosmic web,
+ * and a CMB / observable-universe sphere you approach and then leave.
  *
  * Catalog kpc / Mpc / Gpc stay in js/galaxy-catalog.js. Visual compression
  * lives here and in CONFIG. This map is a different representation from
@@ -239,8 +239,29 @@ export function webOpacity(distance) {
 
 export function universeOpacity(distance) {
   const start = CONFIG.webViewDistance
-    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.52;
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.28;
   if (distance < start) return 0;
+  if (distance >= CONFIG.universeViewDistance) return 1;
+  return smoothstep01((distance - start) / (CONFIG.universeViewDistance - start));
+}
+
+/** Far-galaxy cubemap stays up through Virgo; it yields to the CMB on the last stretch. */
+export function farGalaxySkyOpacity(distance) {
+  if (distance <= CONFIG.galaxyFadeStart) return 0;
+  const fadeStart = CONFIG.virgoViewDistance
+    + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.35;
+  if (distance <= fadeStart) return 1;
+  if (distance >= CONFIG.universeViewDistance) return 0.08;
+  return 1 - 0.92 * smoothstep01(
+    (distance - fadeStart) / (CONFIG.universeViewDistance - fadeStart),
+  );
+}
+
+/** Microwave sky begins as a hint at cluster scale, then becomes the shell you approach. */
+export function cmbSkyOpacity(distance) {
+  const start = CONFIG.localGroupViewDistance
+    + (CONFIG.virgoViewDistance - CONFIG.localGroupViewDistance) * 0.25;
+  if (distance <= start) return 0;
   if (distance >= CONFIG.universeViewDistance) return 1;
   return smoothstep01((distance - start) / (CONFIG.universeViewDistance - start));
 }
@@ -579,10 +600,10 @@ function milkyWayDiskMap(THREE) {
   const beta0 = Math.PI - thetaSun;
 
   const disk = ctx.createRadialGradient(cx, cy, 2, cx, cy, diskPx);
-  disk.addColorStop(0, "rgba(255, 214, 168, 0.7)");
-  disk.addColorStop(0.12, "rgba(230, 176, 124, 0.38)");
-  disk.addColorStop(0.34, "rgba(130, 150, 210, 0.22)");
-  disk.addColorStop(0.7, "rgba(70, 90, 160, 0.1)");
+  disk.addColorStop(0, "rgba(255, 226, 186, 0.92)");
+  disk.addColorStop(0.12, "rgba(255, 196, 148, 0.58)");
+  disk.addColorStop(0.34, "rgba(160, 180, 240, 0.38)");
+  disk.addColorStop(0.7, "rgba(100, 130, 210, 0.2)");
   disk.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = disk;
   ctx.fillRect(0, 0, size, size);
@@ -612,9 +633,9 @@ function milkyWayDiskMap(THREE) {
       const x = cx + Math.cos(a) * r + (rand() - 0.5) * scatter;
       const y = cy + Math.sin(a) * r + (rand() - 0.5) * scatter;
       const fade = (1 - t * 0.55) * arm.alpha;
-      stampSoft(ctx, x + 5, y + 3, 10 + t * 16, `rgba(12, 8, 6, ${0.28 * fade})`);
-      stampSoft(ctx, x, y, 16 + t * 22, `rgba(150, 185, 255, ${0.34 * fade})`);
-      stampSoft(ctx, x, y, 8 + t * 12, `rgba(255, 228, 196, ${0.4 * fade})`);
+      stampSoft(ctx, x + 5, y + 3, 8 + t * 12, `rgba(40, 28, 22, ${0.1 * fade})`);
+      stampSoft(ctx, x, y, 18 + t * 24, `rgba(170, 200, 255, ${0.48 * fade})`);
+      stampSoft(ctx, x, y, 10 + t * 14, `rgba(255, 236, 210, ${0.62 * fade})`);
     }
     const clumps = arm.alpha > 0.8 ? 70 : 32;
     for (let i = 0; i < clumps; i += 1) {
@@ -637,19 +658,54 @@ function milkyWayDiskMap(THREE) {
   return map;
 }
 
-function addPoints(THREE, group, name, positions, colors, size, opacity, attenuation = true) {
+function softPointMap(THREE) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  const glow = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  glow.addColorStop(0, "rgba(255, 255, 255, 1)");
+  glow.addColorStop(0.4, "rgba(255, 255, 255, 0.5)");
+  glow.addColorStop(1, "rgba(255, 255, 255, 0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, 64, 64);
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  return map;
+}
+
+function eachMaterial(obj, fn) {
+  const mat = obj.material;
+  if (!mat) return;
+  if (Array.isArray(mat)) mat.forEach(fn);
+  else fn(mat);
+}
+
+function unlitBasic(THREE, params) {
+  return new THREE.MeshBasicMaterial({
+    depthWrite: false,
+    transparent: true,
+    toneMapped: false,
+    ...params,
+  });
+}
+
+function addPoints(THREE, group, name, positions, colors, size, opacity, attenuation = true, blending) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   const points = new THREE.Points(
     geometry,
     new THREE.PointsMaterial({
+      map: softPointMap(THREE),
       size,
       vertexColors: true,
       transparent: true,
       opacity,
       depthWrite: false,
       sizeAttenuation: attenuation,
+      toneMapped: false,
+      blending: blending ?? THREE.NormalBlending,
     }),
   );
   points.name = name;
@@ -699,7 +755,7 @@ function createSpiralStars(THREE, group) {
     colors[o + 2] = 0.95 - 0.2 * warm;
     n += 1;
   }
-  addPoints(THREE, group, "mw-disk", positions.slice(0, n * 3), colors.slice(0, n * 3), 1.8, 0.34);
+  addPoints(THREE, group, "mw-disk", positions.slice(0, n * 3), colors.slice(0, n * 3), 2.4, 0.55, true, THREE.AdditiveBlending);
 }
 
 function createHalo(THREE, group) {
@@ -721,7 +777,7 @@ function createHalo(THREE, group) {
     colors[i * 3 + 1] = 0.78 + rand() * 0.1;
     colors[i * 3 + 2] = 0.95;
   }
-  addPoints(THREE, group, "mw-halo", positions, colors, 2.6, 0.32);
+  addPoints(THREE, group, "mw-halo", positions, colors, 3.2, 0.48, true, THREE.AdditiveBlending);
 }
 
 function createBulge(THREE, group) {
@@ -744,16 +800,15 @@ function createBulge(THREE, group) {
     colors[i * 3 + 1] = 0.78 + 0.12 * rand();
     colors[i * 3 + 2] = 0.45 + 0.1 * rand();
   }
-  addPoints(THREE, group, "mw-bulge", positions, colors, 3.6, 0.78);
+  addPoints(THREE, group, "mw-bulge", positions, colors, 4.2, 0.92, true, THREE.AdditiveBlending);
 
   const mesh = new THREE.Mesh(
     new THREE.SphereGeometry(bulgeR * 0.92, 24, 16),
-    new THREE.MeshBasicMaterial({
+    unlitBasic(THREE, {
       map: diskGlowMap(THREE),
       color: 0xffe2b4,
-      transparent: true,
-      opacity: 0.55,
-      depthWrite: false,
+      opacity: 0.72,
+      blending: THREE.AdditiveBlending,
     }),
   );
   mesh.position.set(gc.x, gc.y, gc.z);
@@ -767,44 +822,40 @@ function createDiskGlow(THREE, group) {
   const radius = MILKY_WAY.diskRadiusKpc * milkyWayUnitsPerKpc();
   const halfH = visualDiskHalfHeight();
   const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(radius * 1.08, 40, 24),
-    new THREE.MeshBasicMaterial({
+    new THREE.SphereGeometry(radius * 1.12, 40, 24),
+    unlitBasic(THREE, {
       map: diskGlowMap(THREE),
-      transparent: true,
-      opacity: 0.48,
-      depthWrite: false,
+      opacity: 0.7,
       side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
     }),
   );
   glow.position.set(gc.x, gc.y, gc.z);
-  glow.scale.set(1, clamp((halfH * 3.4) / radius, 0.16, 0.34), 1);
+  glow.scale.set(1, clamp((halfH * 4.2) / radius, 0.22, 0.42), 1);
   glow.name = "mw-glow";
   group.add(glow);
 
   const edgeMap = diskGlowMap(THREE);
   const edge = new THREE.Mesh(
     new THREE.SphereGeometry(radius * 0.98, 48, 20),
-    new THREE.MeshBasicMaterial({
+    unlitBasic(THREE, {
       map: edgeMap,
-      color: 0xc8d4ff,
-      transparent: true,
-      opacity: 0.22,
-      depthWrite: false,
+      color: 0xe8f0ff,
+      opacity: 0.42,
       side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
     }),
   );
   edge.position.set(gc.x, gc.y, gc.z);
-  edge.scale.set(1, clamp((halfH * 2.1) / radius, 0.1, 0.22), 1);
+  edge.scale.set(1, clamp((halfH * 2.6) / radius, 0.14, 0.28), 1);
   edge.name = "mw-disk-edge";
   group.add(edge);
 
   const disk = new THREE.Mesh(
     new THREE.PlaneGeometry(radius * 2, radius * 2),
-    new THREE.MeshBasicMaterial({
+    unlitBasic(THREE, {
       map: milkyWayDiskMap(THREE),
-      transparent: true,
-      opacity: 0.98,
-      depthWrite: false,
+      opacity: 1,
       side: THREE.DoubleSide,
     }),
   );
@@ -833,6 +884,7 @@ function createSunPin(THREE, group) {
 function neighborSpriteSize(neighbor) {
   const visual = visualNeighborhood(neighbor.distanceKpc);
   const size = (neighbor.radiusKpc / neighbor.distanceKpc) * visual * 2.2;
+  if (neighbor.id === "m31") return Math.max(4200, size * 4.8);
   return Math.max(160, size);
 }
 
@@ -850,11 +902,12 @@ function createNeighbors(THREE, group, maps) {
       transparent: true,
       depthWrite: false,
       opacity: 0.96,
+      toneMapped: false,
     }));
     sprite.position.set(at.x, at.y, at.z);
-    const boost = neighbor.id === "m31" ? 1.7 : neighbor.id === "lmc" ? 1.85 : neighbor.id === "smc" ? 1.7 : 1.2;
+    const boost = neighbor.id === "m31" ? 1 : neighbor.id === "lmc" ? 1.85 : neighbor.id === "smc" ? 1.7 : 1.2;
     const size = neighborSpriteSize(neighbor) * boost;
-    const aspect = neighbor.id === "m31" ? 0.36 : neighbor.id === "m33" ? 0.46 : 0.68;
+    const aspect = neighbor.id === "m31" ? 0.42 : neighbor.id === "m33" ? 0.46 : 0.68;
     sprite.scale.set(size, size * aspect, 1);
     sprite.name = neighbor.id;
     sprite.frustumCulled = false;
@@ -1102,8 +1155,9 @@ function pushFilament(positions, colors, a, b, count, rand, warm = 0, scatterSca
         y + (rand() - 0.5) * scatter * 0.9,
         z + (rand() - 0.5) * scatter,
       );
-      const bright = 0.35 + 0.4 * Math.sin(t * Math.PI) * (0.6 + rand() * 0.4);
-      colors.push(0.5 + 0.2 * warm + 0.22 * bright, 0.64 + 0.2 * bright, 0.92);
+      const dense = Math.sin(t * Math.PI);
+      const heat = clamp(0.12 + warm * 0.55 + dense * 0.55 * (0.55 + rand() * 0.45), 0, 1);
+      colors.push(0.42 + 0.58 * heat, 0.32 + 0.42 * heat, 0.95 - 0.58 * heat);
     }
   }
 }
@@ -1124,8 +1178,8 @@ function addFieldGalaxies(THREE, group, name, radius, count, seed) {
     colors[i * 3 + 1] = 0.62 + 0.22 * warm;
     colors[i * 3 + 2] = 0.78 + 0.22 * (1 - warm);
   }
-  addPoints(THREE, group, `${name}-px`, positions, colors, 2.4, 0.5, false);
-  addPoints(THREE, group, name, positions, colors, 42, 0.32, true);
+  addPoints(THREE, group, `${name}-px`, positions, colors, 2.8, 0.55, false, THREE.AdditiveBlending);
+  addPoints(THREE, group, name, positions, colors, 58, 0.4, true, THREE.AdditiveBlending);
 }
 
 function createWebVolume(THREE, group, {
@@ -1191,8 +1245,20 @@ function createWebVolume(THREE, group, {
     new Float32Array(positions),
     new Float32Array(colors),
     particleSize,
-    0.7,
+    0.78,
     true,
+    THREE.AdditiveBlending,
+  );
+  addPoints(
+    THREE,
+    web,
+    `${name}-dust`,
+    new Float32Array(positions),
+    new Float32Array(colors),
+    particleSize * 2.4,
+    0.22,
+    true,
+    THREE.AdditiveBlending,
   );
   addFieldGalaxies(THREE, web, `${name}-field`, radius, fieldCount, seed + 17);
 
@@ -1210,10 +1276,10 @@ function createLocalWeb(THREE, group) {
   createWebVolume(THREE, group, {
     name: "cosmic-web",
     radius,
-    hubCount: 96,
+    hubCount: 110,
     seed: 88421,
-    hubSize: 1680,
-    particleSize: 110,
+    hubSize: 1860,
+    particleSize: 150,
     includeVirgo: true,
     fieldCount: 9000,
   });
@@ -1252,99 +1318,99 @@ function createHomeMark(THREE, group) {
   group.add(mark);
 }
 
-function createUniverse(THREE, group) {
+function createUniverseWeb(THREE, group) {
   const shell = new THREE.Group();
   shell.name = "universe";
   const radius = visualUniverse(CMB_SHELL.comovingRadiusGpc);
   createWebVolume(THREE, shell, {
     name: "universe-web",
-    radius: radius * 0.88,
-    hubCount: 170,
+    radius: radius * 0.82,
+    hubCount: 180,
     seed: 2018,
-    hubSize: 2100,
-    particleSize: 140,
+    hubSize: 2400,
+    particleSize: 180,
     includeVirgo: false,
     fieldCount: 14000,
   });
+  group.add(shell);
+}
 
+function createCmbShell(THREE, group) {
+  const shell = new THREE.Group();
+  shell.name = "cmb-shell";
+  const radius = visualUniverse(CMB_SHELL.comovingRadiusGpc);
   const cmb = new THREE.Mesh(
-    new THREE.SphereGeometry(radius, 64, 48),
-    new THREE.MeshBasicMaterial({
+    new THREE.SphereGeometry(radius, 96, 64),
+    unlitBasic(THREE, {
       map: loadMap(THREE, CMB_SHELL.map),
-      transparent: true,
-      opacity: 0.78,
-      depthWrite: false,
+      opacity: 0.88,
       side: THREE.DoubleSide,
     }),
   );
-  cmb.name = "cmb-shell";
+  cmb.name = "cmb-sphere";
   cmb.frustumCulled = false;
   shell.add(cmb);
   group.add(shell);
 }
 
-function farGalaxySkyMap(THREE) {
-  const size = 1024;
+function paintSkyFace(size, seed) {
   const canvas = document.createElement("canvas");
   canvas.width = size;
-  canvas.height = size / 2;
+  canvas.height = size;
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "rgba(2, 5, 12, 1)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const rand = seedRandom(4608);
-  for (let i = 0; i < 6800; i += 1) {
-    const x = rand() * canvas.width;
-    const y = rand() * canvas.height;
-    const rr = 0.6 + rand() * 1.8;
+  ctx.fillStyle = "#02050c";
+  ctx.fillRect(0, 0, size, size);
+  const rand = seedRandom(seed);
+  for (let i = 0; i < 1600; i += 1) {
+    const x = rand() * size;
+    const y = rand() * size;
     const warm = rand();
     stampSoft(
       ctx,
       x,
       y,
-      rr * (1.4 + rand() * 2.2),
-      `rgba(${Math.floor(140 + 90 * warm)}, ${Math.floor(160 + 50 * warm)}, ${Math.floor(210 - 40 * warm)}, ${0.18 + rand() * 0.28})`,
+      0.7 + rand() * 2.2,
+      `rgba(${Math.floor(150 + 90 * warm)}, ${Math.floor(165 + 50 * warm)}, ${Math.floor(210 - 40 * warm)}, ${0.2 + rand() * 0.32})`,
     );
   }
-  for (let i = 0; i < 180; i += 1) {
-    const x = rand() * canvas.width;
-    const y = rand() * canvas.height;
+  for (let i = 0; i < 90; i += 1) {
+    const x = rand() * size;
+    const y = rand() * size;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(rand() * Math.PI);
-    ctx.scale(1, 0.35 + rand() * 0.25);
-    stampSoft(ctx, 0, 0, 3 + rand() * 5, "rgba(210, 190, 160, 0.35)");
+    ctx.scale(1, 0.34 + rand() * 0.28);
+    stampSoft(ctx, 0, 0, 4 + rand() * 7, "rgba(220, 200, 170, 0.38)");
     ctx.restore();
   }
-  const map = new THREE.CanvasTexture(canvas);
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.anisotropy = 4;
-  return map;
+  return canvas;
 }
 
 function createFarGalaxySky(THREE, group) {
   const sky = new THREE.Group();
   sky.name = "far-galaxy-sky";
-  const radius = Math.max(farthestNeighborhoodDistance() * 2.6, CONFIG.mwViewDistance * 6);
-  const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(radius, 48, 32),
-    new THREE.MeshBasicMaterial({
-      map: farGalaxySkyMap(THREE),
-      transparent: true,
-      opacity: 0.7,
-      depthWrite: false,
+  const radius = visualUniverse(CMB_SHELL.comovingRadiusGpc);
+  const materials = [0, 1, 2, 3, 4, 5].map((face) => {
+    const map = new THREE.CanvasTexture(paintSkyFace(512, 8100 + face * 131));
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.anisotropy = 4;
+    return unlitBasic(THREE, {
+      map,
+      opacity: 0.88,
       side: THREE.BackSide,
-    }),
-  );
-  sphere.name = "far-galaxy-shell";
-  sphere.frustumCulled = false;
-  sky.add(sphere);
+    });
+  });
+  const box = new THREE.Mesh(new THREE.BoxGeometry(radius * 2, radius * 2, radius * 2), materials);
+  box.name = "far-galaxy-shell";
+  box.frustumCulled = false;
+  sky.add(box);
 
-  const count = 2400;
+  const count = 2800;
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
   const rand = seedRandom(31415);
   for (let i = 0; i < count; i += 1) {
-    const r = radius * (0.72 + rand() * 0.26);
+    const r = radius * (0.94 + rand() * 0.04);
     const theta = rand() * Math.PI * 2;
     const phi = Math.acos(2 * rand() - 1);
     positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
@@ -1354,8 +1420,7 @@ function createFarGalaxySky(THREE, group) {
     colors[i * 3 + 1] = 0.74 + rand() * 0.16;
     colors[i * 3 + 2] = 0.9;
   }
-  addPoints(THREE, sky, "far-galaxy-points", positions, colors, 3.4, 0.55, false);
-  addPoints(THREE, sky, "far-galaxy-glow", positions, colors, 36, 0.22, true);
+  addPoints(THREE, sky, "far-galaxy-points", positions, colors, 3.2, 0.62, false);
   group.add(sky);
 }
 
@@ -1386,7 +1451,8 @@ export function createGalaxyLayer(THREE) {
   createVirgoCluster(THREE, group, maps);
   createLocalWeb(THREE, group);
   createHomeMark(THREE, group);
-  createUniverse(THREE, group);
+  createUniverseWeb(THREE, group);
+  createCmbShell(THREE, group);
   return group;
 }
 
@@ -1395,9 +1461,10 @@ function fadeNamedGroup(root, name, opacity, shown) {
   if (!node) return;
   node.visible = shown > 0.04 && opacity > 0.02;
   node.traverse((obj) => {
-    const mat = obj.material;
-    if (!mat || mat.opacity == null || mat.userData.keepOpacity == null) return;
-    mat.opacity = mat.userData.keepOpacity * opacity * shown;
+    eachMaterial(obj, (mat) => {
+      if (mat.opacity == null || mat.userData.keepOpacity == null) return;
+      mat.opacity = mat.userData.keepOpacity * opacity * shown;
+    });
   });
 }
 
@@ -1405,11 +1472,12 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
   if (!group) return;
   group.visible = opacity > 0.02;
   group.traverse((obj) => {
-    const mat = obj.material;
-    if (!mat || mat.opacity == null) return;
-    if (mat.userData.keepOpacity == null) mat.userData.keepOpacity = mat.opacity;
-    mat.transparent = true;
-    mat.opacity = mat.userData.keepOpacity * opacity;
+    eachMaterial(obj, (mat) => {
+      if (mat.opacity == null) return;
+      if (mat.userData.keepOpacity == null) mat.userData.keepOpacity = mat.opacity;
+      mat.transparent = true;
+      mat.opacity = mat.userData.keepOpacity * opacity;
+    });
   });
   const cluster = virgoOpacity(distance);
   const near = nearClusterOpacity(distance);
@@ -1417,14 +1485,15 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
   const universe = universeOpacity(distance);
   const family = 1 - cluster * 0.92;
   const virgoShown = cluster * (1 - web);
-  fadeNamedGroup(group, "far-galaxy-sky", opacity, (1 - cluster) * (1 - web) * (1 - universe));
+  fadeNamedGroup(group, "far-galaxy-sky", opacity, farGalaxySkyOpacity(distance));
   fadeNamedGroup(group, "milkyway", opacity, family);
   fadeNamedGroup(group, "neighbors", opacity, neighborOpacity(distance) * family);
   fadeNamedGroup(group, "local-group", opacity, localGroupMemberOpacity(distance) * family);
   fadeNamedGroup(group, "local-group-family", opacity, virgoShown);
   fadeNamedGroup(group, "near-clusters", opacity, near);
   fadeNamedGroup(group, "virgo", opacity, virgoShown);
-  fadeNamedGroup(group, "cosmic-web", opacity, web);
+  fadeNamedGroup(group, "cosmic-web", opacity, Math.max(web, universe * 0.85));
   fadeNamedGroup(group, "home-mark", opacity, Math.max(web, universe));
   fadeNamedGroup(group, "universe", opacity, universe);
+  fadeNamedGroup(group, "cmb-shell", opacity, cmbSkyOpacity(distance));
 }
