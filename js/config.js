@@ -7,24 +7,26 @@
  * visualScale is the one spacing knob: it multiplies the compressed orbit
  * curve (orbitScale * AU^orbitPower). Raise it to spread the system; do not
  * invent fake AU values. sizeScale / sizePower size the spheres the same way.
+ * Moons share that size curve (moonSizeScale 1).
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20d",
+  VERSION: "v2026.8.20e",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
-  visualScale: 1.75,
-  sizeScale: 1,
-  sizePower: 0.55,
+  visualScale: 2.6,
+  sizeScale: 0.4,
+  sizePower: 0.82,
   orbitScale: 40,
-  orbitPower: 0.45,
+  orbitPower: 0.58,
   moonPad: 0.4,
-  moonSpread: 0.45,
+  moonSpread: 0.35,
   // Extra visual space between sibling moon paths after radii are reserved.
-  moonSiblingGap: 1.05,
+  moonSiblingGap: 1.5,
   moonOrbitCap: 6,
   // Moons sit just outside rings; do not push them to 1.5× the ring radius.
   moonRingGap: 0.25,
-  moonSizeScale: 0.72,
+  // 1 = no extra moon shrink; Phobos/Deimos stay tiny from sizePower alone.
+  moonSizeScale: 1,
   defaultDaysPerSecond: 1 / 24,
   minDaysPerSecond: 1 / 24,
   maxDaysPerSecond: 400,
@@ -35,11 +37,11 @@ export const CONFIG = Object.freeze({
   kuiperCount: 880,
   kuiperInnerAu: 30.2,
   kuiperOuterAu: 50,
-  cameraDistance: 460,
+  cameraDistance: 880,
   cameraElevation: 0.5,
   cameraAzimuth: 0.55,
   minDistance: 2.4,
-  maxDistance: 980,
+  maxDistance: 1650,
   // Celestial sphere sits around the camera; far plane must clear it.
   skyRadius: 2000,
   cameraFar: 4200,

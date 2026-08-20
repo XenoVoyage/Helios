@@ -8,6 +8,10 @@ const TAU = Math.PI * 2;
  * Distances: AU for heliocentric bodies, km for moons.
  * Periods: Earth days. Rotation: hours (negative = retrograde).
  * Tilts and inclinations: degrees. Epoch angles are J2000 approximations.
+ *
+ * Physical numbers follow the NASA planetary fact sheet where it and JPL
+ * agree, and JPL SSD satellite phys_par (IAU WGCCRE 2015) for moons.
+ * Heliocentric Kepler angles stay J2000 approximations, not Horizons.
  */
 export const BODIES = Object.freeze([
   {
@@ -233,7 +237,7 @@ export const BODIES = Object.freeze([
     name: "Ganymede",
     kind: "moon",
     parent: "jupiter",
-    radiusKm: 2634.1,
+    radiusKm: 2631.2,
     orbitKm: 1070400,
     eccentricity: 0.0013,
     inclinationDeg: 0.177,
@@ -351,7 +355,8 @@ export const BODIES = Object.freeze([
     inclinationDeg: 156.865,
     nodeDeg: 167.71,
     periDeg: 0,
-    meanAnomalyDeg: 0,
+    // JPL NEP097 mean elements at J2000; M was incorrectly left at 0.
+    meanAnomalyDeg: 63,
     orbitDays: -5.877,
     rotationHours: -141.048,
     tiltDeg: 0,
@@ -386,10 +391,9 @@ export function visualRadius(radiusKm) {
   return CONFIG.sizeScale * (radiusKm / CONFIG.earthRadiusKm) ** CONFIG.sizePower;
 }
 
-/** Displayed globe size. Moons use a visual-only shrink so siblings stay readable. */
+/** Displayed globe size. Moons share the size curve; moonSizeScale is 1. */
 export function visualBodyRadius(body) {
-  const radius = visualRadius(body.radiusKm);
-  return body.kind === "moon" ? radius * CONFIG.moonSizeScale : radius;
+  return visualRadius(body.radiusKm) * (body.kind === "moon" ? CONFIG.moonSizeScale : 1);
 }
 
 export function visualOrbit(orbitAu) {

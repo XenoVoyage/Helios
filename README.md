@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.8.20d](https://img.shields.io/badge/version-v2026.8.20d-66f7ff)](VERSION.txt)
+[![Version v2026.8.20e](https://img.shields.io/badge/version-v2026.8.20e-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D orrery of the solar system.
@@ -29,7 +29,7 @@ Helios is a local page: no accounts, no telemetry, and no CDN.
 
 ## Visual scale
 
-True 1:1 distances make every planet vanish beside the Sun. Helios keeps published NASA / JPL periods, spins, tilts, radii, and Keplerian elements, then compresses **distances more than sizes** so the system can be read at a glance. The one planet-spacing knob is `CONFIG.visualScale` in `js/config.js`. Moon distances stay outside their parent, just outside any rings, and outside a readable gap from the next inner sibling. Time is a separate slider.
+True 1:1 distances make every planet vanish beside the Sun. Helios keeps published NASA / JPL periods, spins, tilts, radii, and Keplerian elements, then compresses **distances more than sizes** so the system can be read at a glance. The one planet-spacing knob is `CONFIG.visualScale` in `js/config.js`; it multiplies a compressed AU curve (`orbitScale * AU^orbitPower`). Body sizes use the same kind of curve (`sizeScale * (radius/Earth)^sizePower`). Moons share that size curve. Moon distances stay a compressed real-radii map: outside their parent, just outside any rings, and outside a readable gap from the next inner sibling. Time is a separate slider.
 
 ## Run locally
 
