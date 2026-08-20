@@ -1,4 +1,4 @@
-name: Test
+name: Audit
 
 on:
   push:
@@ -10,12 +10,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: test-${{ github.workflow }}-${{ github.ref }}
+  group: audit-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: test
+  audit:
+    name: audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
