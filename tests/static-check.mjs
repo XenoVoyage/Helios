@@ -73,6 +73,11 @@ await stat(path.join(root, "assets/sky/andromeda.png"));
 await stat(path.join(root, "js/sky.js"));
 await stat(path.join(root, "js/sky-catalog.js"));
 await stat(path.join(root, "js/helpers.js"));
+await stat(path.join(root, "docs/assets/helios-overview.webp"));
+await stat(path.join(root, "docs/assets/helios-titan-rings.webp"));
+await stat(path.join(root, "docs/assets/helios-constellations.webp"));
+assert.match(await read("README.md"), /docs\/assets\/helios-overview\.webp/);
+assert.match(await read("README.md"), /Play Helios in your browser/);
 
 const threeRoot = path.join(root, "vendor");
 const seenThree = new Set();

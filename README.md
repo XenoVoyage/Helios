@@ -7,6 +7,12 @@ An interactive 3D orrery of the solar system.
 
 ## [▶ Play Helios in your browser](https://xenovoyage.github.io/Helios/)
 
+[![Overview of the Helios orrery: Sun, planets, asteroid belt, and the outer Kuiper field.](docs/assets/helios-overview.webp)](https://xenovoyage.github.io/Helios/)
+
+![Saturn focused, with Titan sitting just outside the rings.](docs/assets/helios-titan-rings.webp)
+
+![Constellation names readable at overview, with Sagittarius and Scorpius labeled.](docs/assets/helios-constellations.webp)
+
 Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch or scroll to zoom. Play, pause, and change the speed of time from the bar at the bottom. Click empty space to close the body card.
 
 Helios is a local page: no accounts, no telemetry, and no CDN.
