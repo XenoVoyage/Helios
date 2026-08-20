@@ -17,12 +17,16 @@ export const SUN_GALACTIC = Object.freeze({
 
 /**
  * Stellar disk size from Bland-Hawthorn & Gerhard 2016, ARA&A 54, 529.
- * This is the luminous disk, not the dark-matter halo.
+ * heightKpc is the thin-disk scale height; thickHeightKpc is the thick
+ * disk. haloRadiusKpc is the stellar halo, not the dark-matter halo.
+ * Visual disk thickness lives in CONFIG.mwVisualHeightKpc.
  */
 export const MILKY_WAY = Object.freeze({
   diskRadiusKpc: 16.5,
   bulgeRadiusKpc: 2.5,
   heightKpc: 0.3,
+  thickHeightKpc: 0.9,
+  haloRadiusKpc: 15,
 });
 
 /** Sgr A*; Reid & Brunthaler 2004, ApJ 616, 872. l, b ~ 0 by definition. */
@@ -121,7 +125,7 @@ export const SPIRAL_ARMS = Object.freeze([
 export const NEIGHBORS = Object.freeze([
   {
     id: "lmc",
-    name: "LMC",
+    name: "Large Magellanic Cloud",
     messier: "",
     raDeg: 80.89417,
     decDeg: -69.75611,
@@ -132,7 +136,7 @@ export const NEIGHBORS = Object.freeze([
   },
   {
     id: "smc",
-    name: "SMC",
+    name: "Small Magellanic Cloud",
     messier: "",
     raDeg: 13.15833,
     decDeg: -72.80028,
