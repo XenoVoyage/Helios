@@ -14,7 +14,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20k",
+  VERSION: "v2026.8.20l",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -46,16 +46,16 @@ export const CONFIG = Object.freeze({
   cameraAzimuth: 0.55,
   minDistance: 2.4,
   // Solar overview / Kuiper camera cap. Further zoom is the galaxy layer.
-  solarMaxDistance: 1650,
-  maxDistance: 480000,
-  mwViewDistance: 4000,
-  neighborhoodViewDistance: 14500,
-  localGroupViewDistance: 26000,
-  virgoViewDistance: 46000,
-  webViewDistance: 90000,
-  universeViewDistance: 360000,
-  galaxyFadeStart: 1650,
-  galaxyFadeEnd: 2150,
+  solarMaxDistance: 1880,
+  maxDistance: 1100000,
+  mwViewDistance: 11000,
+  neighborhoodViewDistance: 24000,
+  localGroupViewDistance: 40000,
+  virgoViewDistance: 75000,
+  webViewDistance: 240000,
+  universeViewDistance: 800000,
+  galaxyFadeStart: 1880,
+  galaxyFadeEnd: 11000,
   // kpc → scene for the Milky Way disk. Not the AU orbit curve.
   mwScale: 82,
   mwPower: 0.95,
@@ -64,26 +64,26 @@ export const CONFIG = Object.freeze({
   mwVisualHeightKpc: 1.55,
   mwHaloRadiusKpc: 18,
   // Second compressed scale for LMC / SMC / M31 / M33 and Local Group members.
-  neighborhoodScale: 280,
+  neighborhoodScale: 340,
   neighborhoodPower: 0.55,
   // Third compressed scale for Virgo. Input is catalog kpc / 1000 (Mpc).
-  virgoScale: 3400,
+  virgoScale: 4800,
   virgoPower: 0.5,
   // Visual core mark for the cluster, not a 1:1 member catalog.
   virgoMarkRadiusMpc: 2.2,
   // Fourth compressed scale for the local cosmic web. Input is catalog Mpc.
-  webScale: 5200,
+  webScale: 26600,
   webPower: 0.42,
   // Visual local-web radius. Laniakea-scale, not a 1:1 160 Mpc diameter.
   webRadiusMpc: 80,
   // Visual home-hub glow. Not the published Laniakea diameter.
   laniakeaMarkRadiusMpc: 3.6,
   // Fifth compressed scale for the observable universe. Input is catalog Gpc.
-  universeScale: 42000,
+  universeScale: 200000,
   universePower: 0.48,
   // Celestial sphere sits around the camera; far plane must clear the universe layer.
   skyRadius: 2000,
-  cameraFar: 1300000,
+  cameraFar: 3600000,
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
   focusLerp: 6,

@@ -239,35 +239,33 @@ export function webOpacity(distance) {
 
 export function universeOpacity(distance) {
   const start = CONFIG.webViewDistance
-    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.28;
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.55;
   if (distance < start) return 0;
   if (distance >= CONFIG.universeViewDistance) return 1;
   return smoothstep01((distance - start) / (CONFIG.universeViewDistance - start));
 }
 
-/** Far-galaxy sphere stays up through Virgo; it yields to the CMB on the last stretch. */
+/** Far-galaxy sphere stays up through Virgo and the filled web; CMB replaces it later. */
 export function farGalaxySkyOpacity(distance) {
   if (distance <= CONFIG.galaxyFadeStart) return 0;
-  const fadeStart = CONFIG.virgoViewDistance
-    + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.35;
+  const fadeStart = CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.62;
   if (distance <= fadeStart) return 1;
-  if (distance >= CONFIG.universeViewDistance) return 0.08;
-  return 1 - 0.92 * smoothstep01(
+  if (distance >= CONFIG.universeViewDistance) return 0.06;
+  return 1 - 0.94 * smoothstep01(
     (distance - fadeStart) / (CONFIG.universeViewDistance - fadeStart),
   );
 }
 
-/** Microwave sky begins as a hint at cluster scale, then becomes the shell you approach. */
+/** Microwave sky waits until after a long web, then becomes the shell you approach. */
 export function cmbSkyOpacity(distance) {
-  const start = CONFIG.localGroupViewDistance;
+  const start = CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.58;
   if (distance <= start) return 0;
   if (distance >= CONFIG.universeViewDistance) return 1;
-  const t = clamp(
+  return smoothstep01(
     (distance - start) / (CONFIG.universeViewDistance - start),
-    0,
-    1,
   );
-  return Math.sqrt(t);
 }
 
 export function nearClusterOpacity(distance) {
@@ -288,6 +286,8 @@ export function requestedGalaxyLook() {
   if (
     look === "milkyway"
     || look === "mwedge"
+    || look === "mwbelow"
+    || look === "handoff"
     || look === "neighborhood"
     || look === "localgroup"
     || look === "virgo"
@@ -314,6 +314,11 @@ export function milkyWayCameraAim() {
 /** Near edge-on so disk thickness, bulge, and halo can be audited. */
 export function milkyWayEdgeCameraAim() {
   return { elevation: 0.04, azimuth: 1.15 };
+}
+
+/** From under the disk so luminosity is not a one-sided top light. */
+export function milkyWayBelowCameraAim() {
+  return { elevation: -1.05, azimuth: 0.28 };
 }
 
 function cameraPosition(aim, distance) {
@@ -353,7 +358,7 @@ export function neighborhoodCameraAim() {
 }
 
 export function localGroupCameraAim() {
-  return neighborFamilyAim(0.14, -0.06);
+  return neighborFamilyAim(0.42, -0.02);
 }
 
 /** Oblique look so the Local Group family and Virgo both sit in frame. */
@@ -428,10 +433,8 @@ function makeLabelMap(THREE, text) {
 }
 
 function labelSprite(THREE, text, position, scale = 1) {
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+  const sprite = new THREE.Sprite(unlitSprite(THREE, {
     map: makeLabelMap(THREE, text),
-    transparent: true,
-    depthWrite: false,
     opacity: 0.96,
     sizeAttenuation: true,
   }));
@@ -476,8 +479,7 @@ function hubSprite(THREE) {
 }
 
 function galaxyKind(id) {
-  if (id === "m31") return "andromeda";
-  if (id === "m33") return "spiral";
+  if (id === "m31" || id === "m33") return "spiral";
   if (id === "lmc") return "lmc";
   if (id === "smc" || id === "wlm" || id === "ic10" || id === "ngc6822") return "irregular";
   return "elliptical";
@@ -490,45 +492,7 @@ function galaxySprite(THREE, kind, seed = 1) {
   const ctx = canvas.getContext("2d");
   const rand = seedRandom(7000 + seed * 97);
   ctx.translate(128, 128);
-  if (kind === "andromeda") {
-    ctx.rotate(-0.38);
-    ctx.scale(1, 0.62);
-    const disk = ctx.createRadialGradient(0, 0, 4, 0, 0, 120);
-    disk.addColorStop(0, "rgba(255, 236, 200, 1)");
-    disk.addColorStop(0.14, "rgba(230, 200, 160, 0.7)");
-    disk.addColorStop(0.45, "rgba(140, 170, 230, 0.42)");
-    disk.addColorStop(1, "rgba(40, 50, 90, 0)");
-    ctx.fillStyle = disk;
-    ctx.beginPath();
-    ctx.arc(0, 0, 120, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineCap = "round";
-    for (let arm = 0; arm < 2; arm += 1) {
-      ctx.beginPath();
-      for (let i = 0; i <= 64; i += 1) {
-        const t = i / 64;
-        const a = arm * Math.PI + t * 4.8;
-        const r = 14 + t * 102;
-        const x = Math.cos(a) * r;
-        const y = Math.sin(a) * r;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.strokeStyle = "rgba(190, 220, 255, 0.88)";
-      ctx.lineWidth = 13;
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(255, 220, 170, 0.5)";
-      ctx.lineWidth = 5;
-      ctx.stroke();
-    }
-    const bulge = ctx.createRadialGradient(0, 0, 2, 0, 0, 34);
-    bulge.addColorStop(0, "rgba(255, 244, 214, 1)");
-    bulge.addColorStop(1, "rgba(255, 176, 80, 0)");
-    ctx.fillStyle = bulge;
-    ctx.beginPath();
-    ctx.arc(0, 0, 34, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (kind === "spiral") {
+  if (kind === "spiral") {
     ctx.rotate(-0.5 + rand() * 0.2);
     ctx.scale(1, 0.42 + rand() * 0.08);
     const disk = ctx.createRadialGradient(0, 0, 4, 0, 0, 118);
@@ -759,6 +723,19 @@ function unlitBasic(THREE, params) {
   });
 }
 
+function unlitSprite(THREE, params) {
+  return new THREE.SpriteMaterial({
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+    ...params,
+  });
+}
+
+export function milkyWayDiskDiameter() {
+  return MILKY_WAY.diskRadiusKpc * milkyWayUnitsPerKpc() * 2;
+}
+
 function addPoints(THREE, group, name, positions, colors, size, opacity, attenuation = true, blending) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
@@ -824,7 +801,7 @@ function createSpiralStars(THREE, group) {
     colors[o + 2] = 0.95 - 0.2 * warm;
     n += 1;
   }
-  addPoints(THREE, group, "mw-disk", positions.slice(0, n * 3), colors.slice(0, n * 3), 2.4, 0.55, true, THREE.AdditiveBlending);
+  addPoints(THREE, group, "mw-disk", positions.slice(0, n * 3), colors.slice(0, n * 3), 2.8, 0.72, true, THREE.AdditiveBlending);
 }
 
 function createHalo(THREE, group) {
@@ -846,7 +823,7 @@ function createHalo(THREE, group) {
     colors[i * 3 + 1] = 0.78 + rand() * 0.1;
     colors[i * 3 + 2] = 0.95;
   }
-  addPoints(THREE, group, "mw-halo", positions, colors, 3.2, 0.48, true, THREE.AdditiveBlending);
+  addPoints(THREE, group, "mw-halo", positions, colors, 3.6, 0.62, true, THREE.AdditiveBlending);
 }
 
 function createBulge(THREE, group) {
@@ -894,7 +871,7 @@ function createDiskGlow(THREE, group) {
     new THREE.SphereGeometry(radius * 1.12, 40, 24),
     unlitBasic(THREE, {
       color: 0xffe2c4,
-      opacity: 0.16,
+      opacity: 0.24,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     }),
@@ -908,7 +885,7 @@ function createDiskGlow(THREE, group) {
     new THREE.SphereGeometry(radius * 0.98, 48, 20),
     unlitBasic(THREE, {
       color: 0xd0dcff,
-      opacity: 0.12,
+      opacity: 0.2,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     }),
@@ -933,26 +910,63 @@ function createDiskGlow(THREE, group) {
 }
 
 function createSunPin(THREE, group) {
-  const pin = new THREE.Sprite(new THREE.SpriteMaterial({
+  const pin = new THREE.Sprite(unlitSprite(THREE, {
     map: pinSprite(THREE),
     color: 0xffffff,
-    transparent: true,
-    depthWrite: false,
     blending: THREE.AdditiveBlending,
   }));
-  pin.scale.set(42, 42, 1);
+  pin.scale.set(240, 240, 1);
   pin.name = "sun-pin";
   pin.position.set(0, 0, 0);
   pin.frustumCulled = false;
   group.add(pin);
-  group.add(labelSprite(THREE, "Sun", { x: 0, y: visualDiskHalfHeight() + 56, z: 0 }, 0.86));
+  group.add(labelSprite(THREE, "Sun", { x: 0, y: visualDiskHalfHeight() + 220, z: 0 }, 3.4));
 }
 
 function neighborSpriteSize(neighbor) {
   const visual = visualNeighborhood(neighbor.distanceKpc);
   const size = (neighbor.radiusKpc / neighbor.distanceKpc) * visual * 2.2;
-  if (neighbor.id === "m31") return Math.max(8600, size * 8.4);
   return Math.max(160, size);
+}
+
+function neighborSizeBoost(neighbor) {
+  if (neighbor.id === "m31") return 2.15;
+  if (neighbor.id === "lmc") return 1.85;
+  if (neighbor.id === "smc") return 1.7;
+  return 1.2;
+}
+
+export function neighborApparentSize(neighbor) {
+  return neighborSpriteSize(neighbor) * neighborSizeBoost(neighbor);
+}
+
+function quietAndromedaMap(THREE) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  ctx.translate(128, 128);
+  ctx.rotate(-0.32);
+  ctx.scale(1, 0.38);
+  const disk = ctx.createRadialGradient(0, 0, 6, 0, 0, 118);
+  disk.addColorStop(0, "rgba(255, 228, 190, 0.95)");
+  disk.addColorStop(0.18, "rgba(210, 180, 150, 0.45)");
+  disk.addColorStop(0.55, "rgba(120, 140, 200, 0.22)");
+  disk.addColorStop(1, "rgba(40, 50, 80, 0)");
+  ctx.fillStyle = disk;
+  ctx.beginPath();
+  ctx.arc(0, 0, 118, 0, Math.PI * 2);
+  ctx.fill();
+  const bulge = ctx.createRadialGradient(0, 0, 2, 0, 0, 26);
+  bulge.addColorStop(0, "rgba(255, 236, 200, 0.95)");
+  bulge.addColorStop(1, "rgba(255, 180, 90, 0)");
+  ctx.fillStyle = bulge;
+  ctx.beginPath();
+  ctx.arc(0, 0, 26, 0, Math.PI * 2);
+  ctx.fill();
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  return map;
 }
 
 function createNeighbors(THREE, group, maps) {
@@ -960,21 +974,19 @@ function createNeighbors(THREE, group, maps) {
   cluster.name = "neighbors";
   for (const neighbor of NEIGHBORS) {
     const at = neighborScenePosition(neighbor);
-    let map = maps[galaxyKind(neighbor.id)] ?? maps.spiral;
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    const map = neighbor.id === "m31"
+      ? quietAndromedaMap(THREE)
+      : maps[galaxyKind(neighbor.id)] ?? maps.spiral;
+    const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map,
       color: neighbor.id === "m31" ? 0xf4f0ea : 0xffffff,
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
+      depthTest: neighbor.id !== "m31",
       opacity: 0.96,
-      toneMapped: false,
     }));
     sprite.renderOrder = 4;
     sprite.position.set(at.x, at.y, at.z);
-    const boost = neighbor.id === "m31" ? 1 : neighbor.id === "lmc" ? 1.85 : neighbor.id === "smc" ? 1.7 : 1.2;
-    const size = neighborSpriteSize(neighbor) * boost;
-    const aspect = neighbor.id === "m31" ? 0.58 : neighbor.id === "m33" ? 0.46 : 0.68;
+    const size = neighborApparentSize(neighbor);
+    const aspect = neighbor.id === "m31" ? 0.36 : neighbor.id === "m33" ? 0.46 : 0.68;
     sprite.scale.set(size, size * aspect, 1);
     sprite.name = neighbor.id;
     sprite.frustumCulled = false;
@@ -983,27 +995,14 @@ function createNeighbors(THREE, group, maps) {
       new THREE.TextureLoader().load(SKY_ASSETS.andromeda, (loaded) => {
         loaded.colorSpace = THREE.SRGBColorSpace;
         loaded.anisotropy = 4;
-        const overlay = new THREE.Sprite(new THREE.SpriteMaterial({
-          map: loaded,
-          color: 0xfff2e4,
-          transparent: true,
-          depthWrite: false,
-          depthTest: false,
-          opacity: 0.78,
-          toneMapped: false,
-        }));
-        overlay.position.set(at.x, at.y, at.z);
-        overlay.scale.set(size, size * aspect, 1);
-        overlay.name = "m31-spitzer";
-        overlay.renderOrder = 5;
-        overlay.frustumCulled = false;
-        cluster.add(overlay);
+        sprite.material.map = loaded;
+        sprite.material.needsUpdate = true;
       });
     }
     const label = neighbor.messier ? `${neighbor.name} (${neighbor.messier})` : neighbor.name;
     const lift = size * aspect * 0.65 + 48;
     const side = neighbor.id === "smc" ? 180 : neighbor.id === "lmc" ? -80 : 0;
-    const labelScale = neighbor.id === "lmc" || neighbor.id === "smc" ? 2.35 : 2.6;
+    const labelScale = neighbor.id === "lmc" || neighbor.id === "smc" ? 4.8 : neighbor.id === "m31" ? 5.2 : 4.4;
     cluster.add(labelSprite(THREE, label, { x: at.x + side, y: at.y + lift, z: at.z }, labelScale));
   }
   group.add(cluster);
@@ -1021,11 +1020,9 @@ function createLocalGroupMembers(THREE, group, maps) {
   for (const member of LOCAL_GROUP) {
     const at = neighborScenePosition(member);
     const kind = galaxyKind(member.id);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map: maps[kind] ?? maps.irregular,
       color: 0xf2f4ff,
-      transparent: true,
-      depthWrite: false,
       opacity: 0.9,
     }));
     sprite.position.set(at.x, at.y, at.z);
@@ -1041,7 +1038,7 @@ function createLocalGroupMembers(THREE, group, maps) {
       THREE,
       member.name,
       { x: at.x + side, y: at.y + lift, z: at.z },
-      2.8,
+      4.6,
     ));
   }
   group.add(family);
@@ -1057,11 +1054,9 @@ function createLocalGroupFamily(THREE, group, maps) {
     { map: maps.irregular, x: 340, z: -680, size: 640, aspect: 0.6, color: 0xe8d4c0 },
   ];
   for (const item of members) {
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map: item.map,
       color: item.color,
-      transparent: true,
-      depthWrite: false,
       opacity: 0.92,
     }));
     sprite.position.set(item.x, 0, item.z);
@@ -1113,11 +1108,9 @@ function createNearClusters(THREE, group, maps) {
     for (let i = 0; i < members; i += 1) {
       const kind = kinds[Math.floor(rand() * kinds.length)];
       const size = 560 + rand() * 820;
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      const sprite = new THREE.Sprite(unlitSprite(THREE, {
         map: maps[kind],
         color: kind === "elliptical" ? 0xffe6c4 : 0xe8f0ff,
-        transparent: true,
-        depthWrite: false,
         opacity: 0.86,
         rotation: rand() * Math.PI,
       }));
@@ -1140,11 +1133,9 @@ function createVirgoCluster(THREE, group, maps) {
   cluster.name = "virgo";
   const at = virgoScenePosition();
   const mark = visualVirgo(CONFIG.virgoMarkRadiusMpc * 1000);
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+  const glow = new THREE.Sprite(unlitSprite(THREE, {
     map: diskGlowMap(THREE),
     color: 0xc8d8ff,
-    transparent: true,
-    depthWrite: false,
     opacity: 0.55,
   }));
   glow.position.set(at.x, at.y, at.z);
@@ -1184,11 +1175,9 @@ function createVirgoCluster(THREE, group, maps) {
     }
     const kind = i === 0 ? "elliptical" : kinds[Math.floor(rand() * kinds.length)];
     const size = i === 0 ? 1480 : 420 + rand() * 640;
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map: maps[kind],
       color: kind === "elliptical" ? 0xffe6c4 : 0xe8f0ff,
-      transparent: true,
-      depthWrite: false,
       opacity: 0.9,
       rotation: rand() * Math.PI,
     }));
@@ -1201,17 +1190,15 @@ function createVirgoCluster(THREE, group, maps) {
     THREE,
     "Virgo Cluster",
     { x: at.x, y: at.y + mark * 0.82, z: at.z },
-    6.8,
+    11,
   ));
   group.add(cluster);
 }
 
 function addHub(THREE, group, at, size, map, name) {
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+  const sprite = new THREE.Sprite(unlitSprite(THREE, {
     map,
     color: 0xffffff,
-    transparent: true,
-    depthWrite: false,
     blending: THREE.AdditiveBlending,
     opacity: 0.92,
   }));
@@ -1235,8 +1222,8 @@ function pushFilament(positions, colors, a, b, count, rand, warm = 0, scatterSca
     const x = omt * omt * a.x + 2 * omt * t * mid.x + t * t * b.x;
     const y = omt * omt * a.y + 2 * omt * t * mid.y + t * t * b.y;
     const z = omt * omt * a.z + 2 * omt * t * mid.z + t * t * b.z;
-    const scatter = (0.8 + Math.sin(t * Math.PI) * 1.6) * (90 + rand() * 180) * scatterScale;
-    const puffs = 3;
+    const scatter = (0.8 + Math.sin(t * Math.PI) * 1.6) * (140 + rand() * 260) * scatterScale;
+    const puffs = 5;
     for (let p = 0; p < puffs; p += 1) {
       positions.push(
         x + (rand() - 0.5) * scatter,
@@ -1245,7 +1232,7 @@ function pushFilament(positions, colors, a, b, count, rand, warm = 0, scatterSca
       );
       const dense = Math.sin(t * Math.PI);
       const heat = clamp(0.08 + warm * 0.62 + dense * 0.58 * (0.5 + rand() * 0.5), 0, 1);
-      colors.push(0.28 + 0.72 * heat, 0.18 + 0.42 * heat, 0.22 + 0.55 * (1 - heat));
+      colors.push(0.2 + 0.8 * heat, 0.12 + 0.38 * heat, 0.16 + 0.72 * (1 - heat));
     }
   }
 }
@@ -1266,8 +1253,8 @@ function addFieldGalaxies(THREE, group, name, radius, count, seed) {
     colors[i * 3 + 1] = 0.62 + 0.22 * warm;
     colors[i * 3 + 2] = 0.78 + 0.22 * (1 - warm);
   }
-  addPoints(THREE, group, `${name}-px`, positions, colors, 2.8, 0.55, false, THREE.AdditiveBlending);
-  addPoints(THREE, group, name, positions, colors, 58, 0.4, true, THREE.AdditiveBlending);
+  addPoints(THREE, group, `${name}-px`, positions, colors, 3.4, 0.62, false, THREE.AdditiveBlending);
+  addPoints(THREE, group, name, positions, colors, 220, 0.48, true, THREE.AdditiveBlending);
 }
 
 function createWebVolume(THREE, group, {
@@ -1306,7 +1293,7 @@ function createWebVolume(THREE, group, {
       z: r * Math.sin(phi) * Math.sin(theta),
       home: false,
     };
-    if (hubs.some((hub) => Math.hypot(hub.x - at.x, hub.y - at.y, hub.z - at.z) < radius * 0.075)) {
+    if (hubs.some((hub) => Math.hypot(hub.x - at.x, hub.y - at.y, hub.z - at.z) < radius * 0.052)) {
       continue;
     }
     hubs.push(at);
@@ -1319,10 +1306,10 @@ function createWebVolume(THREE, group, {
       .map((hub, j) => ({ hub, j, d: Math.hypot(hub.x - hubs[i].x, hub.y - hubs[i].y, hub.z - hubs[i].z) }))
       .filter((row) => row.j !== i)
       .sort((a, b) => a.d - b.d);
-    const links = hubs[i].home ? 8 : 4;
+    const links = hubs[i].home ? 10 : 6;
     for (let k = 0; k < Math.min(links, others.length); k += 1) {
       if (others[k].j < i && !hubs[i].home) continue;
-      pushFilament(positions, colors, hubs[i], others[k].hub, 56, rand, hubs[i].home ? 0.35 : 0, 1.35);
+      pushFilament(positions, colors, hubs[i], others[k].hub, 80, rand, hubs[i].home ? 0.35 : 0, 1.55);
     }
   }
 
@@ -1363,23 +1350,21 @@ function createLocalWeb(THREE, group) {
   createWebVolume(THREE, group, {
     name: "cosmic-web",
     radius,
-    hubCount: 110,
+    hubCount: 168,
     seed: 88421,
-    hubSize: 1860,
-    particleSize: 150,
+    hubSize: 7200,
+    particleSize: 720,
     includeVirgo: true,
-    fieldCount: 9000,
+    fieldCount: 16000,
   });
 }
 
 function createHomeMark(THREE, group) {
   const mark = new THREE.Group();
   mark.name = "home-mark";
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+  const glow = new THREE.Sprite(unlitSprite(THREE, {
     map: diskGlowMap(THREE),
     color: 0xc4dcff,
-    transparent: true,
-    depthWrite: false,
     opacity: 0.5,
   }));
   const home = visualWeb(CONFIG.laniakeaMarkRadiusMpc);
@@ -1388,11 +1373,9 @@ function createHomeMark(THREE, group) {
   glow.name = "mw-home-glow";
   glow.frustumCulled = false;
   mark.add(glow);
-  const pin = new THREE.Sprite(new THREE.SpriteMaterial({
+  const pin = new THREE.Sprite(unlitSprite(THREE, {
     map: pinSprite(THREE),
     color: 0xffffff,
-    transparent: true,
-    depthWrite: false,
     blending: THREE.AdditiveBlending,
     opacity: 0.95,
   }));
@@ -1412,12 +1395,12 @@ function createUniverseWeb(THREE, group) {
   createWebVolume(THREE, shell, {
     name: "universe-web",
     radius: radius * 0.82,
-    hubCount: 180,
+    hubCount: 220,
     seed: 2018,
-    hubSize: 2400,
-    particleSize: 180,
+    hubSize: 9600,
+    particleSize: 860,
     includeVirgo: false,
-    fieldCount: 14000,
+    fieldCount: 22000,
   });
   group.add(shell);
 }
@@ -1440,78 +1423,77 @@ function createCmbShell(THREE, group) {
   group.add(shell);
 }
 
-function paintSkyFace(size, seed) {
+function farGalaxySkyMap(THREE) {
+  const width = 2048;
+  const height = 1024;
   const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#02050c";
-  ctx.fillRect(0, 0, size, size);
-  const rand = seedRandom(seed);
-  for (let i = 0; i < 1800; i += 1) {
-    const x = rand() * size;
-    const y = rand() * size;
+  ctx.fillRect(0, 0, width, height);
+  const rand = seedRandom(4608);
+  for (let i = 0; i < 14000; i += 1) {
+    const x = rand() * width;
+    const y = rand() * height;
     const warm = rand();
     stampSoft(
       ctx,
       x,
       y,
-      1.2 + rand() * 3.4,
-      `rgba(${Math.floor(160 + 90 * warm)}, ${Math.floor(170 + 55 * warm)}, ${Math.floor(215 - 35 * warm)}, ${0.28 + rand() * 0.4})`,
+      0.8 + rand() * 2.4,
+      `rgba(${Math.floor(150 + 95 * warm)}, ${Math.floor(165 + 55 * warm)}, ${Math.floor(215 - 40 * warm)}, ${0.28 + rand() * 0.5})`,
     );
   }
-  for (let i = 0; i < 110; i += 1) {
-    const x = rand() * size;
-    const y = rand() * size;
+  for (let i = 0; i < 420; i += 1) {
+    const x = rand() * width;
+    const y = rand() * height;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(rand() * Math.PI);
-    ctx.scale(1, 0.34 + rand() * 0.26);
-    stampSoft(ctx, 0, 0, 4 + rand() * 6, "rgba(220, 200, 170, 0.36)");
+    ctx.scale(1, 0.3 + rand() * 0.28);
+    stampSoft(ctx, 0, 0, 4 + rand() * 7, "rgba(220, 200, 170, 0.4)");
     ctx.restore();
   }
-  return canvas;
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 4;
+  return map;
 }
 
 function createFarGalaxySky(THREE, group) {
   const sky = new THREE.Group();
   sky.name = "far-galaxy-sky";
   const radius = visualUniverse(CMB_SHELL.comovingRadiusGpc);
-  const cube = new THREE.CubeTexture([0, 1, 2, 3, 4, 5].map((face) => paintSkyFace(512, 8100 + face * 131)));
-  cube.colorSpace = THREE.SRGBColorSpace;
-  cube.needsUpdate = true;
-  const material = new THREE.ShaderMaterial({
-    uniforms: {
-      tCube: { value: cube },
-      opacity: { value: 0.88 },
-    },
-    vertexShader: `
-      varying vec3 vDir;
-      void main() {
-        vDir = position;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform samplerCube tCube;
-      uniform float opacity;
-      varying vec3 vDir;
-      void main() {
-        vec4 tex = texture(tCube, normalize(vDir));
-        gl_FragColor = vec4(tex.rgb, tex.a * opacity);
-      }
-    `,
-    side: THREE.BackSide,
-    transparent: true,
-    depthWrite: false,
-    toneMapped: false,
-  });
-  material.opacity = 0.88;
-  material.userData.keepOpacity = 0.88;
-  const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 96, 64), material);
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(radius, 96, 64),
+    unlitBasic(THREE, {
+      map: farGalaxySkyMap(THREE),
+      opacity: 0.88,
+      side: THREE.BackSide,
+    }),
+  );
   sphere.name = "far-galaxy-shell";
   sphere.frustumCulled = false;
   sky.add(sphere);
+  const count = 6200;
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const rand = seedRandom(31415);
+  for (let i = 0; i < count; i += 1) {
+    const r = radius * (0.84 + rand() * 0.14);
+    const theta = rand() * Math.PI * 2;
+    const phi = Math.acos(2 * rand() - 1);
+    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    positions[i * 3 + 1] = r * Math.cos(phi);
+    positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    const warm = rand();
+    colors[i * 3] = 0.68 + 0.28 * warm;
+    colors[i * 3 + 1] = 0.72 + 0.18 * warm;
+    colors[i * 3 + 2] = 0.92 - 0.18 * warm;
+  }
+  addPoints(THREE, sky, "far-galaxy-points", positions, colors, 4.2, 0.78, false, THREE.AdditiveBlending);
+  addPoints(THREE, sky, "far-galaxy-glow", positions, colors, 72, 0.32, true, THREE.AdditiveBlending);
   group.add(sky);
 }
 
@@ -1521,7 +1503,6 @@ export function createGalaxyLayer(THREE) {
   group.visible = false;
   const maps = {
     spiral: galaxySprite(THREE, "spiral", 1),
-    andromeda: galaxySprite(THREE, "andromeda", 6),
     elliptical: galaxySprite(THREE, "elliptical", 2),
     irregular: galaxySprite(THREE, "irregular", 3),
     lmc: galaxySprite(THREE, "lmc", 4),
