@@ -149,11 +149,30 @@ export function scaleLayer(distance) {
   return "neighborhood";
 }
 
+export function neighborOpacity(distance) {
+  if (distance < CONFIG.mwViewDistance) return 0;
+  if (distance >= CONFIG.neighborhoodViewDistance) return 1;
+  const t = (distance - CONFIG.mwViewDistance)
+    / (CONFIG.neighborhoodViewDistance - CONFIG.mwViewDistance);
+  return t * t * (3 - 2 * t);
+}
+
 export function requestedGalaxyLook() {
   if (typeof location === "undefined") return null;
   const look = new URLSearchParams(location.search).get("look");
   if (look === "milkyway" || look === "neighborhood") return look;
   return null;
+}
+
+/** Look from the far side of the Sun so M31 sits beyond the disk. */
+export function neighborhoodCameraAim() {
+  const m31 = neighborScenePosition(NEIGHBORS.find((item) => item.id === "m31"));
+  const len = Math.hypot(m31.x, m31.y, m31.z) || 1;
+  const dir = { x: -m31.x / len, y: -m31.y / len, z: -m31.z / len };
+  return {
+    elevation: Math.asin(clamp(dir.y, -1, 1)),
+    azimuth: Math.atan2(dir.x, dir.z),
+  };
 }
 
 export function farthestNeighborhoodDistance() {
@@ -461,6 +480,7 @@ function createSunPin(THREE, group) {
   pin.frustumCulled = false;
   group.add(pin);
   group.add(labelSprite(THREE, "Sun", { x: 0, y: 36, z: 0 }, 0.72));
+  group.add(labelSprite(THREE, "Orion Arm", { x: 90, y: -8, z: 40 }, 0.62));
 }
 
 function neighborSpriteSize(neighbor) {
@@ -494,7 +514,7 @@ function createNeighbors(THREE, group) {
     cluster.add(sprite);
     const label = neighbor.messier ? `${neighbor.name} (${neighbor.messier})` : neighbor.name;
     const lift = size * aspect * 0.65 + 40;
-    cluster.add(labelSprite(THREE, label, { x: at.x, y: at.y + lift, z: at.z }, 1.15));
+    cluster.add(labelSprite(THREE, label, { x: at.x, y: at.y + lift, z: at.z }, 2.6));
   }
   group.add(cluster);
 }
@@ -532,7 +552,7 @@ export function createGalaxyLayer(THREE) {
   return group;
 }
 
-export function setGalaxyLayerVisible(group, opacity) {
+export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDistance) {
   if (!group) return;
   group.visible = opacity > 0.02;
   group.traverse((obj) => {
@@ -542,4 +562,14 @@ export function setGalaxyLayerVisible(group, opacity) {
     mat.transparent = true;
     mat.opacity = mat.userData.keepOpacity * opacity;
   });
+  const neighbors = group.getObjectByName("neighbors");
+  if (neighbors) {
+    const shown = neighborOpacity(distance);
+    neighbors.visible = shown > 0.04 && opacity > 0.02;
+    neighbors.traverse((obj) => {
+      const mat = obj.material;
+      if (!mat || mat.opacity == null || mat.userData.keepOpacity == null) return;
+      mat.opacity = mat.userData.keepOpacity * opacity * shown;
+    });
+  }
 }

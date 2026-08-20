@@ -116,6 +116,7 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.ok(CONFIG.mwViewDistance > CONFIG.solarMaxDistance);
   assert.ok(CONFIG.neighborhoodViewDistance > CONFIG.mwViewDistance);
   assert.ok(CONFIG.maxDistance >= CONFIG.neighborhoodViewDistance);
+  assert.ok(CONFIG.neighborhoodViewDistance > CONFIG.mwViewDistance * 2);
   assert.equal(scaleLayer(CONFIG.cameraDistance), "solar");
   assert.equal(scaleLayer(CONFIG.solarMaxDistance), "solar");
   assert.equal(scaleLayer((CONFIG.galaxyFadeStart + CONFIG.galaxyFadeEnd) / 2), "transition");

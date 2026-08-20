@@ -45,9 +45,9 @@ export const CONFIG = Object.freeze({
   minDistance: 2.4,
   // Solar overview / Kuiper camera cap. Further zoom is the galaxy layer.
   solarMaxDistance: 1650,
-  maxDistance: 28000,
+  maxDistance: 16000,
   mwViewDistance: 4000,
-  neighborhoodViewDistance: 25000,
+  neighborhoodViewDistance: 13000,
   galaxyFadeStart: 1650,
   galaxyFadeEnd: 2150,
   // kpc → scene for the Milky Way disk. Not the AU orbit curve.
@@ -58,7 +58,7 @@ export const CONFIG = Object.freeze({
   neighborhoodPower: 0.55,
   // Celestial sphere sits around the camera; far plane must clear the galaxy layer.
   skyRadius: 2000,
-  cameraFar: 48000,
+  cameraFar: 40000,
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
   focusLerp: 6,

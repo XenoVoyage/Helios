@@ -13,6 +13,10 @@ An interactive 3D orrery of the solar system.
 
 ![Constellation names readable at overview, with Sagittarius and Scorpius labeled.](docs/assets/helios-constellations.webp)
 
+![Milky Way disk after extra zoom-out, with the Sun pin in the Orion Arm.](docs/assets/helios-milky-way.webp)
+
+![Nearby galaxies on the second scale: Andromeda, Triangulum, LMC, and SMC.](docs/assets/helios-neighborhood.webp)
+
 Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch or scroll to zoom. Play, pause, and change the speed of time from the bar at the bottom. Click empty space to close the body card. Zoom out past the solar overview and the orrery fades to a Sun pin in the Orion Arm of a local Milky Way disk, then to Andromeda, Triangulum, and the Magellanic Clouds.
 
 Helios is a local page: no accounts, no telemetry, and no CDN.

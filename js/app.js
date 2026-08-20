@@ -25,6 +25,7 @@ import {
 import {
   createGalaxyLayer,
   galaxyOpacity,
+  neighborhoodCameraAim,
   requestedGalaxyLook,
   scaleLayer,
   setGalaxyLayerVisible,
@@ -206,7 +207,10 @@ function boot() {
       state.distance = CONFIG.mwViewDistance;
       state.focusedId = "sun";
     } else if (galaxyLook === "neighborhood") {
+      const aim = neighborhoodCameraAim();
       state.distance = CONFIG.neighborhoodViewDistance;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
       state.focusedId = "sun";
     }
   }
@@ -745,7 +749,7 @@ function paintScaleLayer() {
   fadeRoot(kuiperBelt, solar);
   fadeRoot(orbitLines, solar);
   celestial.visible = solar > 0.12;
-  setGalaxyLayerVisible(galaxy, galactic);
+  setGalaxyLayerVisible(galaxy, galactic, state.distance);
   for (const node of nodes.values()) fadeBodyNode(node, solar);
   if (helpers && galactic > 0.5) {
     setHelperVisibility(helpers, { selected: false, orbit: false, axis: false, spin: false });
