@@ -8,6 +8,7 @@ import {
 } from "../js/sky-catalog.js";
 import {
   constellationHasStar,
+  constellationLabelPixelHeight,
   equatorialToGalactic,
   equatorialToScene,
   findConstellation,
@@ -104,5 +105,10 @@ test("catalog is a few thousand brightest Hipparcos stars and the far plane clea
   assert.ok(STARS.length > 3000 && STARS.length < 8000);
   assert.ok(STARS.every((row) => row[0] > 0 && Number.isFinite(row[1]) && Number.isFinite(row[2])));
   assert.ok(CONFIG.cameraFar > CONFIG.skyRadius);
-  assert.equal(CONFIG.VERSION, "v2026.8.20c");
+  assert.equal(CONFIG.VERSION, "v2026.8.20d");
+});
+
+test("constellation names stay readable at overview", () => {
+  assert.ok(constellationLabelPixelHeight() > 22);
+  assert.ok(constellationLabelPixelHeight(800, 52) > 16);
 });

@@ -29,6 +29,7 @@ try {
     "js/config.js",
     "js/sky.js",
     "js/sky-catalog.js",
+    "js/helpers.js",
     "styles.css",
     "vendor/three.module.min.js",
     "vendor/three.core.min.js",
