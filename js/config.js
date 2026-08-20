@@ -1,20 +1,20 @@
 /**
  * Canonical tunables. VERSION must match VERSION.txt.
  *
- * NASA / JPL catalog numbers stay in js/bodies.js. Galactic kpc and the
- * Virgo Mpc distance stay in js/galaxy-catalog.js. Only visual scale, the
- * galaxy kpc / cluster mapping, and the time slider may diverge from 1:1.
- * Time is not tied to scale.
+ * NASA / JPL catalog numbers stay in js/bodies.js. Galactic kpc, Virgo Mpc,
+ * supercluster Mpc, and the Planck Gpc radius stay in js/galaxy-catalog.js.
+ * Only visual scale, the galaxy kpc / cluster / universe mapping, and the
+ * time slider may diverge from 1:1. Time is not tied to scale.
  *
  * visualScale is the one spacing knob: it multiplies the compressed orbit
  * curve (orbitScale * AU^orbitPower). Raise it to spread the system; do not
  * invent fake AU values. sizeScale / sizePower size the spheres the same way.
  * Moons share that size curve (moonSizeScale 1). Galaxy zoom uses mwScale /
- * neighborhoodScale / virgoScale; those are kpc or compressed-Mpc mappings,
- * not AU.
+ * neighborhoodScale / virgoScale / superclusterScale / universeScale; those
+ * are kpc, compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20g",
+  VERSION: "v2026.8.20h",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -47,11 +47,13 @@ export const CONFIG = Object.freeze({
   minDistance: 2.4,
   // Solar overview / Kuiper camera cap. Further zoom is the galaxy layer.
   solarMaxDistance: 1650,
-  maxDistance: 36000,
+  maxDistance: 68000,
   mwViewDistance: 4000,
   neighborhoodViewDistance: 13000,
   localGroupViewDistance: 21000,
   virgoViewDistance: 30000,
+  superclusterViewDistance: 42000,
+  universeViewDistance: 58000,
   galaxyFadeStart: 1650,
   galaxyFadeEnd: 2150,
   // kpc → scene for the Milky Way disk. Not the AU orbit curve.
@@ -65,9 +67,17 @@ export const CONFIG = Object.freeze({
   virgoPower: 0.5,
   // Visual core mark for the cluster, not a 1:1 member catalog.
   virgoMarkRadiusMpc: 2.2,
-  // Celestial sphere sits around the camera; far plane must clear the cluster layer.
+  // Fourth compressed scale for nearby superclusters. Input is catalog Mpc.
+  superclusterScale: 1800,
+  superclusterPower: 0.42,
+  // Visual Laniakea glow. Not the published 160 Mpc diameter.
+  laniakeaMarkRadiusMpc: 10,
+  // Fifth compressed scale for the observable universe. Input is catalog Gpc.
+  universeScale: 7200,
+  universePower: 0.48,
+  // Celestial sphere sits around the camera; far plane must clear the universe layer.
   skyRadius: 2000,
-  cameraFar: 90000,
+  cameraFar: 180000,
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
   focusLerp: 6,

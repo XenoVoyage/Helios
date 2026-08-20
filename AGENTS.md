@@ -6,7 +6,7 @@ Read this file at the start of every task. It is the repository-local contract f
 
 1. Keep the orrery local, private, and working on both desktop and touch.
 2. Ship the smallest complete change. One owner per responsibility.
-3. Preserve published NASA / JPL / IAU / SIMBAD values. Only the visual scale, the galaxy kpc / cluster Mpc mapping, and the time slider are allowed to diverge from 1:1.
+3. Preserve published NASA / JPL / IAU / SIMBAD / Planck / NED values. Only the visual scale, the galaxy kpc / cluster Mpc / universe Gpc mapping, and the time slider are allowed to diverge from 1:1.
 4. Verify before opening or updating a pull request.
 
 ## Ownership
@@ -18,7 +18,7 @@ Read this file at the start of every task. It is the repository-local contract f
 | Scene, camera, input, HUD | `js/app.js` |
 | Focus orbit / axis / spin marks | `js/helpers.js` |
 | Celestial sphere | `js/sky.js`, `js/sky-catalog.js`, `assets/sky/` |
-| Galactic neighborhood, Local Group, Virgo | `js/galaxy.js`, `js/galaxy-catalog.js` |
+| Galactic neighborhood, Local Group, Virgo, superclusters, observable universe | `js/galaxy.js`, `js/galaxy-catalog.js` |
 | Semantic shell and CSP | `index.html` |
 | Presentation | `styles.css` |
 | Public version label | `VERSION.txt` (`js/config.js` must match) |

@@ -1,8 +1,8 @@
 /**
- * Galactic neighborhood layer: a 3D Milky Way disk, nearby galaxies,
- * a short Local Group family, and the Virgo Cluster as the next zoom.
+ * Extra-zoom map: a 3D Milky Way disk, nearby galaxies, a short Local
+ * Group, Virgo, a few nearby superclusters, and the observable universe.
  *
- * Catalog kpc / Virgo Mpc stay in js/galaxy-catalog.js. Visual compression
+ * Catalog kpc / Mpc / Gpc stay in js/galaxy-catalog.js. Visual compression
  * lives here and in CONFIG. This map is a different representation from
  * the celestial sphere and is shown only after the solar camera cap.
  *
@@ -14,21 +14,27 @@ import { CONFIG } from "./config.js";
 import { SKY_ASSETS } from "./sky.js";
 import {
   GALACTIC_CENTER,
+  LANIAKEA,
   LOCAL_GROUP,
   MILKY_WAY,
   NEIGHBORS,
+  OBSERVABLE_UNIVERSE,
   SPIRAL_ARMS,
   SUN_GALACTIC,
+  SUPERCLUSTERS,
   VIRGO_CLUSTER,
 } from "./galaxy-catalog.js";
 
 export {
   GALACTIC_CENTER,
+  LANIAKEA,
   LOCAL_GROUP,
   MILKY_WAY,
   NEIGHBORS,
+  OBSERVABLE_UNIVERSE,
   SPIRAL_ARMS,
   SUN_GALACTIC,
+  SUPERCLUSTERS,
   VIRGO_CLUSTER,
 };
 
@@ -71,6 +77,18 @@ export function visualNeighborhood(kpc) {
 export function visualVirgo(kpc) {
   if (!(kpc > 0)) return 0;
   return CONFIG.virgoScale * (kpc / 1000) ** CONFIG.virgoPower;
+}
+
+/** Mpc → scene units for nearby superclusters. A fourth scale, not Virgo or AU. */
+export function visualSupercluster(mpc) {
+  if (!(mpc > 0)) return 0;
+  return CONFIG.superclusterScale * mpc ** CONFIG.superclusterPower;
+}
+
+/** Gpc → scene units for the observable universe. Compressed, not 1:1 Gpc. */
+export function visualUniverse(gpc) {
+  if (!(gpc > 0)) return 0;
+  return CONFIG.universeScale * gpc ** CONFIG.universePower;
 }
 
 /** Uniform scene units per kpc inside the disk so the spiral is not warped. */
@@ -121,6 +139,13 @@ export function virgoScenePosition(cluster = VIRGO_CLUSTER) {
   return scaledGalacticPosition(cluster, visualVirgo(cluster.distanceKpc));
 }
 
+export function superclusterScenePosition(item) {
+  return scaledGalacticPosition(
+    { lDeg: item.lDeg, bDeg: item.bDeg, distanceKpc: item.distanceMpc },
+    visualSupercluster(item.distanceMpc),
+  );
+}
+
 export function galacticCenterScenePosition() {
   return milkyWayToScene(GALACTIC_CENTER.distanceKpc, 0, -SUN_GALACTIC.zKpc);
 }
@@ -166,7 +191,9 @@ export function scaleLayer(distance) {
   if (distance < CONFIG.neighborhoodViewDistance) return "milkyway";
   if (distance < CONFIG.localGroupViewDistance) return "neighborhood";
   if (distance < CONFIG.virgoViewDistance) return "localgroup";
-  return "virgo";
+  if (distance < CONFIG.superclusterViewDistance) return "virgo";
+  if (distance < CONFIG.universeViewDistance) return "supercluster";
+  return "universe";
 }
 
 function smoothstep01(t) {
@@ -201,6 +228,24 @@ export function virgoOpacity(distance) {
   );
 }
 
+export function superclusterOpacity(distance) {
+  if (distance < CONFIG.virgoViewDistance) return 0;
+  if (distance >= CONFIG.superclusterViewDistance) return 1;
+  return smoothstep01(
+    (distance - CONFIG.virgoViewDistance)
+    / (CONFIG.superclusterViewDistance - CONFIG.virgoViewDistance),
+  );
+}
+
+export function universeOpacity(distance) {
+  if (distance < CONFIG.superclusterViewDistance) return 0;
+  if (distance >= CONFIG.universeViewDistance) return 1;
+  return smoothstep01(
+    (distance - CONFIG.superclusterViewDistance)
+    / (CONFIG.universeViewDistance - CONFIG.superclusterViewDistance),
+  );
+}
+
 export function requestedGalaxyLook() {
   if (typeof location === "undefined") return null;
   const look = new URLSearchParams(location.search).get("look");
@@ -209,6 +254,8 @@ export function requestedGalaxyLook() {
     || look === "neighborhood"
     || look === "localgroup"
     || look === "virgo"
+    || look === "supercluster"
+    || look === "universe"
   ) return look;
   return null;
 }
@@ -241,6 +288,30 @@ export function virgoCameraAim() {
   };
 }
 
+/** Oblique look so Laniakea and the nearby supercluster pins share the frame. */
+export function superclusterCameraAim() {
+  let x = 0;
+  let y = 0;
+  let z = 0;
+  for (const item of SUPERCLUSTERS) {
+    const at = superclusterScenePosition(item);
+    x += at.x;
+    y += at.y;
+    z += at.z;
+  }
+  const n = SUPERCLUSTERS.length || 1;
+  const aim = aimAwayFrom({ x: x / n, y: y / n, z: z / n });
+  return {
+    elevation: clamp(aim.elevation * 0.22 + 0.38, -1.2, 1.2),
+    azimuth: aim.azimuth + 0.55,
+  };
+}
+
+/** High enough to read the sphere and the you-are-here pin together. */
+export function universeCameraAim() {
+  return { elevation: 0.62, azimuth: 0.72 };
+}
+
 export function farthestNeighborhoodDistance() {
   let max = 0;
   for (const neighbor of NEIGHBORS) {
@@ -256,6 +327,18 @@ export function farthestVirgoDistance() {
   const center = visualVirgo(VIRGO_CLUSTER.distanceKpc);
   const mark = visualVirgo(CONFIG.virgoMarkRadiusMpc * 1000);
   return center + mark;
+}
+
+export function farthestSuperclusterDistance() {
+  let max = visualSupercluster(CONFIG.laniakeaMarkRadiusMpc);
+  for (const item of SUPERCLUSTERS) {
+    max = Math.max(max, visualSupercluster(item.distanceMpc));
+  }
+  return max;
+}
+
+export function farthestUniverseDistance() {
+  return visualUniverse(OBSERVABLE_UNIVERSE.comovingRadiusGpc);
 }
 
 function loadMap(THREE, path) {
@@ -708,6 +791,138 @@ function createVirgoCluster(THREE, group) {
   group.add(cluster);
 }
 
+function createSuperclusters(THREE, group) {
+  const cluster = new THREE.Group();
+  cluster.name = "superclusters";
+  const homeGlow = visualSupercluster(CONFIG.laniakeaMarkRadiusMpc);
+  const laniakea = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: diskGlowMap(THREE),
+    color: 0xb8d8ff,
+    transparent: true,
+    depthWrite: false,
+    opacity: 0.55,
+  }));
+  laniakea.position.set(0, 0, 0);
+  laniakea.scale.set(homeGlow * 2.1, homeGlow * 1.35, 1);
+  laniakea.name = "laniakea-glow";
+  laniakea.frustumCulled = false;
+  cluster.add(laniakea);
+  cluster.add(labelSprite(THREE, LANIAKEA.name, { x: 0, y: homeGlow * 0.42, z: 0 }, 5.6));
+  cluster.add(labelSprite(THREE, LANIAKEA.also, { x: 0, y: homeGlow * 0.22, z: 0 }, 3.8));
+
+  for (const item of SUPERCLUSTERS) {
+    const at = superclusterScenePosition(item);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: diskGlowMap(THREE),
+      color: 0xc4dcff,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.62,
+    }));
+    glow.position.set(at.x, at.y, at.z);
+    glow.scale.set(1680, 1120, 1);
+    glow.name = `${item.id}-glow`;
+    glow.frustumCulled = false;
+    cluster.add(glow);
+    const pin = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: pinSprite(THREE),
+      color: 0xffe6b0,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      opacity: 0.9,
+    }));
+    pin.position.set(at.x, at.y, at.z);
+    pin.scale.set(400, 400, 1);
+    pin.name = item.id;
+    pin.frustumCulled = false;
+    cluster.add(pin);
+    cluster.add(labelSprite(
+      THREE,
+      item.name,
+      { x: at.x, y: at.y + 520, z: at.z },
+      5.4,
+    ));
+  }
+  group.add(cluster);
+}
+
+function createHerePin(THREE, group) {
+  const pinGroup = new THREE.Group();
+  pinGroup.name = "here-pin";
+  const pin = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: pinSprite(THREE),
+    color: 0xffffff,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    opacity: 0.96,
+  }));
+  pin.scale.set(560, 560, 1);
+  pin.name = "you-are-here";
+  pin.position.set(0, 0, 0);
+  pin.frustumCulled = false;
+  pinGroup.add(pin);
+  pinGroup.add(labelSprite(THREE, "You are here", { x: 0, y: 620, z: 0 }, 7.2));
+  group.add(pinGroup);
+}
+
+function createUniverseShell(THREE, group) {
+  const shell = new THREE.Group();
+  shell.name = "universe";
+  const radius = visualUniverse(OBSERVABLE_UNIVERSE.comovingRadiusGpc);
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(radius, 48, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0x4a78c8,
+      transparent: true,
+      opacity: 0.1,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  );
+  sphere.name = "universe-shell";
+  sphere.frustumCulled = false;
+  shell.add(sphere);
+
+  const wires = new THREE.LineSegments(
+    new THREE.WireframeGeometry(new THREE.SphereGeometry(radius, 24, 16)),
+    new THREE.LineBasicMaterial({
+      color: 0x66f7ff,
+      transparent: true,
+      opacity: 0.16,
+      depthWrite: false,
+    }),
+  );
+  wires.name = "universe-grid";
+  wires.frustumCulled = false;
+  shell.add(wires);
+
+  const equator = [];
+  for (let i = 0; i <= 128; i += 1) {
+    const a = (i / 128) * Math.PI * 2;
+    equator.push(new THREE.Vector3(Math.cos(a) * radius, 0, Math.sin(a) * radius));
+  }
+  const ring = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(equator),
+    new THREE.LineBasicMaterial({
+      color: 0x66f7ff,
+      transparent: true,
+      opacity: 0.32,
+      depthWrite: false,
+    }),
+  );
+  ring.name = "universe-equator";
+  shell.add(ring);
+  shell.add(labelSprite(
+    THREE,
+    "Observable universe",
+    { x: 0, y: radius * 0.82, z: 0 },
+    10.4,
+  ));
+  group.add(shell);
+}
+
 function createCenterMark(THREE, group) {
   const gc = galacticCenterScenePosition();
   const mark = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -744,6 +959,9 @@ export function createGalaxyLayer(THREE) {
   createLocalGroupMembers(THREE, group);
   createLocalGroupPin(THREE, group);
   createVirgoCluster(THREE, group);
+  createSuperclusters(THREE, group);
+  createHerePin(THREE, group);
+  createUniverseShell(THREE, group);
   return group;
 }
 
@@ -769,10 +987,17 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
     mat.opacity = mat.userData.keepOpacity * opacity;
   });
   const cluster = virgoOpacity(distance);
+  const supercluster = superclusterOpacity(distance);
+  const universe = universeOpacity(distance);
   const family = 1 - cluster;
+  const virgoShown = cluster * (1 - supercluster);
+  const superShown = supercluster * (1 - universe);
   fadeNamedGroup(group, "milkyway", opacity, family);
   fadeNamedGroup(group, "neighbors", opacity, neighborOpacity(distance) * family);
   fadeNamedGroup(group, "local-group", opacity, localGroupMemberOpacity(distance) * family);
-  fadeNamedGroup(group, "local-group-pin", opacity, cluster);
-  fadeNamedGroup(group, "virgo", opacity, cluster);
+  fadeNamedGroup(group, "local-group-pin", opacity, virgoShown);
+  fadeNamedGroup(group, "virgo", opacity, virgoShown);
+  fadeNamedGroup(group, "superclusters", opacity, superShown);
+  fadeNamedGroup(group, "here-pin", opacity, Math.max(superShown, universe));
+  fadeNamedGroup(group, "universe", opacity, universe);
 }

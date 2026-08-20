@@ -31,6 +31,8 @@ import {
   scaleLayer,
   setGalaxyLayerVisible,
   solarOpacity,
+  superclusterCameraAim,
+  universeCameraAim,
   virgoCameraAim,
 } from "./galaxy.js";
 
@@ -223,6 +225,18 @@ function boot() {
     } else if (galaxyLook === "virgo") {
       const aim = virgoCameraAim();
       state.distance = CONFIG.virgoViewDistance;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "supercluster") {
+      const aim = superclusterCameraAim();
+      state.distance = CONFIG.superclusterViewDistance;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "universe") {
+      const aim = universeCameraAim();
+      state.distance = CONFIG.universeViewDistance;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
@@ -775,6 +789,8 @@ function paintScaleLayer() {
     else if (layer === "neighborhood") say("Nearby galaxies.");
     else if (layer === "localgroup") say("Local Group.");
     else if (layer === "virgo") say("Virgo Cluster. The Local Group is a pin; Virgo is the nearest large cluster.");
+    else if (layer === "supercluster") say("Nearby superclusters. We sit in Laniakea.");
+    else if (layer === "universe") say("Observable universe. You are here.");
     else if (layer === "solar") say("Solar system.");
   }
 }
