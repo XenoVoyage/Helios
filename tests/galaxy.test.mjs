@@ -31,10 +31,15 @@ import {
   galacticCenterScenePosition,
   galaxyOpacity,
   heliocentricGalactic,
+  localGroupCameraAim,
   localGroupMemberOpacity,
+  lookAngleTo,
   milkyWayToScene,
   milkyWayUnitsPerKpc,
+  cmbSkyOpacity,
+  farGalaxySkyOpacity,
   nearClusterOpacity,
+  neighborhoodCameraAim,
   neighborOpacity,
   neighborScenePosition,
   scaleLayer,
@@ -111,6 +116,30 @@ test("nearby galaxies keep SIMBAD positions and published distances", () => {
   const lmcGal = equatorialToGalactic(lmc.raDeg, lmc.decDeg);
   assert.ok(Math.abs(((lmcGal.lDeg + 180) % 360) - ((lmc.lDeg + 180) % 360)) < 0.1);
   assert.ok(Math.abs(lmcGal.bDeg - lmc.bDeg) < 0.1);
+});
+
+test("neighborhood and Local Group looks keep Andromeda beside the Milky Way", () => {
+  const halfFov = (52 * Math.PI) / 180 / 2;
+  const m31 = neighborScenePosition(findNeighbor("m31"));
+  const lmc = neighborScenePosition(findNeighbor("lmc"));
+  const smc = neighborScenePosition(findNeighbor("smc"));
+  const looks = [
+    [neighborhoodCameraAim(), CONFIG.neighborhoodViewDistance, "neighborhood"],
+    [localGroupCameraAim(), CONFIG.localGroupViewDistance, "localgroup"],
+  ];
+  for (const [aim, distance, name] of looks) {
+    const andromeda = lookAngleTo(aim, distance, m31);
+    assert.ok(
+      andromeda > 0.2,
+      `${name} must not stack Andromeda behind the disk (${andromeda})`,
+    );
+    assert.ok(
+      andromeda < halfFov - 0.06,
+      `${name} must keep Andromeda in frame (${andromeda})`,
+    );
+    assert.ok(lookAngleTo(aim, distance, lmc) < halfFov - 0.06, `${name} LMC`);
+    assert.ok(lookAngleTo(aim, distance, smc) < halfFov - 0.06, `${name} SMC`);
+  }
 });
 
 test("galaxy scales are kpc mappings and do not reuse solar AU units", async () => {
@@ -204,12 +233,34 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.equal(webOpacity(CONFIG.webViewDistance), 1);
   assert.equal(universeOpacity(CONFIG.webViewDistance), 0);
   assert.equal(
-    universeOpacity(CONFIG.webViewDistance + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.45),
+    universeOpacity(CONFIG.webViewDistance + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.2),
     0,
-    "the filled web reads before the CMB shell",
+    "the filled web reads before the larger universe web",
   );
   assert.equal(universeOpacity(CONFIG.universeViewDistance), 1);
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
+  assert.ok(
+    farGalaxySkyOpacity(CONFIG.virgoViewDistance) > 0.9,
+    "far-galaxy sky stays up at Virgo",
+  );
+  assert.ok(
+    farGalaxySkyOpacity(CONFIG.localGroupViewDistance) > 0.9,
+    "far-galaxy sky stays up at Local Group",
+  );
+  assert.ok(
+    cmbSkyOpacity(CONFIG.virgoViewDistance) > 0.2,
+    "microwave hint is present at cluster scale",
+  );
+  assert.ok(cmbSkyOpacity(CONFIG.webViewDistance) > 0.35);
+  assert.equal(cmbSkyOpacity(CONFIG.universeViewDistance), 1);
+  assert.ok(
+    farthestUniverseDistance() > CONFIG.webViewDistance,
+    "CMB shell is still ahead at web scale",
+  );
+  assert.ok(
+    CONFIG.maxDistance > farthestUniverseDistance(),
+    "camera can leave the observable sphere",
+  );
 });
 
 test("camera far plane clears the neighborhood and spiral math stays Reid-like", () => {
@@ -316,7 +367,15 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /mw-disk-edge/);
   assert.match(galaxySource, /mw-halo/);
   assert.match(galaxySource, /Large Magellanic Cloud|neighbor\.name/);
+  assert.match(galaxySource, /CubeTexture/);
+  assert.match(galaxySource, /samplerCube/);
+  assert.match(galaxySource, /toneMapped:\s*false/);
+  assert.match(galaxySource, /AdditiveBlending/);
+  assert.match(galaxySource, /SKY_ASSETS\.andromeda/);
+  assert.match(galaxySource, /farGalaxySkyOpacity/);
+  assert.match(galaxySource, /cmbSkyOpacity/);
   assert.doesNotMatch(galaxySource, /hubCount:\s*20\b/);
+  assert.doesNotMatch(galaxySource, /BoxGeometry/);
   assert.equal(visualWeb(CONFIG.webRadiusMpc), CONFIG.webScale * CONFIG.webRadiusMpc ** CONFIG.webPower);
   assert.ok(visualWeb(80) > visualWeb(16.5));
   assert.ok(farthestWebDistance() >= visualWeb(CONFIG.webRadiusMpc));
