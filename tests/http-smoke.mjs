@@ -29,6 +29,7 @@ try {
     "js/config.js",
     "styles.css",
     "vendor/three.module.min.js",
+    "vendor/three.core.min.js",
     "assets/textures/earth.jpg",
     "assets/textures/saturn-ring.png",
   ];

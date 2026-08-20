@@ -5,7 +5,12 @@
   "source": "https://www.npmjs.com/package/three",
   "module": {
     "path": "vendor/three.module.min.js",
-    "bytes": 365552
+    "bytes": 365552,
+    "imports": ["vendor/three.core.min.js"]
+  },
+  "core": {
+    "path": "vendor/three.core.min.js",
+    "bytes": 385390
   },
   "licenseFile": {
     "path": "vendor/THREE-LICENSE"

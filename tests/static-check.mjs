@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { BODIES } from "../js/bodies.js";
 import { CONFIG } from "../js/config.js";
 
@@ -36,7 +36,30 @@ assert.match(css, /min-height: 44px/);
 assert.doesNotMatch(css, /:hover\s*\{[^}]*display:\s*block/);
 
 await stat(path.join(root, "vendor/three.module.min.js"));
+await stat(path.join(root, "vendor/three.core.min.js"));
 await stat(path.join(root, ".nojekyll"));
+
+const threeRoot = path.join(root, "vendor");
+const seenThree = new Set();
+const pendingThree = ["three.module.min.js"];
+while (pendingThree.length) {
+  const relative = pendingThree.pop();
+  if (seenThree.has(relative)) continue;
+  seenThree.add(relative);
+  const source = await read(path.join("vendor", relative));
+  for (const spec of source.matchAll(/from\s*["']([^"']+)["']/g)) {
+    assert.match(spec[1], /^\.\//, spec[1]);
+    const resolved = path.relative(threeRoot, path.resolve(threeRoot, spec[1]));
+    assert.equal(resolved, path.normalize(spec[1].slice(2)));
+    pendingThree.push(resolved);
+  }
+}
+
+const three = await import(pathToFileURL(path.join(root, "vendor/three.module.min.js")).href);
+assert.equal(three.REVISION, "185");
+assert.equal(typeof three.WebGLRenderer, "function");
+assert.equal(typeof three.Scene, "function");
+assert.equal(typeof three.TextureLoader, "function");
 
 for (const body of BODIES) {
   await stat(path.join(root, body.texture));
