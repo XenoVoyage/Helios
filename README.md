@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.8.20l](https://img.shields.io/badge/version-v2026.8.20l-66f7ff)](VERSION.txt)
+[![Version v2026.8.20m](https://img.shields.io/badge/version-v2026.8.20m-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D orrery of the solar system.

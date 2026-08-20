@@ -230,7 +230,7 @@ function boot() {
       state.focusedId = "sun";
     } else if (galaxyLook === "handoff") {
       const aim = milkyWayCameraAim();
-      state.distance = CONFIG.galaxyFadeEnd;
+      state.distance = CONFIG.handoffViewDistance;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";

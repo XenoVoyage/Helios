@@ -133,7 +133,7 @@ test("neighborhood and Local Group looks keep Andromeda beside the Milky Way", (
   for (const [aim, distance, name] of looks) {
     const andromeda = lookAngleTo(aim, distance, m31);
     assert.ok(
-      andromeda > 0.2,
+      andromeda > 0.24,
       `${name} must not stack Andromeda behind the disk (${andromeda})`,
     );
     assert.ok(
@@ -208,6 +208,17 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.equal(scaleLayer(CONFIG.cameraDistance), "solar");
   assert.equal(scaleLayer(CONFIG.solarMaxDistance), "solar");
   assert.equal(scaleLayer((CONFIG.galaxyFadeStart + CONFIG.galaxyFadeEnd) / 2), "transition");
+  assert.ok(CONFIG.handoffViewDistance > CONFIG.solarMaxDistance);
+  assert.ok(CONFIG.handoffViewDistance < CONFIG.galaxyFadeEnd);
+  assert.equal(scaleLayer(CONFIG.handoffViewDistance), "transition");
+  assert.ok(
+    solarOpacity(CONFIG.handoffViewDistance) > 0.35,
+    "handoff still shows the solar field / Kuiper",
+  );
+  assert.ok(
+    galaxyOpacity(CONFIG.handoffViewDistance) > 0.35,
+    "handoff already shows the Milky Way disk",
+  );
   assert.equal(scaleLayer(CONFIG.mwViewDistance), "milkyway");
   assert.equal(scaleLayer(CONFIG.neighborhoodViewDistance), "neighborhood");
   assert.equal(scaleLayer(CONFIG.localGroupViewDistance), "localgroup");
@@ -393,6 +404,7 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /AdditiveBlending/);
   assert.match(galaxySource, /SKY_ASSETS\.andromeda/);
   assert.match(galaxySource, /quietAndromedaMap|andromeda\.png/);
+  assert.match(galaxySource, /if \(pole < 0\.28\) continue/);
   assert.doesNotMatch(galaxySource, /kind === "andromeda"/);
   assert.doesNotMatch(galaxySource, /lineWidth = 13/);
   assert.doesNotMatch(galaxySource, /smc: galaxySprite/);
