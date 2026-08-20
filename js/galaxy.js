@@ -229,12 +229,16 @@ export function neighborhoodCameraAim() {
 
 export function localGroupCameraAim() {
   const aim = neighborhoodCameraAim();
-  return { elevation: clamp(aim.elevation + 0.18, -1.2, 1.2), azimuth: aim.azimuth };
+  return { elevation: clamp(aim.elevation + 0.42, -1.2, 1.2), azimuth: aim.azimuth + 0.35 };
 }
 
-/** Look from the far side of the Local Group pin so Virgo sits beyond it. */
+/** Oblique look so the Local Group pin and Virgo both sit in frame. */
 export function virgoCameraAim() {
-  return aimAwayFrom(virgoScenePosition());
+  const aim = aimAwayFrom(virgoScenePosition());
+  return {
+    elevation: clamp(aim.elevation * 0.28 + 0.32, -1.2, 1.2),
+    azimuth: aim.azimuth + 0.95,
+  };
 }
 
 export function farthestNeighborhoodDistance() {
@@ -593,7 +597,7 @@ function createNeighbors(THREE, group) {
 function memberSpriteSize(member) {
   const visual = visualNeighborhood(member.distanceKpc);
   const size = (member.radiusKpc / member.distanceKpc) * visual * 3.4;
-  return Math.max(36, Math.min(120, size));
+  return Math.max(58, Math.min(140, size));
 }
 
 function createLocalGroupMembers(THREE, group) {
@@ -614,13 +618,13 @@ function createLocalGroupMembers(THREE, group) {
     sprite.name = member.id;
     sprite.frustumCulled = false;
     family.add(sprite);
-    const lift = size * 0.7 + 28;
-    const side = member.id === "m32" ? -70 : member.id === "ngc205" ? 80 : 0;
+    const lift = size * 0.85 + 48;
+    const side = member.id === "m32" ? -110 : member.id === "ngc205" ? 120 : 0;
     family.add(labelSprite(
       THREE,
       member.name,
       { x: at.x + side, y: at.y + lift, z: at.z },
-      1.35,
+      2.8,
     ));
   }
   group.add(family);

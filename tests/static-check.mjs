@@ -96,8 +96,12 @@ await stat(path.join(root, "docs/assets/helios-titan-rings.webp"));
 await stat(path.join(root, "docs/assets/helios-constellations.webp"));
 await stat(path.join(root, "docs/assets/helios-milky-way.webp"));
 await stat(path.join(root, "docs/assets/helios-neighborhood.webp"));
+await stat(path.join(root, "docs/assets/helios-local-group.webp"));
+await stat(path.join(root, "docs/assets/helios-virgo.webp"));
 assert.match(await read("README.md"), /docs\/assets\/helios-overview\.webp/);
 assert.match(await read("README.md"), /docs\/assets\/helios-milky-way\.webp/);
+assert.match(await read("README.md"), /docs\/assets\/helios-local-group\.webp/);
+assert.match(await read("README.md"), /docs\/assets\/helios-virgo\.webp/);
 assert.match(await read("README.md"), /Play Helios in your browser/);
 
 const threeRoot = path.join(root, "vendor");
