@@ -22,6 +22,14 @@ import {
   createFocusHelpers,
   setHelperVisibility,
 } from "./helpers.js";
+import {
+  createGalaxyLayer,
+  galaxyOpacity,
+  requestedGalaxyLook,
+  scaleLayer,
+  setGalaxyLayerVisible,
+  solarOpacity,
+} from "./galaxy.js";
 
 const DEG = Math.PI / 180;
 const pointerIds = new Map();
@@ -59,6 +67,8 @@ let camera;
 let celestial;
 let asteroidBelt;
 let kuiperBelt;
+let orbitLines;
+let galaxy;
 let helpers;
 let lastStamp = 0;
 const earthSkyLook = wantsEarthSkyLook();
@@ -122,6 +132,8 @@ function boot() {
   camera = new THREE.PerspectiveCamera(52, 1, 0.05, CONFIG.cameraFar);
   celestial = createCelestialSphere(THREE);
   scene.add(celestial);
+  galaxy = createGalaxyLayer(THREE);
+  scene.add(galaxy);
   asteroidBelt = createBeltField({
     count: CONFIG.beltCount,
     innerAu: CONFIG.beltInnerAu,
@@ -142,8 +154,11 @@ function boot() {
     opacity: 0.48,
     seed: 11973,
   });
+  orbitLines = new THREE.Group();
+  orbitLines.name = "orbit-lines";
   scene.add(asteroidBelt);
   scene.add(kuiperBelt);
+  scene.add(orbitLines);
   helpers = createFocusHelpers(THREE);
   scene.add(helpers.group);
   // Faint fill so the night side is readable. Day, night, and terminator
@@ -168,7 +183,7 @@ function boot() {
       scene.add(node.pivot);
     }
     if (body.parent === "sun") {
-      scene.add(createOrbitLine(body));
+      orbitLines.add(createOrbitLine(body));
     }
   }
 
@@ -185,6 +200,15 @@ function boot() {
     bindSelectionHelpers();
     paintSpeed();
     paintCard();
+  } else {
+    const galaxyLook = requestedGalaxyLook();
+    if (galaxyLook === "milkyway") {
+      state.distance = CONFIG.mwViewDistance;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "neighborhood") {
+      state.distance = CONFIG.neighborhoodViewDistance;
+      state.focusedId = "sun";
+    }
   }
   updateBodies();
   placeCamera(1);
@@ -457,7 +481,13 @@ function pointerGap() {
 }
 
 function zoomTo(distance) {
-  state.distance = clamp(distance, CONFIG.minDistance, CONFIG.maxDistance);
+  const next = clamp(distance, CONFIG.minDistance, CONFIG.maxDistance);
+  if (next > CONFIG.solarMaxDistance && state.distance <= CONFIG.solarMaxDistance) {
+    state.focusedId = "sun";
+    state.selectedId = null;
+    paintCard();
+  }
+  state.distance = next;
 }
 
 function canvasFocus() {
@@ -465,6 +495,10 @@ function canvasFocus() {
 }
 
 function pickAt(clientX, clientY) {
+  if (solarOpacity(state.distance) < 0.45) {
+    clearSelection();
+    return;
+  }
   const bounds = ui.viewport.getBoundingClientRect();
   ndc.x = ((clientX - bounds.left) / bounds.width) * 2 - 1;
   ndc.y = -((clientY - bounds.top) / bounds.height) * 2 + 1;
@@ -639,6 +673,7 @@ function tick(now) {
   updateBodies();
   asteroidBelt.rotation.y = state.days * (Math.PI * 2) / 1682;
   kuiperBelt.rotation.y = state.days * (Math.PI * 2) / 90560;
+  paintScaleLayer();
   placeCamera(1 - Math.exp(-CONFIG.focusLerp * dt));
   updateLabels();
   paintClock();
@@ -671,7 +706,57 @@ function placeCamera(blend) {
     focusPoint.z + state.distance * cosE * Math.cos(state.azimuth),
   );
   camera.lookAt(focusPoint);
+  camera.near = Math.max(0.05, state.distance / 2500);
+  camera.far = CONFIG.cameraFar;
+  camera.updateProjectionMatrix();
   attachSkyToCamera(celestial, camera);
+}
+
+function fadeRoot(root, factor) {
+  if (!root) return;
+  root.visible = factor > 0.03;
+  root.traverse((child) => {
+    const mat = child.material;
+    if (!mat || mat.opacity == null) return;
+    if (mat.userData.baseOpacity == null) mat.userData.baseOpacity = mat.opacity;
+    mat.transparent = true;
+    mat.opacity = mat.userData.baseOpacity * factor;
+  });
+}
+
+function fadeBodyNode(node, factor) {
+  fadeRoot(node.mesh, factor);
+  if (node.glow) fadeRoot(node.glow, factor);
+  for (const child of node.tilt.children) {
+    if (child === node.mesh) continue;
+    if (nodes.has(child.name)) continue;
+    if (String(child.name).startsWith("helper-")) continue;
+    fadeRoot(child, factor);
+  }
+}
+
+let lastScaleLayer = "solar";
+
+function paintScaleLayer() {
+  if (earthSkyLook) return;
+  const solar = solarOpacity(state.distance);
+  const galactic = galaxyOpacity(state.distance);
+  fadeRoot(asteroidBelt, solar);
+  fadeRoot(kuiperBelt, solar);
+  fadeRoot(orbitLines, solar);
+  celestial.visible = solar > 0.12;
+  setGalaxyLayerVisible(galaxy, galactic);
+  for (const node of nodes.values()) fadeBodyNode(node, solar);
+  if (helpers && galactic > 0.5) {
+    setHelperVisibility(helpers, { selected: false, orbit: false, axis: false, spin: false });
+  }
+  const layer = scaleLayer(state.distance);
+  if (layer !== lastScaleLayer) {
+    lastScaleLayer = layer;
+    if (layer === "milkyway") say("Milky Way. The Sun sits in the Orion Arm.");
+    else if (layer === "neighborhood") say("Nearby galaxies.");
+    else if (layer === "solar") say("Solar system.");
+  }
 }
 
 function updateLabels() {
@@ -679,6 +764,7 @@ function updateLabels() {
     for (const node of nodes.values()) node.label.hidden = true;
     return;
   }
+  const hidePlanets = solarOpacity(state.distance) < 0.45;
   const width = window.innerWidth;
   const height = window.innerHeight;
   const focused = findBody(state.focusedId);
@@ -688,7 +774,7 @@ function updateLabels() {
     const onScreen = projected.z > -1 && projected.z < 1
       && Math.abs(projected.x) < 1.12
       && Math.abs(projected.y) < 1.12;
-    const show = onScreen && canShowLabel(node.body, focused);
+    const show = !hidePlanets && onScreen && canShowLabel(node.body, focused);
     node.label.hidden = !show;
     if (!show) continue;
     node.label.classList.toggle("is-active", node.body.id === state.selectedId);

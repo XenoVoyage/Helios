@@ -326,7 +326,8 @@ test("Kuiper belt sits outside Neptune and contains Pluto's orbit", () => {
   assert.ok(outer > pluto);
   assert.ok(CONFIG.maxDistance > outer);
   assert.ok(CONFIG.cameraDistance > pluto);
-  assert.ok(CONFIG.maxDistance < CONFIG.skyRadius);
+  assert.ok(CONFIG.solarMaxDistance > outer);
+  assert.ok(CONFIG.solarMaxDistance < CONFIG.skyRadius);
   assert.ok(CONFIG.cameraFar > CONFIG.skyRadius);
   assert.ok(CONFIG.kuiperCount < CONFIG.beltCount);
 });

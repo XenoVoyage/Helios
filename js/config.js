@@ -1,16 +1,18 @@
 /**
  * Canonical tunables. VERSION must match VERSION.txt.
  *
- * NASA / JPL catalog numbers stay in js/bodies.js. Only this visual scale
- * and the time slider may diverge from 1:1. Time is not tied to scale.
+ * NASA / JPL catalog numbers stay in js/bodies.js. Galactic kpc stay in
+ * js/galaxy-catalog.js. Only visual scale, the galaxy kpc mapping, and
+ * the time slider may diverge from 1:1. Time is not tied to scale.
  *
  * visualScale is the one spacing knob: it multiplies the compressed orbit
  * curve (orbitScale * AU^orbitPower). Raise it to spread the system; do not
  * invent fake AU values. sizeScale / sizePower size the spheres the same way.
- * Moons share that size curve (moonSizeScale 1).
+ * Moons share that size curve (moonSizeScale 1). Galaxy zoom uses mwScale /
+ * neighborhoodScale; those are kpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20e",
+  VERSION: "v2026.8.20f",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -41,10 +43,22 @@ export const CONFIG = Object.freeze({
   cameraElevation: 0.5,
   cameraAzimuth: 0.55,
   minDistance: 2.4,
-  maxDistance: 1650,
-  // Celestial sphere sits around the camera; far plane must clear it.
+  // Solar overview / Kuiper camera cap. Further zoom is the galaxy layer.
+  solarMaxDistance: 1650,
+  maxDistance: 28000,
+  mwViewDistance: 4000,
+  neighborhoodViewDistance: 25000,
+  galaxyFadeStart: 1650,
+  galaxyFadeEnd: 2150,
+  // kpc → scene for the Milky Way disk. Not the AU orbit curve.
+  mwScale: 82,
+  mwPower: 0.95,
+  // Second compressed scale for LMC / SMC / M31 / M33.
+  neighborhoodScale: 280,
+  neighborhoodPower: 0.55,
+  // Celestial sphere sits around the camera; far plane must clear the galaxy layer.
   skyRadius: 2000,
-  cameraFar: 4200,
+  cameraFar: 48000,
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
   focusLerp: 6,
