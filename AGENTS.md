@@ -42,4 +42,8 @@ Do not add managers, services, factories, event buses, plugin systems, accounts,
 
 ## Git
 
-Treat `main` as protected. Work on a short-lived branch, open a draft pull request, and do not merge without explicit authorization.
+Treat `main` as protected. Work on a short-lived branch and open a draft pull request when the work is ready.
+
+Agents must not merge. Until the first playable phase is on `main`, **Smarty** (the coordinating developer) may merge this repository. After that phase, merge only with a new explicit authorization.
+
+Draft PRs must include how to run tests and what was verified on desktop and touch.
