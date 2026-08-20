@@ -2,8 +2,9 @@
  * Published galactic neighborhood numbers. Visual mapping lives in
  * js/galaxy.js; tunables live in js/config.js.
  *
- * Distances are kiloparsecs. Coordinates are IAU galactic (l, b) and
- * equatorial J2000. Do not convert these through the solar-system AU curve.
+ * Distances are kiloparsecs unless a published Mpc figure is also stored
+ * (Virgo). Coordinates are IAU galactic (l, b) and equatorial J2000. Do
+ * not convert these through the solar-system AU curve.
  */
 
 /** GRAVITY Collaboration 2019, A&A 625, L10. Geometric R0 from S2. */
@@ -163,8 +164,119 @@ export const NEIGHBORS = Object.freeze([
   },
 ]);
 
+/**
+ * Other well-known Local Group members. Not a dwarf dump. Distances from
+ * McConnachie 2012, AJ 144, 4. Positions: SIMBAD ICRS / IAU galactic J2000.
+ * WLM is SIMBAD DDO 221 / NAME WLM Galaxy.
+ */
+export const LOCAL_GROUP = Object.freeze([
+  {
+    id: "m32",
+    name: "M32",
+    messier: "M32",
+    raDeg: 10.67427,
+    decDeg: 40.86517,
+    lDeg: 121.150017,
+    bDeg: -21.976334,
+    distanceKpc: 805,
+    radiusKpc: 0.4,
+  },
+  {
+    id: "ngc205",
+    name: "NGC 205",
+    messier: "M110",
+    raDeg: 10.091905,
+    decDeg: 41.685419,
+    lDeg: 120.716279,
+    bDeg: -21.138699,
+    distanceKpc: 824,
+    radiusKpc: 2.0,
+  },
+  {
+    id: "ngc147",
+    name: "NGC 147",
+    messier: "",
+    raDeg: 8.3005,
+    decDeg: 48.508739,
+    lDeg: 119.817409,
+    bDeg: -14.2527,
+    distanceKpc: 676,
+    radiusKpc: 1.3,
+  },
+  {
+    id: "ngc185",
+    name: "NGC 185",
+    messier: "",
+    raDeg: 9.741417,
+    decDeg: 48.33751,
+    lDeg: 120.791757,
+    bDeg: -14.482403,
+    distanceKpc: 617,
+    radiusKpc: 1.0,
+  },
+  {
+    id: "ic10",
+    name: "IC 10",
+    messier: "",
+    raDeg: 5.07223,
+    decDeg: 59.303791,
+    lDeg: 118.958996,
+    bDeg: -3.327464,
+    distanceKpc: 794,
+    radiusKpc: 0.8,
+  },
+  {
+    id: "ngc6822",
+    name: "NGC 6822",
+    messier: "",
+    raDeg: 296.234163,
+    decDeg: -14.797581,
+    lDeg: 25.342467,
+    bDeg: -18.391181,
+    distanceKpc: 459,
+    radiusKpc: 1.0,
+  },
+  {
+    id: "wlm",
+    name: "WLM",
+    messier: "",
+    raDeg: 0.49125,
+    decDeg: -15.463889,
+    lDeg: 75.8532,
+    bDeg: -73.6258,
+    distanceKpc: 933,
+    radiusKpc: 1.6,
+  },
+]);
+
+/**
+ * Nearest large cluster. Centered on M87. Distance: Mei et al. 2007,
+ * ApJ 655, 144, ACS Virgo Cluster Survey mean 16.5 Mpc. Position: SIMBAD
+ * M87 ICRS / IAU galactic J2000. We sit in the Local Group, not in Virgo;
+ * Virgo is the nearest large cluster (Virgo Supercluster).
+ */
+export const VIRGO_CLUSTER = Object.freeze({
+  id: "virgo",
+  name: "Virgo Cluster",
+  center: "M87",
+  raDeg: 187.705931,
+  decDeg: 12.391123,
+  lDeg: 283.777755,
+  bDeg: 74.491155,
+  distanceMpc: 16.5,
+  distanceKpc: 16500,
+});
+
 export function findNeighbor(id) {
   return NEIGHBORS.find((item) => item.id === id) ?? null;
+}
+
+export function findLocalGroupMember(id) {
+  return LOCAL_GROUP.find((item) => item.id === id) ?? null;
+}
+
+export function localGroupFamily() {
+  return [...NEIGHBORS, ...LOCAL_GROUP];
 }
 
 export function findSpiralArm(id) {
