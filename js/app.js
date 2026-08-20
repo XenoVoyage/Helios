@@ -1,12 +1,14 @@
 import * as THREE from "../vendor/three.module.min.js";
-import { CONFIG } from "./config.js";
+import { CONFIG, formatDaysPerSecond } from "./config.js";
 import {
   BODIES,
   describeBody,
   findBody,
   keplerOffset,
+  ringTextureU,
   visualOrbit,
   visualRadius,
+  visualRingRadius,
 } from "./bodies.js";
 
 const DEG = Math.PI / 180;
@@ -90,14 +92,15 @@ function boot() {
   }
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x05060a);
-  camera = new THREE.PerspectiveCamera(52, 1, 0.05, 900);
+  scene.background = new THREE.Color(0x02050c);
+  camera = new THREE.PerspectiveCamera(52, 1, 0.05, 2200);
   scene.add(createStarfield());
   belt = createBelt();
   scene.add(belt);
-  scene.add(new THREE.AmbientLight(0x6b7280, 0.42));
-  scene.add(new THREE.HemisphereLight(0x9eb6ff, 0x1a120c, 0.22));
-  const sunLight = new THREE.PointLight(0xffe6b0, 3.4, 0, 1.15);
+  // Faint fill so the night side is readable. Day, night, and terminator
+  // come from the Sun point light, not from this ambient.
+  scene.add(new THREE.AmbientLight(0x1a2436, 0.025));
+  const sunLight = new THREE.PointLight(0xfff1d4, 14, 0, 0);
   sunLight.position.set(0, 0, 0);
   scene.add(sunLight);
 
@@ -106,8 +109,15 @@ function boot() {
   }
   for (const body of BODIES) {
     const node = nodes.get(body.id);
-    if (body.parent) nodes.get(body.parent).pivot.add(node.pivot);
-    else scene.add(node.pivot);
+    if (body.parent) {
+      const parentNode = nodes.get(body.parent);
+      // Moons follow the parent's equatorial plane so Titan stays in the
+      // ring plane instead of punching through a tilted disc.
+      const attach = body.kind === "moon" ? parentNode.tilt : parentNode.pivot;
+      attach.add(node.pivot);
+    } else {
+      scene.add(node.pivot);
+    }
     if (body.parent === "sun") {
       scene.add(createOrbitLine(body));
     }
@@ -139,7 +149,7 @@ function createRenderer() {
   if (!renderer.getContext()) return false;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.12;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   return true;
 }
@@ -164,8 +174,8 @@ function createBodyNode(body) {
     ? new THREE.MeshBasicMaterial({ map: loadMap(body.texture), color: 0xfff0c8 })
     : new THREE.MeshStandardMaterial({
       map: loadMap(body.texture),
-      roughness: body.kind === "planet" ? 0.78 : 0.92,
-      metalness: 0.02,
+      roughness: body.kind === "planet" ? 0.72 : 0.88,
+      metalness: 0,
     });
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, segments, segments), material);
   mesh.userData.bodyId = body.id;
@@ -184,26 +194,7 @@ function createBodyNode(body) {
   }
 
   if (body.ring) {
-    const inner = radius * body.ringInner;
-    const outer = radius * body.ringOuter;
-    const ringGeo = new THREE.RingGeometry(inner, outer, 128, 1);
-    const uv = ringGeo.attributes.uv;
-    for (let i = 0; i < uv.count; i += 1) {
-      uv.setXY(i, uv.getY(i), 0.5);
-    }
-    const ringMap = loadMap(body.ring);
-    ringMap.colorSpace = THREE.SRGBColorSpace;
-    const ring = new THREE.Mesh(
-      ringGeo,
-      new THREE.MeshBasicMaterial({
-        map: ringMap,
-        transparent: true,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      }),
-    );
-    ring.rotation.x = -Math.PI / 2;
-    tilt.add(ring);
+    tilt.add(createRing(body));
   }
 
   const label = document.createElement("button");
@@ -217,6 +208,34 @@ function createBodyNode(body) {
   return { body, pivot, tilt, mesh, label, radius };
 }
 
+function createRing(body) {
+  const inner = visualRingRadius(body, body.ringInnerKm);
+  const outer = visualRingRadius(body, body.ringOuterKm);
+  const ringGeo = new THREE.RingGeometry(inner, outer, 256, 2);
+  const pos = ringGeo.attributes.position;
+  const uv = ringGeo.attributes.uv;
+  for (let i = 0; i < pos.count; i += 1) {
+    const u = ringTextureU(Math.hypot(pos.getX(i), pos.getY(i)), inner, outer);
+    uv.setXY(i, u, 0.5);
+  }
+  uv.needsUpdate = true;
+  const ringMap = loadMap(body.ring);
+  const ring = new THREE.Mesh(
+    ringGeo,
+    new THREE.MeshStandardMaterial({
+      map: ringMap,
+      transparent: true,
+      alphaTest: 0.08,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      roughness: 0.58,
+      metalness: 0.12,
+    }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  return ring;
+}
+
 function createOrbitLine(body) {
   const parent = findBody(body.parent);
   const points = [];
@@ -228,7 +247,7 @@ function createOrbitLine(body) {
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
   return new THREE.Line(
     geometry,
-    new THREE.LineBasicMaterial({ color: 0x8d8878, transparent: true, opacity: 0.22 }),
+    new THREE.LineBasicMaterial({ color: 0x6d8294, transparent: true, opacity: 0.22 }),
   );
 }
 
@@ -238,7 +257,7 @@ function createStarfield() {
   const colors = new Float32Array(count * 3);
   const rand = seedRandom(20260820);
   for (let i = 0; i < count; i += 1) {
-    const radius = 280 + rand() * 180;
+    const radius = 820 + rand() * 360;
     const phi = Math.acos(2 * rand() - 1);
     const theta = rand() * Math.PI * 2;
     positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
@@ -277,7 +296,7 @@ function createBelt() {
   const group = new THREE.Group();
   group.add(new THREE.Points(
     geometry,
-    new THREE.PointsMaterial({ color: 0xb9a889, size: 0.09, sizeAttenuation: true, transparent: true, opacity: 0.72 }),
+    new THREE.PointsMaterial({ color: 0xb7b3a8, size: 0.1, sizeAttenuation: true, transparent: true, opacity: 0.7 }),
   ));
   return group;
 }
@@ -468,14 +487,7 @@ function paintSpeed() {
   ui.play.textContent = state.playing ? "Pause" : "Play";
   ui.play.setAttribute("aria-pressed", String(state.playing));
   ui.speed.value = String(sliderFromSpeed(state.daysPerSecond));
-  ui.speedReadout.textContent = `${formatSpeed(state.daysPerSecond)} / sec`;
-}
-
-function formatSpeed(daysPerSecond) {
-  if (daysPerSecond >= 365) return `${(daysPerSecond / 365.25).toFixed(1)} yr`;
-  if (daysPerSecond >= 30) return `${(daysPerSecond / 30.437).toFixed(1)} mo`;
-  if (daysPerSecond >= 1) return `${daysPerSecond.toFixed(daysPerSecond >= 10 ? 0 : 1)} d`;
-  return `${(daysPerSecond * 24).toFixed(0)} h`;
+  ui.speedReadout.textContent = `${formatDaysPerSecond(state.daysPerSecond)} / sec`;
 }
 
 function paintClock() {

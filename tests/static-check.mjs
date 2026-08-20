@@ -34,6 +34,18 @@ assert.match(license, /MIT License/);
 assert.match(threeLicense, /three\.js authors/);
 assert.match(css, /min-height: 44px/);
 assert.doesNotMatch(css, /:hover\s*\{[^}]*display:\s*block/);
+assert.doesNotMatch(css, /--gold|#e8c872/i);
+assert.match(css, /--cyan:\s*#66f7ff/);
+assert.match(css, /--void:\s*#02050c/);
+assert.match(css, /--magenta:\s*#ff57d8/);
+assert.equal(CONFIG.defaultDaysPerSecond, 1 / 24);
+assert.equal(CONFIG.minDaysPerSecond, 1 / 24);
+assert.match(html, /1 h \/ sec/);
+assert.doesNotMatch(html, /8 d \/ sec/);
+assert.match(app, /PointLight/);
+assert.match(app, /MeshStandardMaterial/);
+assert.match(app, /ringInnerKm/);
+assert.doesNotMatch(app, /HemisphereLight/);
 
 await stat(path.join(root, "vendor/three.module.min.js"));
 await stat(path.join(root, "vendor/three.core.min.js"));

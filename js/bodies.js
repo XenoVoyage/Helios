@@ -244,8 +244,9 @@ export const BODIES = Object.freeze([
     tiltDeg: 26.73,
     texture: "assets/textures/saturn.jpg",
     ring: "assets/textures/saturn-ring.png",
-    ringInner: 1.11,
-    ringOuter: 2.27,
+    // NASA / JPL main-ring edges (D-ring inner, A-ring outer), km from Saturn center.
+    ringInnerKm: 66900,
+    ringOuterKm: 136775,
     color: "#e6d3a1",
   },
   {
@@ -350,16 +351,35 @@ export function visualRadius(radiusKm) {
 
 export function visualOrbit(orbitAu) {
   if (orbitAu <= 0) return 0;
-  return CONFIG.orbitScale * orbitAu ** CONFIG.orbitPower;
+  return CONFIG.visualScale * CONFIG.orbitScale * orbitAu ** CONFIG.orbitPower;
+}
+
+/** Ring km mapped linearly onto the displayed globe, not through sizePower. */
+export function visualRingRadius(parent, ringKm) {
+  if (!parent || !(ringKm > 0)) return 0;
+  return visualRadius(parent.radiusKm) * (ringKm / parent.radiusKm);
+}
+
+/** Radial U for the 1D saturn-ring strip. 0 at the inner edge, 1 at the outer. */
+export function ringTextureU(radius, inner, outer) {
+  const span = outer - inner;
+  if (!(span > 0)) return 0;
+  return (radius - inner) / span;
 }
 
 export function visualMoonDistance(body, parent) {
   const parentVisual = visualRadius(parent.radiusKm);
   const moonVisual = visualRadius(body.radiusKm);
-  const room = parentVisual + moonVisual + CONFIG.moonPad;
+  const ringOuter = visualRingRadius(parent, parent.ringOuterKm);
+  const ringClearance = ringOuter > 0 ? ringOuter * 1.5 + moonVisual : 0;
+  const clearance = Math.max(
+    parentVisual + moonVisual + CONFIG.moonPad,
+    ringClearance,
+  );
   const radii = body.orbitKm / parent.radiusKm;
-  const spread = room + CONFIG.moonSpread * Math.log2(1 + radii);
-  return Math.min(spread, parentVisual * CONFIG.moonOrbitCap + moonVisual);
+  const spread = clearance + CONFIG.moonSpread * Math.log2(1 + radii);
+  const cap = Math.max(parentVisual, ringOuter) * CONFIG.moonOrbitCap + moonVisual;
+  return Math.min(Math.max(spread, clearance), cap);
 }
 
 export function visualSemiMajor(body, parent) {
