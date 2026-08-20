@@ -42,6 +42,10 @@ assert.equal(CONFIG.defaultDaysPerSecond, 1 / 24);
 assert.equal(CONFIG.minDaysPerSecond, 1 / 24);
 assert.match(html, /1 h \/ sec/);
 assert.doesNotMatch(html, /8 d \/ sec/);
+assert.match(app, /PointLight/);
+assert.match(app, /MeshStandardMaterial/);
+assert.match(app, /ringInnerKm/);
+assert.doesNotMatch(app, /HemisphereLight/);
 
 await stat(path.join(root, "vendor/three.module.min.js"));
 await stat(path.join(root, "vendor/three.core.min.js"));

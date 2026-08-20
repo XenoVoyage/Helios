@@ -371,7 +371,11 @@ export function visualMoonDistance(body, parent) {
   const parentVisual = visualRadius(parent.radiusKm);
   const moonVisual = visualRadius(body.radiusKm);
   const ringOuter = visualRingRadius(parent, parent.ringOuterKm);
-  const clearance = Math.max(parentVisual, ringOuter) + moonVisual + CONFIG.moonPad;
+  const ringClearance = ringOuter > 0 ? ringOuter * 1.5 + moonVisual : 0;
+  const clearance = Math.max(
+    parentVisual + moonVisual + CONFIG.moonPad,
+    ringClearance,
+  );
   const radii = body.orbitKm / parent.radiusKm;
   const spread = clearance + CONFIG.moonSpread * Math.log2(1 + radii);
   const cap = Math.max(parentVisual, ringOuter) * CONFIG.moonOrbitCap + moonVisual;

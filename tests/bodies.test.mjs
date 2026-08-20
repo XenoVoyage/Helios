@@ -124,7 +124,7 @@ test("Saturn rings are a NASA annulus and Titan stays outside them", () => {
   assert.equal(ringTextureU(outer, inner, outer), 1);
   assert.ok(Math.abs(ringTextureU((inner + outer) / 2, inner, outer) - 0.5) < 1e-12);
   const titanOrbit = visualMoonDistance(titan, saturn);
-  assert.ok(titanOrbit > outer + visualRadius(titan.radiusKm));
+  assert.ok(titanOrbit > outer * 1.5 + visualRadius(titan.radiusKm));
 });
 
 test("describeBody keeps public facts readable", () => {

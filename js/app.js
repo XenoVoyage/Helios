@@ -99,8 +99,8 @@ function boot() {
   scene.add(belt);
   // Faint fill so the night side is readable. Day, night, and terminator
   // come from the Sun point light, not from this ambient.
-  scene.add(new THREE.AmbientLight(0x1a2436, 0.04));
-  const sunLight = new THREE.PointLight(0xfff1d4, 9, 0, 0);
+  scene.add(new THREE.AmbientLight(0x1a2436, 0.025));
+  const sunLight = new THREE.PointLight(0xfff1d4, 14, 0, 0);
   sunLight.position.set(0, 0, 0);
   scene.add(sunLight);
 
@@ -211,7 +211,7 @@ function createBodyNode(body) {
 function createRing(body) {
   const inner = visualRingRadius(body, body.ringInnerKm);
   const outer = visualRingRadius(body, body.ringOuterKm);
-  const ringGeo = new THREE.RingGeometry(inner, outer, 192, 1);
+  const ringGeo = new THREE.RingGeometry(inner, outer, 256, 2);
   const pos = ringGeo.attributes.position;
   const uv = ringGeo.attributes.uv;
   for (let i = 0; i < pos.count; i += 1) {
@@ -225,6 +225,7 @@ function createRing(body) {
     new THREE.MeshStandardMaterial({
       map: ringMap,
       transparent: true,
+      alphaTest: 0.08,
       side: THREE.DoubleSide,
       depthWrite: false,
       roughness: 0.58,
