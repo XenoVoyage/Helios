@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.8.20f](https://img.shields.io/badge/version-v2026.8.20f-66f7ff)](VERSION.txt)
+[![Version v2026.8.20g](https://img.shields.io/badge/version-v2026.8.20g-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D orrery of the solar system.
@@ -17,7 +17,11 @@ An interactive 3D orrery of the solar system.
 
 ![Nearby galaxies on the second scale: Andromeda, Triangulum, LMC, and SMC.](docs/assets/helios-neighborhood.webp)
 
-Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch or scroll to zoom. Play, pause, and change the speed of time from the bar at the bottom. Click empty space to close the body card. Zoom out past the solar overview and the orrery fades to a Sun pin in the Orion Arm of a local Milky Way disk, then to Andromeda, Triangulum, and the Magellanic Clouds.
+![Local Group after a further zoom: M31, M33, the Magellanic Clouds, and a short set of other members.](docs/assets/helios-local-group.webp)
+
+![Virgo Cluster with the Local Group as a pin. Virgo is the nearest large cluster, not our cluster.](docs/assets/helios-virgo.webp)
+
+Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch or scroll to zoom. Play, pause, and change the speed of time from the bar at the bottom. Click empty space to close the body card. Zoom out past the solar overview and the orrery fades to a Sun pin in the Orion Arm of a local Milky Way disk, then to Andromeda, Triangulum, and the Magellanic Clouds, then a short Local Group family, then the Virgo Cluster. We sit in the Local Group; Virgo is the nearest large cluster (Virgo Supercluster), not our cluster in the same sense.
 
 Helios is a local page: no accounts, no telemetry, and no CDN.
 
@@ -26,7 +30,7 @@ Helios is a local page: no accounts, no telemetry, and no CDN.
 | Detail | Summary |
 | --- | --- |
 | Worlds | Sun, 8 planets, the Moon, Phobos, Deimos, Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, and Ceres |
-| Sky | Hipparcos bright stars, IAU constellation lines, a Milky Way band, and Andromeda at M31. Extra zoom-out shows a 3D disk and nearby galaxies; that map is not the sky |
+| Sky | Hipparcos bright stars, IAU constellation lines, a Milky Way band, and Andromeda at M31. Extra zoom-out shows a 3D disk, nearby galaxies, a short Local Group, and Virgo; that map is not the sky |
 | Belts | Asteroid field between Mars and Jupiter; Kuiper field from about 30–50 AU. Sparse points, not rock catalogs |
 | Time | Independent of the visual scale. Default and minimum are 1 simulated hour per real second |
 | Play with | Mouse, keyboard, or touch |
@@ -57,6 +61,6 @@ Then open `http://127.0.0.1:4173/Helios/`. Opening `index.html` through a local 
 
 ## Credits
 
-Planet, Sun, Moon, and Ceres maps are [Solar System Scope](https://www.solarsystemscope.com/textures/) textures (CC BY 4.0), based on NASA elevation and imagery. Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, Phobos, and Deimos maps are from [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources). Bright-star positions are a Hipparcos / Yale Bright Star subset compiled in [HYG](https://www.astronexus.com/projects/hyg) (ESA Hipparcos I/239). Constellation stick figures are the [IAU / Alan MacRobert figures](https://www.iau.org/public/themes/constellations/) (CC BY 4.0). The Milky Way band is [ESA Gaia DR2](https://sci.esa.int/web/gaia/-/60196-gaia-s-sky-in-colour-equirectangular-projection) all-sky colour in galactic coordinates (ESA/Gaia/DPAC; CC BY-SA 3.0 IGO). Andromeda is NASA / JPL-Caltech [Spitzer PIA04921](https://images.nasa.gov/details/PIA04921), reused as the extra-zoom M31 sprite. Galactic R0 follows [GRAVITY Collaboration 2019](https://ui.adsabs.harvard.edu/abs/2019A%26A...625L..10G); spiral arms follow [Reid et al. 2019](https://ui.adsabs.harvard.edu/abs/2019ApJ...885..131R); LMC and SMC distances are Pietrzyński et al. 2019 and Graczyk et al. 2020; M31 and M33 distances follow NASA/NED and de Grijs & Bono 2014. Orbital and physical values follow NASA / JPL published figures, including the [planetary fact sheet](https://nssdc.gsfc.nasa.gov/planetary/factsheet/) and [JPL satellite elements](https://ssd.jpl.nasa.gov/sats/elem/). Three.js is vendored under MIT.
+Planet, Sun, Moon, and Ceres maps are [Solar System Scope](https://www.solarsystemscope.com/textures/) textures (CC BY 4.0), based on NASA elevation and imagery. Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, Phobos, and Deimos maps are from [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources). Bright-star positions are a Hipparcos / Yale Bright Star subset compiled in [HYG](https://www.astronexus.com/projects/hyg) (ESA Hipparcos I/239). Constellation stick figures are the [IAU / Alan MacRobert figures](https://www.iau.org/public/themes/constellations/) (CC BY 4.0). The Milky Way band is [ESA Gaia DR2](https://sci.esa.int/web/gaia/-/60196-gaia-s-sky-in-colour-equirectangular-projection) all-sky colour in galactic coordinates (ESA/Gaia/DPAC; CC BY-SA 3.0 IGO). Andromeda is NASA / JPL-Caltech [Spitzer PIA04921](https://images.nasa.gov/details/PIA04921), reused as the extra-zoom M31 sprite. Galactic R0 follows [GRAVITY Collaboration 2019](https://ui.adsabs.harvard.edu/abs/2019A%26A...625L..10G); spiral arms follow [Reid et al. 2019](https://ui.adsabs.harvard.edu/abs/2019ApJ...885..131R); LMC and SMC distances are Pietrzyński et al. 2019 and Graczyk et al. 2020; M31 and M33 distances follow NASA/NED and de Grijs & Bono 2014. Other Local Group members follow McConnachie 2012; the Virgo Cluster distance is Mei et al. 2007 (16.5 Mpc, centered on M87). Orbital and physical values follow NASA / JPL published figures, including the [planetary fact sheet](https://nssdc.gsfc.nasa.gov/planetary/factsheet/) and [JPL satellite elements](https://ssd.jpl.nasa.gov/sats/elem/). Three.js is vendored under MIT.
 
 Released under the [MIT License](LICENSE).

@@ -25,11 +25,13 @@ import {
 import {
   createGalaxyLayer,
   galaxyOpacity,
+  localGroupCameraAim,
   neighborhoodCameraAim,
   requestedGalaxyLook,
   scaleLayer,
   setGalaxyLayerVisible,
   solarOpacity,
+  virgoCameraAim,
 } from "./galaxy.js";
 
 const DEG = Math.PI / 180;
@@ -209,6 +211,18 @@ function boot() {
     } else if (galaxyLook === "neighborhood") {
       const aim = neighborhoodCameraAim();
       state.distance = CONFIG.neighborhoodViewDistance;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "localgroup") {
+      const aim = localGroupCameraAim();
+      state.distance = CONFIG.localGroupViewDistance;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "virgo") {
+      const aim = virgoCameraAim();
+      state.distance = CONFIG.virgoViewDistance;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
@@ -759,6 +773,8 @@ function paintScaleLayer() {
     lastScaleLayer = layer;
     if (layer === "milkyway") say("Milky Way. The Sun sits in the Orion Arm.");
     else if (layer === "neighborhood") say("Nearby galaxies.");
+    else if (layer === "localgroup") say("Local Group.");
+    else if (layer === "virgo") say("Virgo Cluster. The Local Group is a pin; Virgo is the nearest large cluster.");
     else if (layer === "solar") say("Solar system.");
   }
 }
