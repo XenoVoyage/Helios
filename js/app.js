@@ -10,6 +10,12 @@ import {
   visualRadius,
   visualRingRadius,
 } from "./bodies.js";
+import {
+  attachSkyToCamera,
+  createCelestialSphere,
+  placeCameraForSkyLook,
+  wantsEarthSkyLook,
+} from "./sky.js";
 
 const DEG = Math.PI / 180;
 const pointerIds = new Map();
@@ -39,8 +45,10 @@ const nodes = new Map();
 let renderer;
 let scene;
 let camera;
+let celestial;
 let belt;
 let lastStamp = 0;
+const earthSkyLook = wantsEarthSkyLook();
 
 function $(id) {
   return document.getElementById(id);
@@ -93,8 +101,9 @@ function boot() {
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x02050c);
-  camera = new THREE.PerspectiveCamera(52, 1, 0.05, 2200);
-  scene.add(createStarfield());
+  camera = new THREE.PerspectiveCamera(52, 1, 0.05, CONFIG.cameraFar);
+  celestial = createCelestialSphere(THREE);
+  scene.add(celestial);
   belt = createBelt();
   scene.add(belt);
   // Faint fill so the night side is readable. Day, night, and terminator
@@ -129,6 +138,13 @@ function boot() {
     ui.unsupported.hidden = false;
     return;
   }
+  if (earthSkyLook) {
+    state.playing = false;
+    state.focusedId = "earth";
+    paintSpeed();
+    paintCard();
+  }
+  updateBodies();
   placeCamera(1);
   lastStamp = performance.now();
   requestAnimationFrame(tick);
@@ -248,32 +264,6 @@ function createOrbitLine(body) {
   return new THREE.Line(
     geometry,
     new THREE.LineBasicMaterial({ color: 0x6d8294, transparent: true, opacity: 0.22 }),
-  );
-}
-
-function createStarfield() {
-  const count = 3200;
-  const positions = new Float32Array(count * 3);
-  const colors = new Float32Array(count * 3);
-  const rand = seedRandom(20260820);
-  for (let i = 0; i < count; i += 1) {
-    const radius = 820 + rand() * 360;
-    const phi = Math.acos(2 * rand() - 1);
-    const theta = rand() * Math.PI * 2;
-    positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = radius * Math.cos(phi);
-    positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
-    const tint = 0.78 + rand() * 0.22;
-    colors[i * 3] = tint;
-    colors[i * 3 + 1] = tint * (0.94 + rand() * 0.06);
-    colors[i * 3 + 2] = tint * (0.88 + rand() * 0.12);
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  return new THREE.Points(
-    geometry,
-    new THREE.PointsMaterial({ size: 0.55, vertexColors: true, sizeAttenuation: true }),
   );
 }
 
@@ -548,6 +538,11 @@ function updateBodies() {
 function placeCamera(blend) {
   const focused = nodes.get(state.focusedId);
   focused.mesh.getWorldPosition(desiredTarget);
+  if (earthSkyLook) {
+    placeCameraForSkyLook(camera, desiredTarget, focused.radius * 1.25);
+    attachSkyToCamera(celestial, camera);
+    return;
+  }
   focusPoint.lerp(desiredTarget, clamp(blend, 0, 1));
   const cosE = Math.cos(state.elevation);
   camera.position.set(
@@ -556,9 +551,14 @@ function placeCamera(blend) {
     focusPoint.z + state.distance * cosE * Math.cos(state.azimuth),
   );
   camera.lookAt(focusPoint);
+  attachSkyToCamera(celestial, camera);
 }
 
 function updateLabels() {
+  if (earthSkyLook) {
+    for (const node of nodes.values()) node.label.hidden = true;
+    return;
+  }
   const width = window.innerWidth;
   const height = window.innerHeight;
   const focused = findBody(state.focusedId);

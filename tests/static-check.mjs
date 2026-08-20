@@ -15,6 +15,7 @@ async function read(relative) {
 const html = await read("index.html");
 const css = await read("styles.css");
 const app = await read("js/app.js");
+const sky = await read("js/sky.js");
 const version = (await read("VERSION.txt")).trim();
 const license = await read("LICENSE");
 const threeLicense = await read("vendor/THREE-LICENSE");
@@ -29,6 +30,7 @@ assert.match(html, /viewport-fit=cover/);
 assert.doesNotMatch(html, remote);
 assert.doesNotMatch(css, remote);
 assert.doesNotMatch(app, remote);
+assert.doesNotMatch(sky, remote);
 assert.match(html, /vendor\/three|js\/app\.js/);
 assert.match(license, /MIT License/);
 assert.match(threeLicense, /three\.js authors/);
@@ -46,10 +48,19 @@ assert.match(app, /PointLight/);
 assert.match(app, /MeshStandardMaterial/);
 assert.match(app, /ringInnerKm/);
 assert.doesNotMatch(app, /HemisphereLight/);
+assert.doesNotMatch(app, /createStarfield/);
+assert.match(app, /createCelestialSphere/);
+assert.match(sky, /milky-way\.jpg/);
+assert.match(sky, /andromeda\.png/);
+assert.ok(CONFIG.cameraFar > CONFIG.skyRadius);
 
 await stat(path.join(root, "vendor/three.module.min.js"));
 await stat(path.join(root, "vendor/three.core.min.js"));
 await stat(path.join(root, ".nojekyll"));
+await stat(path.join(root, "assets/sky/milky-way.jpg"));
+await stat(path.join(root, "assets/sky/andromeda.png"));
+await stat(path.join(root, "js/sky.js"));
+await stat(path.join(root, "js/sky-catalog.js"));
 
 const threeRoot = path.join(root, "vendor");
 const seenThree = new Set();

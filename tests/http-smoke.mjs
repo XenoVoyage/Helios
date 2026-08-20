@@ -27,11 +27,15 @@ try {
     "js/app.js",
     "js/bodies.js",
     "js/config.js",
+    "js/sky.js",
+    "js/sky-catalog.js",
     "styles.css",
     "vendor/three.module.min.js",
     "vendor/three.core.min.js",
     "assets/textures/earth.jpg",
     "assets/textures/saturn-ring.png",
+    "assets/sky/milky-way.jpg",
+    "assets/sky/andromeda.png",
   ];
   for (const relative of paths) {
     const response = await fetch(base + relative);
