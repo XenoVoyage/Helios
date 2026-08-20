@@ -339,7 +339,7 @@ function neighborFamilyAim(azimuthNudge = 0, elevationNudge = 0) {
 }
 
 export function neighborhoodCameraAim() {
-  return neighborFamilyAim();
+  return neighborFamilyAim(0.22, -0.04);
 }
 
 export function localGroupCameraAim() {
@@ -618,10 +618,10 @@ function milkyWayDiskMap(THREE) {
   const beta0 = Math.PI - thetaSun;
 
   const disk = ctx.createRadialGradient(cx, cy, 2, cx, cy, diskPx);
-  disk.addColorStop(0, "rgba(255, 226, 186, 0.92)");
-  disk.addColorStop(0.12, "rgba(255, 196, 148, 0.58)");
-  disk.addColorStop(0.34, "rgba(160, 180, 240, 0.38)");
-  disk.addColorStop(0.7, "rgba(100, 130, 210, 0.2)");
+  disk.addColorStop(0, "rgba(255, 232, 196, 0.98)");
+  disk.addColorStop(0.1, "rgba(255, 204, 154, 0.42)");
+  disk.addColorStop(0.28, "rgba(150, 170, 230, 0.1)");
+  disk.addColorStop(0.62, "rgba(80, 110, 190, 0.03)");
   disk.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = disk;
   ctx.fillRect(0, 0, size, size);
@@ -651,9 +651,9 @@ function milkyWayDiskMap(THREE) {
       const x = cx + Math.cos(a) * r + (rand() - 0.5) * scatter;
       const y = cy + Math.sin(a) * r + (rand() - 0.5) * scatter;
       const fade = (1 - t * 0.55) * arm.alpha;
-      stampSoft(ctx, x + 5, y + 3, 8 + t * 12, `rgba(40, 28, 22, ${0.1 * fade})`);
-      stampSoft(ctx, x, y, 18 + t * 24, `rgba(170, 200, 255, ${0.48 * fade})`);
-      stampSoft(ctx, x, y, 10 + t * 14, `rgba(255, 236, 210, ${0.62 * fade})`);
+      stampSoft(ctx, x + 5, y + 3, 8 + t * 12, `rgba(40, 28, 22, ${0.12 * fade})`);
+      stampSoft(ctx, x, y, 20 + t * 26, `rgba(180, 208, 255, ${0.7 * fade})`);
+      stampSoft(ctx, x, y, 11 + t * 16, `rgba(255, 240, 214, ${0.82 * fade})`);
     }
     const clumps = arm.alpha > 0.8 ? 70 : 32;
     for (let i = 0; i < clumps; i += 1) {
@@ -786,7 +786,7 @@ function createSpiralStars(THREE, group) {
     colors[o + 2] = 0.95 - 0.2 * warm;
     n += 1;
   }
-  addPoints(THREE, group, "mw-disk", positions.slice(0, n * 3), colors.slice(0, n * 3), 2.8, 0.72, true, THREE.AdditiveBlending);
+  addPoints(THREE, group, "mw-disk", positions.slice(0, n * 3), colors.slice(0, n * 3), 3.4, 0.82, true, THREE.AdditiveBlending);
 }
 
 function createHalo(THREE, group) {
@@ -808,7 +808,7 @@ function createHalo(THREE, group) {
     colors[i * 3 + 1] = 0.78 + rand() * 0.1;
     colors[i * 3 + 2] = 0.95;
   }
-  addPoints(THREE, group, "mw-halo", positions, colors, 3.6, 0.62, true, THREE.AdditiveBlending);
+  addPoints(THREE, group, "mw-halo", positions, colors, 4.2, 0.7, true, THREE.AdditiveBlending);
 }
 
 function createBulge(THREE, group) {
@@ -855,28 +855,28 @@ function createDiskGlow(THREE, group) {
   const glow = new THREE.Mesh(
     new THREE.SphereGeometry(radius * 1.12, 40, 24),
     unlitBasic(THREE, {
-      color: 0xffe2c4,
-      opacity: 0.24,
+      color: 0xffe6cc,
+      opacity: 0.4,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     }),
   );
   glow.position.set(gc.x, gc.y, gc.z);
-  glow.scale.set(1, clamp((halfH * 4.2) / radius, 0.22, 0.42), 1);
+  glow.scale.set(1, clamp((halfH * 5.1) / radius, 0.28, 0.5), 1);
   glow.name = "mw-glow";
   group.add(glow);
 
   const edge = new THREE.Mesh(
     new THREE.SphereGeometry(radius * 0.98, 48, 20),
     unlitBasic(THREE, {
-      color: 0xd0dcff,
-      opacity: 0.2,
+      color: 0xd8e4ff,
+      opacity: 0.34,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     }),
   );
   edge.position.set(gc.x, gc.y, gc.z);
-  edge.scale.set(1, clamp((halfH * 2.6) / radius, 0.14, 0.28), 1);
+  edge.scale.set(1, clamp((halfH * 3.2) / radius, 0.18, 0.34), 1);
   edge.name = "mw-disk-edge";
   group.add(edge);
 
@@ -884,6 +884,7 @@ function createDiskGlow(THREE, group) {
     new THREE.PlaneGeometry(radius * 2, radius * 2),
     unlitBasic(THREE, {
       map: milkyWayDiskMap(THREE),
+      color: 0xfff4e4,
       opacity: 1,
       side: THREE.DoubleSide,
     }),
@@ -915,7 +916,7 @@ function neighborSpriteSize(neighbor) {
 }
 
 function neighborSizeBoost(neighbor) {
-  if (neighbor.id === "m31") return 2.15;
+  if (neighbor.id === "m31") return 2.4;
   if (neighbor.id === "lmc") return 1.85;
   if (neighbor.id === "smc") return 1.7;
   return 1.2;
@@ -934,10 +935,10 @@ function quietAndromedaMap(THREE) {
   ctx.rotate(-0.32);
   ctx.scale(1, 0.38);
   const disk = ctx.createRadialGradient(0, 0, 6, 0, 0, 118);
-  disk.addColorStop(0, "rgba(255, 228, 190, 0.95)");
-  disk.addColorStop(0.18, "rgba(210, 180, 150, 0.45)");
-  disk.addColorStop(0.55, "rgba(120, 140, 200, 0.22)");
-  disk.addColorStop(1, "rgba(40, 50, 80, 0)");
+  disk.addColorStop(0, "rgba(255, 232, 196, 1)");
+  disk.addColorStop(0.16, "rgba(230, 186, 140, 0.72)");
+  disk.addColorStop(0.48, "rgba(150, 120, 90, 0.4)");
+  disk.addColorStop(1, "rgba(50, 40, 30, 0)");
   ctx.fillStyle = disk;
   ctx.beginPath();
   ctx.arc(0, 0, 118, 0, Math.PI * 2);
@@ -964,7 +965,7 @@ function createNeighbors(THREE, group, maps) {
       : maps[galaxyKind(neighbor.id)] ?? maps.spiral;
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map,
-      color: neighbor.id === "m31" ? 0xf4f0ea : 0xffffff,
+      color: neighbor.id === "m31" ? 0xffe8c8 : 0xffffff,
       depthTest: neighbor.id !== "m31",
       opacity: 0.96,
     }));
@@ -987,7 +988,7 @@ function createNeighbors(THREE, group, maps) {
     const label = neighbor.messier ? `${neighbor.name} (${neighbor.messier})` : neighbor.name;
     const lift = size * aspect * 0.65 + 48;
     const side = neighbor.id === "smc" ? 180 : neighbor.id === "lmc" ? -80 : 0;
-    const labelScale = neighbor.id === "lmc" || neighbor.id === "smc" ? 4.8 : neighbor.id === "m31" ? 5.2 : 4.4;
+    const labelScale = neighbor.id === "lmc" || neighbor.id === "smc" ? 4.8 : neighbor.id === "m31" ? 6.2 : 4.4;
     cluster.add(labelSprite(THREE, label, { x: at.x + side, y: at.y + lift, z: at.z }, labelScale));
   }
   group.add(cluster);
@@ -1419,20 +1420,27 @@ function farGalaxySkyMap(THREE) {
   ctx.fillRect(0, 0, width, height);
   const rand = seedRandom(4608);
   for (let i = 0; i < 14000; i += 1) {
-    const x = rand() * width;
-    const y = rand() * height;
+    const theta = rand() * Math.PI * 2;
+    const phi = Math.acos(2 * rand() - 1);
+    const x = (theta / (Math.PI * 2)) * width;
+    const y = (phi / Math.PI) * height;
+    const pole = Math.sin(phi);
     const warm = rand();
     stampSoft(
       ctx,
       x,
       y,
-      0.8 + rand() * 2.4,
+      (0.7 + rand() * 2.2) * (0.4 + 0.6 * pole),
       `rgba(${Math.floor(150 + 95 * warm)}, ${Math.floor(165 + 55 * warm)}, ${Math.floor(215 - 40 * warm)}, ${0.28 + rand() * 0.5})`,
     );
   }
   for (let i = 0; i < 420; i += 1) {
-    const x = rand() * width;
-    const y = rand() * height;
+    const theta = rand() * Math.PI * 2;
+    const phi = Math.acos(2 * rand() - 1);
+    const pole = Math.sin(phi);
+    if (pole < 0.28) continue;
+    const x = (theta / (Math.PI * 2)) * width;
+    const y = (phi / Math.PI) * height;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(rand() * Math.PI);

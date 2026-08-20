@@ -14,7 +14,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20l",
+  VERSION: "v2026.8.20m",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -56,6 +56,8 @@ export const CONFIG = Object.freeze({
   universeViewDistance: 800000,
   galaxyFadeStart: 1880,
   galaxyFadeEnd: 11000,
+  // Mid solar→MW fade: Kuiper still reads, planet labels already gone.
+  handoffViewDistance: 6000,
   // kpc → scene for the Milky Way disk. Not the AU orbit curve.
   mwScale: 82,
   mwPower: 0.95,
