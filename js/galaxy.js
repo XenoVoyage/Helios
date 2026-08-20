@@ -618,20 +618,13 @@ function milkyWayDiskMap(THREE) {
   const beta0 = Math.PI - thetaSun;
 
   const disk = ctx.createRadialGradient(cx, cy, 2, cx, cy, diskPx);
-  disk.addColorStop(0, "rgba(255, 226, 186, 0.9)");
-  disk.addColorStop(0.12, "rgba(255, 196, 148, 0.5)");
-  disk.addColorStop(0.34, "rgba(160, 180, 240, 0.3)");
-  disk.addColorStop(0.78, "rgba(100, 130, 210, 0.08)");
+  disk.addColorStop(0, "rgba(255, 226, 186, 0.38)");
+  disk.addColorStop(0.1, "rgba(255, 196, 148, 0.16)");
+  disk.addColorStop(0.28, "rgba(140, 160, 220, 0.07)");
+  disk.addColorStop(0.58, "rgba(90, 120, 200, 0.02)");
   disk.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = disk;
   ctx.fillRect(0, 0, size, size);
-
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(-0.4);
-  ctx.scale(1, 0.24);
-  stampSoft(ctx, 0, 0, diskPx * 0.38, "rgba(255, 214, 168, 0.7)");
-  ctx.restore();
 
   const arms = [
     { beta: beta0, turns: 1.32, alpha: 1, width: 1 },
@@ -786,7 +779,7 @@ function createSpiralStars(THREE, group) {
     colors[o + 2] = 0.95 - 0.2 * warm;
     n += 1;
   }
-  addPoints(THREE, group, "mw-disk", positions.slice(0, n * 3), colors.slice(0, n * 3), 2.8, 0.72, true, THREE.AdditiveBlending);
+  addPoints(THREE, group, "mw-disk", positions.slice(0, n * 3), colors.slice(0, n * 3), 3.1, 0.82, true, THREE.AdditiveBlending);
 }
 
 function createHalo(THREE, group) {
@@ -853,30 +846,32 @@ function createDiskGlow(THREE, group) {
   const radius = MILKY_WAY.diskRadiusKpc * milkyWayUnitsPerKpc();
   const halfH = visualDiskHalfHeight();
   const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(radius * 1.12, 40, 24),
+    new THREE.SphereGeometry(radius * 1.08, 40, 24),
     unlitBasic(THREE, {
+      map: diskGlowMap(THREE),
       color: 0xffe2c4,
-      opacity: 0.28,
+      opacity: 0.12,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     }),
   );
   glow.position.set(gc.x, gc.y, gc.z);
-  glow.scale.set(1, clamp((halfH * 4.4) / radius, 0.24, 0.44), 1);
+  glow.scale.set(1, clamp((halfH * 3.6) / radius, 0.2, 0.36), 1);
   glow.name = "mw-glow";
   group.add(glow);
 
   const edge = new THREE.Mesh(
-    new THREE.SphereGeometry(radius * 0.98, 48, 20),
+    new THREE.SphereGeometry(radius * 0.96, 48, 20),
     unlitBasic(THREE, {
+      map: diskGlowMap(THREE),
       color: 0xd0dcff,
-      opacity: 0.26,
+      opacity: 0.08,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     }),
   );
   edge.position.set(gc.x, gc.y, gc.z);
-  edge.scale.set(1, clamp((halfH * 2.8) / radius, 0.16, 0.3), 1);
+  edge.scale.set(1, clamp((halfH * 2.2) / radius, 0.14, 0.24), 1);
   edge.name = "mw-disk-edge";
   group.add(edge);
 
@@ -915,7 +910,7 @@ function neighborSpriteSize(neighbor) {
 }
 
 function neighborSizeBoost(neighbor) {
-  if (neighbor.id === "m31") return 2.4;
+  if (neighbor.id === "m31") return 3.05;
   if (neighbor.id === "lmc") return 1.85;
   if (neighbor.id === "smc") return 1.7;
   return 1.2;
@@ -931,23 +926,27 @@ function quietAndromedaMap(THREE) {
   canvas.height = 256;
   const ctx = canvas.getContext("2d");
   ctx.translate(128, 128);
-  ctx.rotate(-0.32);
-  ctx.scale(1, 0.38);
-  const disk = ctx.createRadialGradient(0, 0, 6, 0, 0, 118);
-  disk.addColorStop(0, "rgba(255, 232, 196, 1)");
-  disk.addColorStop(0.16, "rgba(230, 186, 140, 0.72)");
-  disk.addColorStop(0.48, "rgba(150, 120, 90, 0.4)");
-  disk.addColorStop(1, "rgba(50, 40, 30, 0)");
-  ctx.fillStyle = disk;
+  ctx.rotate(-0.38);
+  ctx.scale(1, 0.42);
+  const halo = ctx.createRadialGradient(0, 0, 4, 0, 0, 122);
+  halo.addColorStop(0, "rgba(255, 236, 200, 1)");
+  halo.addColorStop(0.12, "rgba(255, 196, 130, 0.92)");
+  halo.addColorStop(0.34, "rgba(190, 150, 210, 0.7)");
+  halo.addColorStop(0.62, "rgba(110, 130, 190, 0.38)");
+  halo.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = halo;
   ctx.beginPath();
-  ctx.arc(0, 0, 118, 0, Math.PI * 2);
+  ctx.arc(0, 0, 122, 0, Math.PI * 2);
   ctx.fill();
-  const bulge = ctx.createRadialGradient(0, 0, 2, 0, 0, 26);
-  bulge.addColorStop(0, "rgba(255, 236, 200, 0.95)");
-  bulge.addColorStop(1, "rgba(255, 180, 90, 0)");
+  stampSoft(ctx, -22, -6, 48, "rgba(28, 16, 12, 0.45)");
+  stampSoft(ctx, 26, 8, 40, "rgba(24, 14, 10, 0.35)");
+  const bulge = ctx.createRadialGradient(0, 0, 1, 0, 0, 36);
+  bulge.addColorStop(0, "rgba(255, 248, 220, 1)");
+  bulge.addColorStop(0.4, "rgba(255, 210, 140, 0.95)");
+  bulge.addColorStop(1, "rgba(255, 160, 80, 0)");
   ctx.fillStyle = bulge;
   ctx.beginPath();
-  ctx.arc(0, 0, 26, 0, Math.PI * 2);
+  ctx.arc(0, 0, 36, 0, Math.PI * 2);
   ctx.fill();
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace;
@@ -964,14 +963,14 @@ function createNeighbors(THREE, group, maps) {
       : maps[galaxyKind(neighbor.id)] ?? maps.spiral;
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map,
-      color: neighbor.id === "m31" ? 0xffe8c8 : 0xffffff,
+      color: 0xffffff,
       depthTest: neighbor.id !== "m31",
-      opacity: 0.96,
+      opacity: 1,
     }));
-    sprite.renderOrder = 4;
+    sprite.renderOrder = neighbor.id === "m31" ? 6 : 4;
     sprite.position.set(at.x, at.y, at.z);
     const size = neighborApparentSize(neighbor);
-    const aspect = neighbor.id === "m31" ? 0.36 : neighbor.id === "m33" ? 0.46 : 0.68;
+    const aspect = neighbor.id === "m31" ? 0.4 : neighbor.id === "m33" ? 0.46 : 0.68;
     sprite.scale.set(size, size * aspect, 1);
     sprite.name = neighbor.id;
     sprite.frustumCulled = false;
@@ -981,13 +980,14 @@ function createNeighbors(THREE, group, maps) {
         loaded.colorSpace = THREE.SRGBColorSpace;
         loaded.anisotropy = 4;
         sprite.material.map = loaded;
+        sprite.material.color.set(0xffffff);
         sprite.material.needsUpdate = true;
       });
     }
     const label = neighbor.messier ? `${neighbor.name} (${neighbor.messier})` : neighbor.name;
-    const lift = size * aspect * 0.65 + 48;
-    const side = neighbor.id === "smc" ? 180 : neighbor.id === "lmc" ? -80 : 0;
-    const labelScale = neighbor.id === "lmc" || neighbor.id === "smc" ? 4.8 : neighbor.id === "m31" ? 6.2 : 4.4;
+    const lift = size * aspect * 0.72 + 80;
+    const side = neighbor.id === "smc" ? 180 : neighbor.id === "lmc" ? -80 : neighbor.id === "m31" ? 340 : 0;
+    const labelScale = neighbor.id === "lmc" || neighbor.id === "smc" ? 4.8 : neighbor.id === "m31" ? 9.2 : 4.4;
     cluster.add(labelSprite(THREE, label, { x: at.x + side, y: at.y + lift, z: at.z }, labelScale));
   }
   group.add(cluster);
