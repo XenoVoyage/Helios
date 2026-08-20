@@ -37,7 +37,7 @@ export const CONFIG = Object.freeze({
   kuiperCount: 880,
   kuiperInnerAu: 30.2,
   kuiperOuterAu: 50,
-  cameraDistance: 1100,
+  cameraDistance: 880,
   cameraElevation: 0.5,
   cameraAzimuth: 0.55,
   minDistance: 2.4,

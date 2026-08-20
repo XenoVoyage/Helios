@@ -82,6 +82,55 @@ test("catalog includes the v1 bodies with published periods, spins, and tilts", 
   assert.ok(deimos.tiltDeg >= 0 && deimos.tiltDeg < 2);
 });
 
+test("physical catalog matches published NASA / JPL figures", () => {
+  // NASA planetary fact sheet mean radii where they agree with JPL SSD phys_par.
+  assert.equal(findBody("sun").radiusKm, 695700);
+  assert.equal(findBody("sun").tiltDeg, 7.25);
+  assert.equal(findBody("sun").rotationHours, 609.12);
+  assert.equal(findBody("mercury").radiusKm, 2439.7);
+  assert.equal(findBody("venus").radiusKm, 6051.8);
+  assert.equal(findBody("earth").radiusKm, 6371);
+  assert.equal(findBody("moon").radiusKm, 1737.4);
+  assert.equal(findBody("mars").radiusKm, 3389.5);
+  assert.equal(findBody("jupiter").radiusKm, 69911);
+  assert.equal(findBody("saturn").radiusKm, 58232);
+  assert.equal(findBody("uranus").radiusKm, 25362);
+  assert.equal(findBody("neptune").radiusKm, 24622);
+  assert.equal(findBody("pluto").radiusKm, 1188.3);
+  assert.equal(findBody("ceres").radiusKm, 473);
+
+  // JPL SSD sats/phys_par mean radii (IAU WGCCRE 2015), except Io 1821.6
+  // which keeps the NASA Galilean fact-sheet rounding of 1821.49.
+  assert.equal(findBody("phobos").radiusKm, 11.08);
+  assert.equal(findBody("deimos").radiusKm, 6.2);
+  assert.equal(findBody("io").radiusKm, 1821.6);
+  assert.equal(findBody("europa").radiusKm, 1560.8);
+  assert.equal(findBody("ganymede").radiusKm, 2631.2);
+  assert.equal(findBody("callisto").radiusKm, 2410.3);
+  assert.equal(findBody("titan").radiusKm, 2574.7);
+  assert.equal(findBody("triton").radiusKm, 1353.4);
+
+  // NASA Saturnian Rings Fact Sheet: D-ring inner, A-ring outer.
+  assert.equal(findBody("saturn").ringInnerKm, 66900);
+  assert.equal(findBody("saturn").ringOuterKm, 136775);
+
+  // JPL SSD sats/elem mean a at J2000.
+  assert.equal(findBody("moon").orbitKm, 384400);
+  assert.equal(findBody("phobos").orbitKm, 9375);
+  assert.equal(findBody("deimos").orbitKm, 23457);
+  assert.equal(findBody("io").orbitKm, 421800);
+  assert.equal(findBody("europa").orbitKm, 671100);
+  assert.equal(findBody("ganymede").orbitKm, 1070400);
+  assert.equal(findBody("callisto").orbitKm, 1882700);
+  assert.equal(findBody("titan").orbitKm, 1221870);
+  assert.equal(findBody("triton").orbitKm, 354759);
+
+  // JPL NEP097 mean elements at J2000 (retrograde period keeps the NASA sign).
+  assert.equal(findBody("triton").meanAnomalyDeg, 63);
+  assert.equal(findBody("triton").periDeg, 0);
+  assert.ok(findBody("triton").orbitDays < 0);
+});
+
 test("Kepler's equation recovers a circular and an eccentric orbit", () => {
   assert.ok(Math.abs(solveKepler(1.2, 0) - 1.2) < 1e-10);
   const earth = findBody("earth");
