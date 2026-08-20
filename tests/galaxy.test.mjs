@@ -221,7 +221,7 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     "far-galaxy sky stays up at Local Group",
   );
   assert.ok(
-    cmbSkyOpacity(CONFIG.virgoViewDistance) > 0.05,
+    cmbSkyOpacity(CONFIG.virgoViewDistance) > 0.2,
     "microwave hint is present at cluster scale",
   );
   assert.ok(cmbSkyOpacity(CONFIG.webViewDistance) > 0.35);
@@ -340,14 +340,15 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /mw-disk-edge/);
   assert.match(galaxySource, /mw-halo/);
   assert.match(galaxySource, /Large Magellanic Cloud|neighbor\.name/);
-  assert.match(galaxySource, /BoxGeometry/);
+  assert.match(galaxySource, /CubeTexture/);
+  assert.match(galaxySource, /samplerCube/);
   assert.match(galaxySource, /toneMapped:\s*false/);
   assert.match(galaxySource, /AdditiveBlending/);
   assert.match(galaxySource, /SKY_ASSETS\.andromeda/);
   assert.match(galaxySource, /farGalaxySkyOpacity/);
   assert.match(galaxySource, /cmbSkyOpacity/);
   assert.doesNotMatch(galaxySource, /hubCount:\s*20\b/);
-  assert.doesNotMatch(galaxySource, /farGalaxySkyMap/);
+  assert.doesNotMatch(galaxySource, /BoxGeometry/);
   assert.equal(visualWeb(CONFIG.webRadiusMpc), CONFIG.webScale * CONFIG.webRadiusMpc ** CONFIG.webPower);
   assert.ok(visualWeb(80) > visualWeb(16.5));
   assert.ok(farthestWebDistance() >= visualWeb(CONFIG.webRadiusMpc));
