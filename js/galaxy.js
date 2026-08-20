@@ -618,10 +618,10 @@ function milkyWayDiskMap(THREE) {
   const beta0 = Math.PI - thetaSun;
 
   const disk = ctx.createRadialGradient(cx, cy, 2, cx, cy, diskPx);
-  disk.addColorStop(0, "rgba(255, 232, 196, 0.98)");
-  disk.addColorStop(0.1, "rgba(255, 204, 154, 0.42)");
-  disk.addColorStop(0.28, "rgba(150, 170, 230, 0.1)");
-  disk.addColorStop(0.62, "rgba(80, 110, 190, 0.03)");
+  disk.addColorStop(0, "rgba(255, 226, 186, 0.9)");
+  disk.addColorStop(0.12, "rgba(255, 196, 148, 0.5)");
+  disk.addColorStop(0.34, "rgba(160, 180, 240, 0.3)");
+  disk.addColorStop(0.78, "rgba(100, 130, 210, 0.08)");
   disk.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = disk;
   ctx.fillRect(0, 0, size, size);
@@ -651,9 +651,9 @@ function milkyWayDiskMap(THREE) {
       const x = cx + Math.cos(a) * r + (rand() - 0.5) * scatter;
       const y = cy + Math.sin(a) * r + (rand() - 0.5) * scatter;
       const fade = (1 - t * 0.55) * arm.alpha;
-      stampSoft(ctx, x + 5, y + 3, 8 + t * 12, `rgba(40, 28, 22, ${0.12 * fade})`);
-      stampSoft(ctx, x, y, 20 + t * 26, `rgba(180, 208, 255, ${0.7 * fade})`);
-      stampSoft(ctx, x, y, 11 + t * 16, `rgba(255, 240, 214, ${0.82 * fade})`);
+      stampSoft(ctx, x + 5, y + 3, 8 + t * 12, `rgba(40, 28, 22, ${0.1 * fade})`);
+      stampSoft(ctx, x, y, 18 + t * 24, `rgba(170, 200, 255, ${0.52 * fade})`);
+      stampSoft(ctx, x, y, 10 + t * 14, `rgba(255, 236, 210, ${0.66 * fade})`);
     }
     const clumps = arm.alpha > 0.8 ? 70 : 32;
     for (let i = 0; i < clumps; i += 1) {
@@ -786,7 +786,7 @@ function createSpiralStars(THREE, group) {
     colors[o + 2] = 0.95 - 0.2 * warm;
     n += 1;
   }
-  addPoints(THREE, group, "mw-disk", positions.slice(0, n * 3), colors.slice(0, n * 3), 3.4, 0.82, true, THREE.AdditiveBlending);
+  addPoints(THREE, group, "mw-disk", positions.slice(0, n * 3), colors.slice(0, n * 3), 2.8, 0.72, true, THREE.AdditiveBlending);
 }
 
 function createHalo(THREE, group) {
@@ -808,7 +808,7 @@ function createHalo(THREE, group) {
     colors[i * 3 + 1] = 0.78 + rand() * 0.1;
     colors[i * 3 + 2] = 0.95;
   }
-  addPoints(THREE, group, "mw-halo", positions, colors, 4.2, 0.7, true, THREE.AdditiveBlending);
+  addPoints(THREE, group, "mw-halo", positions, colors, 3.6, 0.62, true, THREE.AdditiveBlending);
 }
 
 function createBulge(THREE, group) {
@@ -855,28 +855,28 @@ function createDiskGlow(THREE, group) {
   const glow = new THREE.Mesh(
     new THREE.SphereGeometry(radius * 1.12, 40, 24),
     unlitBasic(THREE, {
-      color: 0xffe6cc,
-      opacity: 0.4,
+      color: 0xffe2c4,
+      opacity: 0.28,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     }),
   );
   glow.position.set(gc.x, gc.y, gc.z);
-  glow.scale.set(1, clamp((halfH * 5.1) / radius, 0.28, 0.5), 1);
+  glow.scale.set(1, clamp((halfH * 4.4) / radius, 0.24, 0.44), 1);
   glow.name = "mw-glow";
   group.add(glow);
 
   const edge = new THREE.Mesh(
     new THREE.SphereGeometry(radius * 0.98, 48, 20),
     unlitBasic(THREE, {
-      color: 0xd8e4ff,
-      opacity: 0.34,
+      color: 0xd0dcff,
+      opacity: 0.26,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     }),
   );
   edge.position.set(gc.x, gc.y, gc.z);
-  edge.scale.set(1, clamp((halfH * 3.2) / radius, 0.18, 0.34), 1);
+  edge.scale.set(1, clamp((halfH * 2.8) / radius, 0.16, 0.3), 1);
   edge.name = "mw-disk-edge";
   group.add(edge);
 
@@ -884,7 +884,6 @@ function createDiskGlow(THREE, group) {
     new THREE.PlaneGeometry(radius * 2, radius * 2),
     unlitBasic(THREE, {
       map: milkyWayDiskMap(THREE),
-      color: 0xfff4e4,
       opacity: 1,
       side: THREE.DoubleSide,
     }),
