@@ -17,6 +17,7 @@ const mimeTypes = new Map([
   [".jpeg", "image/jpeg"],
   [".png", "image/png"],
   [".txt", "text/plain; charset=utf-8"],
+  [".webp", "image/webp"],
 ]);
 
 function send(response, status, body, headers = {}) {

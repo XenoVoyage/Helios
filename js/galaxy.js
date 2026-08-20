@@ -17,28 +17,13 @@ import { SKY_ASSETS } from "./sky.js";
 import {
   CMB_SHELL,
   GALACTIC_CENTER,
-  LANIAKEA,
   LOCAL_GROUP,
   MILKY_WAY,
   NEIGHBORS,
   OBSERVABLE_UNIVERSE,
-  SPIRAL_ARMS,
   SUN_GALACTIC,
   VIRGO_CLUSTER,
 } from "./galaxy-catalog.js";
-
-export {
-  CMB_SHELL,
-  GALACTIC_CENTER,
-  LANIAKEA,
-  LOCAL_GROUP,
-  MILKY_WAY,
-  NEIGHBORS,
-  OBSERVABLE_UNIVERSE,
-  SPIRAL_ARMS,
-  SUN_GALACTIC,
-  VIRGO_CLUSTER,
-};
 
 const DEG = Math.PI / 180;
 const LABEL = Object.freeze({
@@ -568,7 +553,7 @@ function galaxySprite(THREE, kind, seed = 1) {
       ctx.fillRect(px - 16, py - 16, 32, 32);
     }
   } else {
-    ctx.scale(kind === "smc" ? 0.78 : 1, kind === "smc" ? 0.58 : 0.7);
+    ctx.scale(1, 0.7);
     for (let i = 0; i < 5; i += 1) {
       const px = (rand() - 0.5) * 70;
       const py = (rand() - 0.5) * 50;
@@ -1506,7 +1491,6 @@ export function createGalaxyLayer(THREE) {
     elliptical: galaxySprite(THREE, "elliptical", 2),
     irregular: galaxySprite(THREE, "irregular", 3),
     lmc: galaxySprite(THREE, "lmc", 4),
-    smc: galaxySprite(THREE, "smc", 5),
   };
   createFarGalaxySky(THREE, group);
   const milkyway = new THREE.Group();
