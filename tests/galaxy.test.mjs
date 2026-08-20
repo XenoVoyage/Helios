@@ -34,6 +34,8 @@ import {
   localGroupMemberOpacity,
   milkyWayToScene,
   milkyWayUnitsPerKpc,
+  nearClusterOpacity,
+  neighborOpacity,
   neighborScenePosition,
   scaleLayer,
   solarOpacity,
@@ -52,6 +54,16 @@ import {
 } from "../js/galaxy.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+test("Milky Way catalog keeps the thin disk and a thicker visual map", () => {
+  assert.equal(MILKY_WAY.heightKpc, 0.3);
+  assert.equal(MILKY_WAY.thickHeightKpc, 0.9);
+  assert.equal(MILKY_WAY.haloRadiusKpc, 15);
+  assert.ok(CONFIG.mwVisualHeightKpc > MILKY_WAY.thickHeightKpc);
+  const thin = MILKY_WAY.heightKpc * milkyWayUnitsPerKpc();
+  const visual = CONFIG.mwVisualHeightKpc * milkyWayUnitsPerKpc();
+  assert.ok(visual > thin * 4, "edge-on disk is thicker than the published thin-disk scale height");
+});
 
 test("Sun sits about 8 kpc from the Galactic Center in the Orion Arm", () => {
   assert.equal(SUN_GALACTIC.arm, "Orion Arm");
@@ -74,6 +86,9 @@ test("nearby galaxies keep SIMBAD positions and published distances", () => {
   const m31 = findNeighbor("m31");
   const m33 = findNeighbor("m33");
   assert.equal(NEIGHBORS.length, 4);
+  assert.equal(lmc.name, "Large Magellanic Cloud");
+  assert.equal(smc.name, "Small Magellanic Cloud");
+  assert.equal(m31.name, "Andromeda");
   assert.equal(lmc.distanceKpc, 49.59);
   assert.equal(smc.distanceKpc, 62.44);
   assert.equal(m31.distanceKpc, 780);
@@ -154,6 +169,10 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.ok(CONFIG.universeViewDistance > CONFIG.webViewDistance);
   assert.ok(CONFIG.maxDistance >= CONFIG.universeViewDistance);
   assert.ok(CONFIG.neighborhoodViewDistance > CONFIG.mwViewDistance * 2);
+  assert.ok(CONFIG.webViewDistance > CONFIG.virgoViewDistance * 1.5);
+  assert.ok(CONFIG.universeViewDistance > CONFIG.webViewDistance * 1.4);
+  assert.ok(CONFIG.mwVisualHeightKpc > MILKY_WAY.heightKpc * 3);
+  assert.ok(CONFIG.mwHaloRadiusKpc >= MILKY_WAY.haloRadiusKpc);
   assert.equal(scaleLayer(CONFIG.cameraDistance), "solar");
   assert.equal(scaleLayer(CONFIG.solarMaxDistance), "solar");
   assert.equal(scaleLayer((CONFIG.galaxyFadeStart + CONFIG.galaxyFadeEnd) / 2), "transition");
@@ -168,14 +187,29 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.equal(solarOpacity(CONFIG.galaxyFadeEnd), 0);
   assert.equal(galaxyOpacity(CONFIG.galaxyFadeEnd), 1);
   assert.ok(galaxyOpacity(CONFIG.mwViewDistance) === 1);
+  assert.equal(neighborOpacity(CONFIG.mwViewDistance), 0);
+  assert.equal(neighborOpacity(CONFIG.neighborhoodViewDistance), 1);
   assert.equal(localGroupMemberOpacity(CONFIG.neighborhoodViewDistance), 0);
   assert.equal(localGroupMemberOpacity(CONFIG.localGroupViewDistance), 1);
   assert.equal(virgoOpacity(CONFIG.localGroupViewDistance), 0);
   assert.equal(virgoOpacity(CONFIG.virgoViewDistance), 1);
+  assert.equal(nearClusterOpacity(CONFIG.localGroupViewDistance), 0);
+  assert.equal(nearClusterOpacity(CONFIG.virgoViewDistance), 1);
   assert.equal(webOpacity(CONFIG.virgoViewDistance), 0);
+  assert.equal(
+    webOpacity(CONFIG.virgoViewDistance + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.4),
+    0,
+    "Virgo lingers before the web takes over",
+  );
   assert.equal(webOpacity(CONFIG.webViewDistance), 1);
   assert.equal(universeOpacity(CONFIG.webViewDistance), 0);
+  assert.equal(
+    universeOpacity(CONFIG.webViewDistance + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.45),
+    0,
+    "the filled web reads before the CMB shell",
+  );
   assert.equal(universeOpacity(CONFIG.universeViewDistance), 1);
+  assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
 });
 
 test("camera far plane clears the neighborhood and spiral math stays Reid-like", () => {
@@ -276,6 +310,13 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.doesNotMatch(galaxySource, /Perseus-Pisces/);
   assert.match(galaxySource, /cosmic-web/);
   assert.match(galaxySource, /cmb-shell/);
+  assert.match(galaxySource, /export function createGalaxyLayer/);
+  assert.match(galaxySource, /far-galaxy-sky/);
+  assert.match(galaxySource, /near-clusters/);
+  assert.match(galaxySource, /mw-disk-edge/);
+  assert.match(galaxySource, /mw-halo/);
+  assert.match(galaxySource, /Large Magellanic Cloud|neighbor\.name/);
+  assert.doesNotMatch(galaxySource, /hubCount:\s*20\b/);
   assert.equal(visualWeb(CONFIG.webRadiusMpc), CONFIG.webScale * CONFIG.webRadiusMpc ** CONFIG.webPower);
   assert.ok(visualWeb(80) > visualWeb(16.5));
   assert.ok(farthestWebDistance() >= visualWeb(CONFIG.webRadiusMpc));

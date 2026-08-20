@@ -14,7 +14,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20i",
+  VERSION: "v2026.8.20j",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -47,18 +47,22 @@ export const CONFIG = Object.freeze({
   minDistance: 2.4,
   // Solar overview / Kuiper camera cap. Further zoom is the galaxy layer.
   solarMaxDistance: 1650,
-  maxDistance: 68000,
+  maxDistance: 158000,
   mwViewDistance: 4000,
-  neighborhoodViewDistance: 13000,
-  localGroupViewDistance: 21000,
-  virgoViewDistance: 30000,
-  webViewDistance: 42000,
-  universeViewDistance: 58000,
+  neighborhoodViewDistance: 14500,
+  localGroupViewDistance: 26000,
+  virgoViewDistance: 46000,
+  webViewDistance: 72000,
+  universeViewDistance: 140000,
   galaxyFadeStart: 1650,
   galaxyFadeEnd: 2150,
   // kpc → scene for the Milky Way disk. Not the AU orbit curve.
   mwScale: 82,
   mwPower: 0.95,
+  // Visual disk half-thickness so the MW reads as a 3D disk, not a plane.
+  // Catalog heightKpc stays the published thin-disk scale height.
+  mwVisualHeightKpc: 1.55,
+  mwHaloRadiusKpc: 18,
   // Second compressed scale for LMC / SMC / M31 / M33 and Local Group members.
   neighborhoodScale: 280,
   neighborhoodPower: 0.55,
@@ -68,18 +72,18 @@ export const CONFIG = Object.freeze({
   // Visual core mark for the cluster, not a 1:1 member catalog.
   virgoMarkRadiusMpc: 2.2,
   // Fourth compressed scale for the local cosmic web. Input is catalog Mpc.
-  webScale: 1800,
+  webScale: 5200,
   webPower: 0.42,
   // Visual local-web radius. Laniakea-scale, not a 1:1 160 Mpc diameter.
   webRadiusMpc: 80,
   // Visual home-hub glow. Not the published Laniakea diameter.
-  laniakeaMarkRadiusMpc: 10,
+  laniakeaMarkRadiusMpc: 3.6,
   // Fifth compressed scale for the observable universe. Input is catalog Gpc.
-  universeScale: 7200,
+  universeScale: 15500,
   universePower: 0.48,
   // Celestial sphere sits around the camera; far plane must clear the universe layer.
   skyRadius: 2000,
-  cameraFar: 180000,
+  cameraFar: 480000,
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
   focusLerp: 6,

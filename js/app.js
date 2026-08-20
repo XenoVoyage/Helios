@@ -27,6 +27,7 @@ import {
   galaxyOpacity,
   localGroupCameraAim,
   milkyWayCameraAim,
+  milkyWayEdgeCameraAim,
   neighborhoodCameraAim,
   requestedGalaxyLook,
   scaleLayer,
@@ -210,6 +211,12 @@ function boot() {
     const galaxyLook = requestedGalaxyLook();
     if (galaxyLook === "milkyway") {
       const aim = milkyWayCameraAim();
+      state.distance = CONFIG.mwViewDistance;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "mwedge") {
+      const aim = milkyWayEdgeCameraAim();
       state.distance = CONFIG.mwViewDistance;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
@@ -793,8 +800,8 @@ function paintScaleLayer() {
     else if (layer === "neighborhood") say("Nearby galaxies.");
     else if (layer === "localgroup") say("Local Group.");
     else if (layer === "virgo") say("Virgo Cluster. The Local Group is a nearby family; Virgo is the nearest large cluster.");
-    else if (layer === "web") say("Cosmic web. The Milky Way sits in this neighborhood of clusters.");
-    else if (layer === "universe") say("Observable universe. The CMB is the last-scattering surface.");
+    else if (layer === "web") say("Cosmic web. Filaments and clusters around the Milky Way.");
+    else if (layer === "universe") say("Observable universe. The CMB shell sits beyond the web.");
     else if (layer === "solar") say("Solar system.");
   }
 }
