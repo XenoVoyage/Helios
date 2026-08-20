@@ -26,6 +26,7 @@ import {
   createGalaxyLayer,
   galaxyOpacity,
   localGroupCameraAim,
+  milkyWayBelowCameraAim,
   milkyWayCameraAim,
   milkyWayEdgeCameraAim,
   neighborhoodCameraAim,
@@ -218,6 +219,18 @@ function boot() {
     } else if (galaxyLook === "mwedge") {
       const aim = milkyWayEdgeCameraAim();
       state.distance = CONFIG.mwViewDistance;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "mwbelow") {
+      const aim = milkyWayBelowCameraAim();
+      state.distance = CONFIG.mwViewDistance;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "handoff") {
+      const aim = milkyWayCameraAim();
+      state.distance = CONFIG.galaxyFadeEnd;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
@@ -587,9 +600,9 @@ function resetView() {
 }
 
 function toggleConstellations() {
+  if (scaleLayer(state.distance) !== "solar") return;
   state.showConstellations = !state.showConstellations;
-  setConstellationsVisible(celestial, state.showConstellations);
-  paintSkyButton();
+  paintConstellations();
   say(state.showConstellations ? "Constellations on" : "Constellations off");
 }
 
@@ -651,8 +664,16 @@ function paintClock() {
 }
 
 function paintSkyButton() {
+  const solar = scaleLayer(state.distance) === "solar";
   ui.sky.textContent = "Constellations";
+  ui.sky.hidden = !solar;
   ui.sky.setAttribute("aria-pressed", String(state.showConstellations));
+}
+
+function paintConstellations() {
+  const solar = scaleLayer(state.distance) === "solar";
+  paintSkyButton();
+  if (celestial) setConstellationsVisible(celestial, solar && state.showConstellations);
 }
 
 function paintHelperButtons() {
@@ -788,6 +809,7 @@ function paintScaleLayer() {
   fadeRoot(kuiperBelt, solar);
   fadeRoot(orbitLines, solar);
   celestial.visible = solar > 0.12;
+  paintConstellations();
   setGalaxyLayerVisible(galaxy, galactic, state.distance);
   for (const node of nodes.values()) fadeBodyNode(node, solar);
   if (helpers && galactic > 0.5) {

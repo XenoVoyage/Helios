@@ -72,6 +72,8 @@ assert.match(app, /localGroupViewDistance/);
 assert.match(app, /virgoViewDistance/);
 assert.match(app, /webViewDistance/);
 assert.match(app, /universeViewDistance/);
+assert.match(app, /paintConstellations/);
+assert.match(app, /ui\.sky\.hidden/);
 assert.match(galaxy, /visualVirgo/);
 assert.match(galaxy, /visualWeb/);
 assert.match(galaxy, /visualUniverse/);

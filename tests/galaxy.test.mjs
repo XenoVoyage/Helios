@@ -33,13 +33,16 @@ import {
   heliocentricGalactic,
   localGroupCameraAim,
   localGroupMemberOpacity,
+  milkyWayBelowCameraAim,
   lookAngleTo,
+  milkyWayDiskDiameter,
   milkyWayToScene,
   milkyWayUnitsPerKpc,
   cmbSkyOpacity,
   farGalaxySkyOpacity,
   nearClusterOpacity,
   neighborhoodCameraAim,
+  neighborApparentSize,
   neighborOpacity,
   neighborScenePosition,
   scaleLayer,
@@ -185,7 +188,7 @@ test("galaxy scales are kpc mappings and do not reuse solar AU units", async () 
 });
 
 test("scale layer switches after the solar camera cap and reset stays solar", () => {
-  assert.equal(CONFIG.solarMaxDistance, 1650);
+  assert.equal(CONFIG.solarMaxDistance, 1880);
   assert.equal(CONFIG.cameraDistance, 880);
   assert.ok(CONFIG.maxDistance > CONFIG.solarMaxDistance);
   assert.ok(CONFIG.solarMaxDistance < CONFIG.skyRadius);
@@ -247,11 +250,26 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     farGalaxySkyOpacity(CONFIG.localGroupViewDistance) > 0.9,
     "far-galaxy sky stays up at Local Group",
   );
-  assert.ok(
-    cmbSkyOpacity(CONFIG.virgoViewDistance) > 0.2,
-    "microwave hint is present at cluster scale",
+  assert.equal(
+    farGalaxySkyOpacity(CONFIG.webViewDistance),
+    1,
+    "far-galaxy sky stays up through the filled web",
   );
-  assert.ok(cmbSkyOpacity(CONFIG.webViewDistance) > 0.35);
+  assert.equal(
+    cmbSkyOpacity(CONFIG.localGroupViewDistance),
+    0,
+    "microwave does not start at Local Group",
+  );
+  assert.equal(
+    cmbSkyOpacity(CONFIG.virgoViewDistance),
+    0,
+    "microwave does not start at Virgo",
+  );
+  assert.equal(
+    cmbSkyOpacity(CONFIG.webViewDistance),
+    0,
+    "microwave waits until after the web",
+  );
   assert.equal(cmbSkyOpacity(CONFIG.universeViewDistance), 1);
   assert.ok(
     farthestUniverseDistance() > CONFIG.webViewDistance,
@@ -280,6 +298,8 @@ test("camera far plane clears the neighborhood and spiral math stays Reid-like",
   const gcHel = heliocentricGalactic(0, 0, SUN_GALACTIC.rKpc);
   assert.ok(Math.abs(gcHel.x - SUN_GALACTIC.rKpc) < 1e-9);
   assert.ok(Math.abs(gcHel.y) < 1e-9);
+  const below = milkyWayBelowCameraAim();
+  assert.ok(below.elevation < 0, "below-disk look stays under the plane");
   const sun = sunScenePosition();
   assert.equal(sun.x, 0);
   assert.equal(sun.y, 0);
@@ -372,9 +392,27 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /toneMapped:\s*false/);
   assert.match(galaxySource, /AdditiveBlending/);
   assert.match(galaxySource, /SKY_ASSETS\.andromeda/);
+  assert.match(galaxySource, /quietAndromedaMap|andromeda\.png/);
+  assert.doesNotMatch(galaxySource, /kind === "andromeda"/);
+  assert.doesNotMatch(galaxySource, /lineWidth = 13/);
   assert.match(galaxySource, /farGalaxySkyOpacity/);
   assert.match(galaxySource, /cmbSkyOpacity/);
+  assert.match(galaxySource, /toneMapped:\s*false/);
+  assert.match(galaxySource, /unlitSprite|toneMapped:\s*false/);
   assert.doesNotMatch(galaxySource, /hubCount:\s*20\b/);
+  const m31 = findNeighbor("m31");
+  assert.ok(
+    neighborApparentSize(m31) < milkyWayDiskDiameter(),
+    "Andromeda stays smaller than the Milky Way disk",
+  );
+  assert.ok(
+    visualNeighborhood(m31.distanceKpc) > milkyWayDiskDiameter(),
+    "Andromeda sits at a neighbor distance, not stacked on the disk",
+  );
+  assert.ok(
+    farthestWebDistance() > CONFIG.webViewDistance * 0.55,
+    "the filled web is large in the web camera frame",
+  );
   assert.doesNotMatch(galaxySource, /BoxGeometry/);
   assert.equal(visualWeb(CONFIG.webRadiusMpc), CONFIG.webScale * CONFIG.webRadiusMpc ** CONFIG.webPower);
   assert.ok(visualWeb(80) > visualWeb(16.5));
