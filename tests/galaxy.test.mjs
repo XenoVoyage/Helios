@@ -287,6 +287,10 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     "CMB shell is still ahead at web scale",
   );
   assert.ok(
+    CONFIG.universeViewDistance < farthestUniverseDistance(),
+    "universe look sits inside the CMB shell, not outside a glowing ball",
+  );
+  assert.ok(
     CONFIG.maxDistance > farthestUniverseDistance(),
     "camera can leave the observable sphere",
   );
@@ -415,6 +419,9 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /toneMapped:\s*false/);
   assert.match(galaxySource, /unlitSprite|toneMapped:\s*false/);
   assert.doesNotMatch(galaxySource, /hubCount:\s*20\b/);
+  assert.match(galaxySource, /includeHome:\s*false/);
+  assert.match(galaxySource, /side:\s*THREE\.BackSide/);
+  assert.doesNotMatch(galaxySource, /Math\.max\(web, universe/);
   const m31 = findNeighbor("m31");
   assert.ok(
     neighborApparentSize(m31) < milkyWayDiskDiameter(),

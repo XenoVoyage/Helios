@@ -14,7 +14,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20n",
+  VERSION: "v2026.8.20o",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -53,7 +53,8 @@ export const CONFIG = Object.freeze({
   localGroupViewDistance: 40000,
   virgoViewDistance: 75000,
   webViewDistance: 240000,
-  universeViewDistance: 800000,
+  // Inside the CMB shell so ?look=universe reads a filled web, not an outside ball.
+  universeViewDistance: 480000,
   galaxyFadeStart: 1880,
   galaxyFadeEnd: 11000,
   // Mid solar→MW fade: Kuiper still reads, planet labels already gone.
