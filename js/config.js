@@ -14,7 +14,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20p",
+  VERSION: "v2026.8.20q",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -52,13 +52,15 @@ export const CONFIG = Object.freeze({
   neighborhoodViewDistance: 24000,
   localGroupViewDistance: 40000,
   virgoViewDistance: 75000,
-  webViewDistance: 240000,
+  // Inside the volume-filling web (o's universe camera), not outside the local ball.
+  webViewDistance: 480000,
   // Far enough outside the CMB shell that the sphere reads as a ball.
   universeViewDistance: 2000000,
   galaxyFadeStart: 1880,
+  // Extra-zoom pin shrink after the hard MW cut. Not a solar/MW opacity blend.
   galaxyFadeEnd: 11000,
-  // Mid solar→MW fade: Kuiper still reads, planet labels already gone.
-  handoffViewDistance: 6000,
+  // Orrery is already a Sun pin; MW then appears at full brightness.
+  handoffViewDistance: 4000,
   // kpc → scene for the Milky Way disk. Not the AU orbit curve.
   mwScale: 82,
   mwPower: 0.95,
