@@ -90,17 +90,25 @@ async function orbitCameraHalfTurn(page) {
   await page.mouse.up();
 }
 
-async function captureTriton(page) {
-  if (!screenshotDir) return;
+async function saveTritonScreenshot(page, name) {
   const viewport = page.viewportSize();
+  const label = await page.locator('.sky-label[data-body-id="triton"]').boundingBox();
   assert.ok(viewport);
+  assert.ok(label);
   const cropSize = Math.min(360, viewport.width, viewport.height);
+  const centerX = label.x + label.width / 2;
+  const centerY = label.y + label.height + 32;
   const crop = {
-    x: (viewport.width - cropSize) / 2,
-    y: (viewport.height - cropSize) / 2,
+    x: Math.max(0, Math.min(viewport.width - cropSize, centerX - cropSize / 2)),
+    y: Math.max(0, Math.min(viewport.height - cropSize, centerY - cropSize / 2)),
     width: cropSize,
     height: cropSize,
   };
+  await saveScreenshot(page, name, { clip: crop });
+}
+
+async function captureTriton(page) {
+  if (!screenshotDir) return;
   await page.locator("#reset-button").click();
   if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
     await page.locator("#play-button").click();
@@ -110,7 +118,7 @@ async function captureTriton(page) {
   await orbitCameraHalfTurn(page);
   await page.mouse.wheel(0, -1_200);
   await page.waitForTimeout(500);
-  await saveScreenshot(page, "triton-rotation-a", { clip: crop });
+  await saveTritonScreenshot(page, "triton-rotation-a");
   await page.locator("#speed-slider").evaluate((slider) => {
     const minimum = 1 / 24;
     const maximum = 400;
@@ -123,7 +131,7 @@ async function captureTriton(page) {
   await page.waitForTimeout(500);
   await page.locator("#play-button").click();
   await page.waitForTimeout(500);
-  await saveScreenshot(page, "triton-rotation-b", { clip: crop });
+  await saveTritonScreenshot(page, "triton-rotation-b");
 }
 
 async function assertCardClearsDock(page, viewport) {
