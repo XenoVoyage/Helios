@@ -320,7 +320,7 @@ input[type="range"] {
     top: auto;
     right: max(8px, env(safe-area-inset-right));
     left: max(8px, env(safe-area-inset-left));
-    bottom: calc(108px + env(safe-area-inset-bottom));
+    bottom: calc(168px + env(safe-area-inset-bottom));
     max-width: none;
     transform: none;
   }

@@ -203,7 +203,7 @@ export function celestialSkyOpacity(distance) {
 /** Local MW band brightens on the interior ride, then hands off. */
 export function skyBandBrightness(distance) {
   const solar = 0.82;
-  const interior = 2.15;
+  const interior = 1.68;
   if (distance <= CONFIG.solarMaxDistance) return solar;
   if (distance <= CONFIG.handoffViewDistance) {
     const t = (distance - CONFIG.solarMaxDistance)
@@ -1578,23 +1578,6 @@ function createFarGalaxySky(THREE, group) {
   sphere.name = "far-galaxy-shell";
   sphere.frustumCulled = false;
   sky.add(sphere);
-  const count = 4200;
-  const positions = new Float32Array(count * 3);
-  const colors = new Float32Array(count * 3);
-  const rand = seedRandom(31415);
-  for (let i = 0; i < count; i += 1) {
-    const r = radius * 0.96;
-    const theta = rand() * Math.PI * 2;
-    const phi = Math.acos(2 * rand() - 1);
-    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = r * Math.cos(phi);
-    positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-    const warm = rand();
-    colors[i * 3] = 0.68 + 0.28 * warm;
-    colors[i * 3 + 1] = 0.72 + 0.18 * warm;
-    colors[i * 3 + 2] = 0.92 - 0.18 * warm;
-  }
-  addPoints(THREE, sky, "far-galaxy-points", positions, colors, 2.4, 0.7, false);
   group.add(sky);
 }
 
