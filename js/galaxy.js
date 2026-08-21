@@ -179,24 +179,20 @@ export function solarOpacity(distance) {
  */
 export function orreryScale(distance) {
   if (distance <= CONFIG.solarMaxDistance) return 1;
-  const pin = 0.08;
+  const pin = 0.045;
   if (distance >= CONFIG.handoffViewDistance) {
     const t = (distance - CONFIG.handoffViewDistance)
       / Math.max(1, CONFIG.galaxyFadeEnd - CONFIG.handoffViewDistance);
-    return Math.max(0.012, pin * (1 - smoothstep01(t)));
+    return Math.max(0.01, pin * (1 - smoothstep01(t)));
   }
   const t = (distance - CONFIG.solarMaxDistance)
     / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance);
   return 1 - (1 - pin) * smoothstep01(t ** 0.75);
 }
 
-/** Planet orbit rings leave before the MW disk is the picture. */
+/** Planet orbit rings are solar-only. Extra-zoom keeps Kuiper, not rings. */
 export function orbitLineOpacity(distance) {
-  if (distance <= CONFIG.solarMaxDistance) return 1;
-  const end = CONFIG.solarMaxDistance
-    + (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance) * 0.42;
-  if (distance >= end) return 0;
-  return 1 - smoothstep01((distance - CONFIG.solarMaxDistance) / (end - CONFIG.solarMaxDistance));
+  return distance <= CONFIG.solarMaxDistance ? 1 : 0;
 }
 
 export function scaleLayer(distance) {
@@ -1035,7 +1031,7 @@ function createNeighbors(THREE, group, maps) {
     const label = neighbor.messier ? `${neighbor.name} (${neighbor.messier})` : neighbor.name;
     const lift = size * aspect * 0.72 + 80;
     const side = neighbor.id === "smc" ? 180 : neighbor.id === "lmc" ? -80 : neighbor.id === "m31" ? 340 : 0;
-    const labelScale = neighbor.id === "lmc" || neighbor.id === "smc" ? 4.8 : neighbor.id === "m31" ? 9.2 : 4.4;
+    const labelScale = neighbor.id === "lmc" || neighbor.id === "smc" ? 7.4 : neighbor.id === "m31" ? 12.5 : 5.2;
     cluster.add(labelSprite(THREE, label, { x: at.x + side, y: at.y + lift, z: at.z }, labelScale));
   }
   group.add(cluster);

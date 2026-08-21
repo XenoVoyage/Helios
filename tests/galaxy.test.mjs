@@ -314,6 +314,7 @@ test("extra-zoom shrinks the orrery to a Sun pin before the MW disk", () => {
     "Kuiper / planet orbits are a pin on the MW, not a system-sized overlay",
   );
   assert.equal(orbitLineOpacity(CONFIG.solarMaxDistance), 1);
+  assert.equal(orbitLineOpacity(CONFIG.solarMaxDistance + 1), 0);
   assert.equal(orbitLineOpacity(CONFIG.handoffViewDistance), 0);
   assert.equal(orbitLineOpacity(CONFIG.mwViewDistance), 0);
 });

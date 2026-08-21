@@ -830,13 +830,17 @@ function paintScaleLayer() {
   asteroidBelt.scale.setScalar(shrink);
   kuiperBelt.scale.setScalar(shrink);
   orbitLines.scale.setScalar(shrink);
+  orbitLines.visible = orbitLineOpacity(state.distance) > 0.04;
   fadeRoot(asteroidBelt, solar);
   fadeRoot(kuiperBelt, solar);
-  fadeRoot(orbitLines, orbitLineOpacity(state.distance) * solar);
+  fadeRoot(orbitLines, orbitLineOpacity(state.distance));
   celestial.visible = solar > 0.12;
   paintConstellations();
   setGalaxyLayerVisible(galaxy, galactic, state.distance);
-  for (const node of nodes.values()) fadeBodyNode(node, solar);
+  for (const node of nodes.values()) {
+    const extra = node.body.id === "sun" || scaleLayer(state.distance) === "solar";
+    fadeBodyNode(node, extra ? solar : 0);
+  }
   if (helpers && galactic > 0.5) {
     setHelperVisibility(helpers, { selected: false, orbit: false, axis: false, spin: false });
   }
