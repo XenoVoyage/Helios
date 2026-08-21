@@ -205,7 +205,7 @@ export function celestialSkyOpacity(distance) {
 /** Default solar look is 0.82. Zoom-out toward the cap, then extra-zoom, brightens. */
 export function skyBandBrightness(distance) {
   const solar = 0.82;
-  const cap = 2.05;
+  const cap = 2.85;
   const handoff = 2.2;
   const disk = 2.6;
   if (distance <= CONFIG.cameraDistance) return solar;

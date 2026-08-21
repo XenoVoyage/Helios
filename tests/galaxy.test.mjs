@@ -407,7 +407,7 @@ test("solar skybox stays through the tail and the camera sits in the arm", () =>
     "solar sky brightens on the way out to the cap",
   );
   assert.ok(
-    skyStarBrightness(CONFIG.solarMaxDistance) > 2,
+    skyStarBrightness(CONFIG.solarMaxDistance) > 3,
     "stars at the solar cap fill the frame, not a dim leftover sky",
   );
   assert.ok(

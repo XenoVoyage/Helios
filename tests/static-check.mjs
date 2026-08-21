@@ -84,7 +84,7 @@ assert.match(app, /universeViewDistance/);
 assert.match(app, /handoffViewDistance/);
 assert.match(app, /galaxyLook === "solarfar"/);
 assert.match(app, /galaxyLook === "disk"/);
-assert.match(sky, /gl_PointSize = size \* brightness/);
+assert.match(sky, /gl_PointSize = size \* brightness \* brightness/);
 assert.match(app, /orreryScale/);
 assert.match(app, /orbitLineOpacity/);
 assert.match(app, /warmExtraZoom/);
