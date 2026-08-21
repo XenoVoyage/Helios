@@ -74,10 +74,10 @@ async function assertRenderedCanvas(page) {
   return png;
 }
 
-async function saveScreenshot(page, name) {
+async function saveScreenshot(page, name, options = {}) {
   if (!screenshotDir) return;
   await mkdir(screenshotDir, { recursive: true });
-  await writeFile(path.join(screenshotDir, `${name}.png`), await page.screenshot());
+  await writeFile(path.join(screenshotDir, `${name}.png`), await page.screenshot(options));
 }
 
 async function orbitCameraHalfTurn(page) {
@@ -92,6 +92,15 @@ async function orbitCameraHalfTurn(page) {
 
 async function captureTriton(page) {
   if (!screenshotDir) return;
+  const viewport = page.viewportSize();
+  assert.ok(viewport);
+  const cropSize = Math.min(360, viewport.width, viewport.height);
+  const crop = {
+    x: (viewport.width - cropSize) / 2,
+    y: (viewport.height - cropSize) / 2,
+    width: cropSize,
+    height: cropSize,
+  };
   await page.locator("#reset-button").click();
   if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
     await page.locator("#play-button").click();
@@ -101,7 +110,7 @@ async function captureTriton(page) {
   await orbitCameraHalfTurn(page);
   await page.mouse.wheel(0, -1_200);
   await page.waitForTimeout(500);
-  await saveScreenshot(page, "triton-rotation-a");
+  await saveScreenshot(page, "triton-rotation-a", { clip: crop });
   await page.locator("#speed-slider").evaluate((slider) => {
     const minimum = 1 / 24;
     const maximum = 400;
@@ -114,70 +123,7 @@ async function captureTriton(page) {
   await page.waitForTimeout(500);
   await page.locator("#play-button").click();
   await page.waitForTimeout(500);
-  await orbitCameraHalfTurn(page);
-  await page.waitForTimeout(500);
-  await saveScreenshot(page, "triton-rotation-b");
-}
-
-async function captureReviewMatrix(browserInstance) {
-  if (!screenshotDir) return;
-  const desktopLooks = [
-    ["01-desktop-orrery-overview", "", null],
-    ["02-desktop-solar-sky-constellations", "sky", null],
-    ["03-desktop-solar-far-sun-dot", "solarfar", null],
-    ["04-desktop-trail-first-frame-solar-system-particle", "milkyway", null],
-    ["05-desktop-trail-andromeda-triangulum-present", "milkyway", [520, 72]],
-    ["06-desktop-trail-virgo-present", "milkyway", [-48, -320]],
-    ["07-desktop-mid-trail-badge-dying", "tailsky", null],
-    ["08-desktop-mid-trail-disk-and-virgo", "tailsky", [-48, -260]],
-    ["09-desktop-late-trail-no-badge-neighbors", "growing", null],
-    ["10-desktop-disk-local-group-identity", "disk", null],
-    ["11-desktop-neighborhood", "neighborhood", null],
-    ["12-desktop-local-group", "localgroup", null],
-    ["13-desktop-virgo", "virgo", null],
-    ["14-desktop-web", "web", null],
-    ["15-desktop-universe", "universe", null],
-  ];
-  const touchLooks = [
-    ["16-touch-orrery-overview", ""],
-    ["17-touch-solar-far", "solarfar"],
-    ["18-touch-trail-solar-system-particle", "milkyway"],
-    ["19-touch-disk-local-group", "disk"],
-  ];
-  const desktopContext = await browserInstance.newContext({
-    viewport: { width: 1440, height: 900 },
-    deviceScaleFactor: 1,
-  });
-  for (const [name, look, drag] of desktopLooks) {
-    const page = await desktopContext.newPage();
-    await openReady(page, look ? `?look=${look}` : "");
-    if (drag) {
-      const box = await page.locator("#viewport").boundingBox();
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.mouse.down();
-      await page.mouse.move(box.x + box.width / 2 + drag[0], box.y + box.height / 2 + drag[1]);
-      await page.mouse.up();
-    }
-    await page.waitForTimeout(250);
-    await saveScreenshot(page, name);
-    await page.close();
-  }
-  await desktopContext.close();
-
-  const touchContext = await browserInstance.newContext({
-    viewport: { width: 390, height: 844 },
-    deviceScaleFactor: 1,
-    hasTouch: true,
-    isMobile: true,
-  });
-  for (const [name, look] of touchLooks) {
-    const page = await touchContext.newPage();
-    await openReady(page, look ? `?look=${look}` : "");
-    await page.waitForTimeout(250);
-    await saveScreenshot(page, name);
-    await page.close();
-  }
-  await touchContext.close();
+  await saveScreenshot(page, "triton-rotation-b", { clip: crop });
 }
 
 async function assertCardClearsDock(page, viewport) {
@@ -323,6 +269,7 @@ try {
   for (const viewport of [
     { width: 320, height: 568 },
     { width: 390, height: 844 },
+    { width: 568, height: 320 },
     { width: 844, height: 390 },
   ]) {
     await assertCardClearsDock(touchPage, viewport);
@@ -365,10 +312,6 @@ try {
   });
   await saveScreenshot(failurePage, "webgl-fallback");
   await failure.close();
-
-  await browser.close();
-  browser = await launchBrowser();
-  await captureReviewMatrix(browser);
 
   console.log("browser-smoke ok");
 } finally {

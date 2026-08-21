@@ -8,7 +8,15 @@
  * the solar-system AU curve.
  */
 
-/** GRAVITY Collaboration 2019, A&A 625, L10. Geometric R0 from S2. */
+/**
+ * Solar location references:
+ * rKpc: GRAVITY Collaboration 2019, A&A 625, L10
+ *   https://doi.org/10.1051/0004-6361/201935656
+ * zKpc: Bennett & Bovy 2019, MNRAS 482, 1417
+ *   https://doi.org/10.1093/mnras/sty2813
+ * arm: Reid et al. 2014, ApJ 783, 130 (Local / Orion Arm)
+ *   https://doi.org/10.1088/0004-637X/783/2/130
+ */
 export const SUN_GALACTIC = Object.freeze({
   rKpc: 8.178,
   zKpc: 0.0208,
@@ -29,7 +37,11 @@ export const MILKY_WAY = Object.freeze({
   haloRadiusKpc: 15,
 });
 
-/** Sgr A*; Reid & Brunthaler 2004, ApJ 616, 872. l, b ~ 0 by definition. */
+/**
+ * IAU Galactic-coordinate origin carried to J2000 (l=0, b=0), not the
+ * measured position of Sgr A*. Reid & Brunthaler 2004, Appendix A:
+ * https://arxiv.org/html/astro-ph/0408107v1#A1
+ */
 export const GALACTIC_CENTER = Object.freeze({
   name: "Galactic Center",
   raDeg: 266.4051,
