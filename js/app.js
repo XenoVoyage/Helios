@@ -17,6 +17,7 @@ import {
   setCelestialFade,
   setConstellationsVisible,
   setSkyBandBrightness,
+  setStarBrightness,
   wantsEarthSkyLook,
 } from "./sky.js";
 import {
@@ -30,12 +31,14 @@ import {
   createGalaxyLayer,
   galaxyOpacity,
   localGroupCameraAim,
+  extraZoomCameraDistance,
   extraZoomTailMix,
   milkyWayBelowCameraAim,
   milkyWayEdgeCameraAim,
   milkyWayInteriorCameraAim,
   milkyWayTailLookAt,
   milkyWayTailSeat,
+  skyStarBrightness,
   neighborhoodCameraAim,
   orbitLineOpacity,
   orreryScale,
@@ -793,11 +796,12 @@ function placeCamera(blend) {
     return;
   }
   focusPoint.lerp(desiredTarget, clamp(blend, 0, 1));
+  const radius = extraZoomCameraDistance(state.distance);
   const cosE = Math.cos(state.elevation);
   camera.position.set(
-    focusPoint.x + state.distance * cosE * Math.sin(state.azimuth),
-    focusPoint.y + state.distance * Math.sin(state.elevation),
-    focusPoint.z + state.distance * cosE * Math.cos(state.azimuth),
+    focusPoint.x + radius * cosE * Math.sin(state.azimuth),
+    focusPoint.y + radius * Math.sin(state.elevation),
+    focusPoint.z + radius * cosE * Math.cos(state.azimuth),
   );
   camera.lookAt(focusPoint);
   const tailMix = extraZoomTailMix(state.distance);
@@ -813,7 +817,7 @@ function placeCamera(blend) {
     );
     camera.lookAt(tailLook);
   }
-  camera.near = Math.max(0.05, state.distance / 2500);
+  camera.near = Math.max(0.05, radius / 140);
   camera.far = CONFIG.cameraFar;
   camera.updateProjectionMatrix();
   attachSkyToCamera(celestial, camera);
@@ -871,6 +875,7 @@ function paintScaleLayer() {
   fadeRoot(orbitLines, orbitLineOpacity(state.distance));
   setCelestialFade(celestial, celestialSkyOpacity(state.distance));
   setSkyBandBrightness(celestial, skyBandBrightness(state.distance));
+  setStarBrightness(celestial, skyStarBrightness(state.distance));
   paintConstellations();
   setGalaxyLayerVisible(galaxy, galactic, state.distance);
   for (const node of nodes.values()) {

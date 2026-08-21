@@ -106,10 +106,11 @@ assert.match(css, /#card-close/);
 assert.match(configSource, /pinchZoomDistance/);
 assert.match(galaxy, /milkyWayInteriorCameraAim/);
 assert.match(galaxy, /skyStaysOn/);
-assert.match(
-  galaxy,
-  /export function skyStaysOn\(distance\) \{\s*return scaleLayer\(distance\) === "solar";/,
-);
+assert.match(galaxy, /export function skyStaysOn/);
+assert.match(galaxy, /extraZoomCameraDistance/);
+assert.match(app, /setStarBrightness/);
+assert.match(app, /extraZoomCameraDistance/);
+assert.match(sky, /setStarBrightness/);
 assert.match(sky, /setSkyBandBrightness/);
 assert.match(sky, /toneMapped:\s*false/);
 assert.match(css, /\.labels[\s\S]*z-index:\s*1/);

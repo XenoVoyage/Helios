@@ -30,6 +30,7 @@ import {
   farthestWebDistance,
   galacticCenterScenePosition,
   celestialSkyOpacity,
+  extraZoomCameraDistance,
   extraZoomTailMix,
   farGalaxySkyRadius,
   galaxyOpacity,
@@ -57,6 +58,7 @@ import {
   orreryScale,
   scaleLayer,
   skyBandBrightness,
+  skyStarBrightness,
   skyStaysOn,
   solarOpacity,
   spiralRadiusKpc,
@@ -292,18 +294,13 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
   assert.equal(
     farGalaxySkyOpacity(CONFIG.handoffViewDistance),
-    1,
-    "far-galaxy field is already up at the first extra-zoom tail",
-  );
-  assert.equal(
-    farGalaxySkyOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2),
-    1,
-    "far-galaxy field stays up while the tail becomes the disk",
+    0,
+    "galaxy-image sky waits until after the tail",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.mwViewDistance),
-    1,
-    "full-disk look already sits on the far-galaxy field",
+    0,
+    "galaxy-image sky waits until after the disk",
   );
   assert.ok(
     farGalaxySkyOpacity(CONFIG.neighborhoodViewDistance) > 0.9,
@@ -377,41 +374,50 @@ test("extra-zoom shrinks the orrery to a Sun pin before the MW disk", () => {
   assert.equal(orbitLineOpacity(CONFIG.mwViewDistance), 0);
 });
 
-test("constellations are solar-only and the far-galaxy field is up at the tail", () => {
+test("solar skybox stays through the tail and the camera sits in the arm", () => {
   assert.equal(skyStaysOn(CONFIG.cameraDistance), true);
   assert.equal(skyStaysOn(CONFIG.solarMaxDistance), true);
-  assert.equal(skyStaysOn(CONFIG.solarMaxDistance + 1), false);
-  assert.equal(skyStaysOn((CONFIG.solarMaxDistance + CONFIG.handoffViewDistance) / 2), false);
-  assert.equal(skyStaysOn(CONFIG.handoffViewDistance), false);
-  assert.equal(skyStaysOn(CONFIG.mwViewDistance), false);
+  assert.equal(skyStaysOn(CONFIG.solarMaxDistance + 1), true);
+  assert.equal(skyStaysOn(CONFIG.handoffViewDistance), true);
+  assert.equal(skyStaysOn(CONFIG.mwViewDistance), true);
   assert.equal(skyStaysOn(CONFIG.neighborhoodViewDistance), false);
   assert.equal(celestialSkyOpacity(CONFIG.solarMaxDistance), 1);
-  assert.equal(celestialSkyOpacity(CONFIG.handoffViewDistance), 0);
-  assert.equal(celestialSkyOpacity(CONFIG.mwViewDistance), 0);
+  assert.equal(celestialSkyOpacity(CONFIG.handoffViewDistance), 1);
+  assert.equal(celestialSkyOpacity(CONFIG.mwViewDistance), 1);
   assert.equal(celestialSkyOpacity(CONFIG.neighborhoodViewDistance), 0);
-  assert.equal(milkyWayDiskOpacity(CONFIG.handoffViewDistance), 1);
-  assert.equal(
-    milkyWayDiskOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2),
-    1,
-    "tail / disk stays up after the first extra-zoom frame",
+  assert.equal(milkyWayDiskOpacity(CONFIG.handoffViewDistance), 0);
+  assert.ok(
+    milkyWayDiskOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) > 0.2,
+    "disk grows in after the tail",
+  );
+  assert.ok(
+    milkyWayDiskOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) < 0.9,
+    "full disk is later than the first extra-zoom frame",
   );
   assert.equal(milkyWayDiskOpacity(CONFIG.mwViewDistance), 1);
-  assert.equal(farGalaxySkyOpacity(CONFIG.handoffViewDistance), 1);
-  assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 1);
+  assert.equal(farGalaxySkyOpacity(CONFIG.handoffViewDistance), 0);
+  assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 0);
   assert.equal(skyBandBrightness(CONFIG.cameraDistance), 0.82);
-  assert.equal(skyBandBrightness(CONFIG.handoffViewDistance), 0.82);
-  assert.equal(skyBandBrightness(CONFIG.mwViewDistance), 0.82);
+  assert.ok(skyBandBrightness(CONFIG.handoffViewDistance) > 0.82);
+  assert.ok(skyBandBrightness(CONFIG.mwViewDistance) > skyBandBrightness(CONFIG.handoffViewDistance));
+  assert.equal(skyStarBrightness(CONFIG.cameraDistance), 1);
+  assert.ok(skyStarBrightness(CONFIG.handoffViewDistance) > 1);
   const interior = milkyWayInteriorCameraAim();
   assert.ok(interior.elevation < 0.12, "first extra-zoom look stays in the disk tail");
   assert.ok(interior.elevation > 0, "interior look is not from under the plane");
+  assert.equal(extraZoomCameraDistance(CONFIG.cameraDistance), CONFIG.cameraDistance);
+  assert.equal(extraZoomCameraDistance(CONFIG.handoffViewDistance), CONFIG.mwTailNearDistance);
   assert.ok(
-    CONFIG.handoffViewDistance < milkyWayDiskDiameter() * 1.35,
-    "handoff is still near the disk scale",
+    extraZoomCameraDistance(CONFIG.handoffViewDistance) < milkyWayDiskDiameter() * 0.12,
+    "first extra-zoom camera sits in the arm, not a postcard of the disk",
   );
+  assert.equal(extraZoomCameraDistance(CONFIG.mwViewDistance), CONFIG.mwViewDistance);
   assert.equal(extraZoomTailMix(CONFIG.handoffViewDistance), 1);
   assert.equal(extraZoomTailMix(CONFIG.mwViewDistance), 0);
-  assert.ok(extraZoomTailMix((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) > 0.2);
-  assert.ok(extraZoomTailMix((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) < 0.8);
+  assert.equal(
+    extraZoomTailMix(CONFIG.handoffViewDistance + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.3),
+    1,
+  );
   const seat = milkyWayTailSeat();
   const along = milkyWayTailLookAt();
   assert.ok(Math.hypot(seat.x, seat.y, seat.z) < milkyWayDiskDiameter() * 0.2, "tail seat stays inside the disk");
@@ -551,7 +557,8 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /quietAndromedaMap|andromeda\.png/);
   assert.doesNotMatch(galaxySource, /if \(pole < 0\.28\) continue/);
   assert.match(galaxySource, /cameraFar \* 0\.42/);
-  assert.match(galaxySource, /createFarGalaxySky\(THREE, group, maps\)/);
+  assert.match(galaxySource, /function farGalaxySkyMap/);
+  assert.match(galaxySource, /createFarGalaxySky\(THREE, group\)/);
   assert.doesNotMatch(galaxySource, /fillSpherePoints/);
   assert.doesNotMatch(galaxySource, /far-galaxy-blobs/);
   assert.match(galaxySource, /brightenLoadedMap/);

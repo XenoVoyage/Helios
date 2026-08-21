@@ -13,7 +13,7 @@ An interactive 3D orrery of the solar system.
 
 ![Constellation names readable at overview, with Sagittarius and Scorpius labeled.](docs/assets/helios-constellations.webp)
 
-![Milky Way after extra zoom-out: the bright Orion-arm tail on a far-galaxy image field, with the Sun as a pin. No constellation lines.](docs/assets/helios-milky-way.webp)
+![Milky Way after extra zoom-out: already in the bright Orion-arm tail, with the solar skybox stronger, before the full disk.](docs/assets/helios-milky-way.webp)
 
 ![Nearby galaxies on the second scale: bright Andromeda, Triangulum, and the Magellanic Clouds on a galaxy-image sky.](docs/assets/helios-neighborhood.webp)
 
@@ -25,7 +25,7 @@ An interactive 3D orrery of the solar system.
 
 ![Observable universe: the CMB last-scattering sphere seen from outside, with the filled web inside.](docs/assets/helios-universe.webp)
 
-Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch-out zooms out; pinch-in zooms in. Play, pause, and change the speed of time from the bar at the bottom. Close the body card with the X or by tapping empty space. Zoom out past the solar overview and the orrery shrinks to a Sun pin. Constellation lines, names, and the Constellations control stay in the solar system. The first extra-zoom frame is already a far-galaxy image field; you are in the bright Milky Way tail, then more zoom shows the full disk. Nearby galaxies including Andromeda stay bright against that field through the Local Group and Virgo. After Virgo the field grows denser, then a long colored cosmic web, then that sky turns microwave and becomes an observable-universe sphere you can leave and see from outside. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
+Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch-out zooms out; pinch-in zooms in. Play, pause, and change the speed of time from the bar at the bottom. Close the body card with the X or by tapping empty space. Zoom out past the solar overview and the orrery shrinks to a Sun pin. The Hipparcos sky, IAU figures, and Gaia band stay up and grow brighter on the way out, so the first extra-zoom frame is already in the Milky Way tail. More zoom shows the full disk. A far-galaxy image sky then takes over through the Local Group and Virgo. After Virgo the field grows denser, then a long colored cosmic web, then that sky turns microwave and becomes an observable-universe sphere you can leave and see from outside. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
 
 Helios is a local page: no accounts, no telemetry, and no CDN.
 
@@ -34,7 +34,7 @@ Helios is a local page: no accounts, no telemetry, and no CDN.
 | Detail | Summary |
 | --- | --- |
 | Worlds | Sun, 8 planets, the Moon, Phobos, Deimos, Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, and Ceres |
-| Sky | Hipparcos bright stars, IAU constellation lines, a Milky Way band, and Andromeda at M31 inside the solar system. Extra zoom-out drops those figures at once and uses a far-galaxy image field from the first tail through a luminous Milky Way disk, nearby galaxies, a short Local Group, and Virgo, then a denser galaxy field, a large colored cosmic web, and a later CMB sphere you can see from outside; that map is not the sky. |
+| Sky | Hipparcos bright stars, IAU constellation lines, a Milky Way band, and Andromeda at M31 inside the solar system. Extra zoom-out brightens that sky through the Milky Way tail and disk, then a far-galaxy image field through nearby galaxies, a short Local Group, and Virgo, then a denser galaxy field, a large colored cosmic web, and a later CMB sphere you can see from outside; that map is not the sky. |
 | Belts | Asteroid field between Mars and Jupiter; Kuiper field from about 30–50 AU. Sparse points, not rock catalogs |
 | Time | Independent of the visual scale. Default and minimum are 1 simulated hour per real second |
 | Play with | Mouse, keyboard, or touch |

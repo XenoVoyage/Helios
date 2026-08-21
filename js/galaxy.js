@@ -172,32 +172,51 @@ export function solarOpacity(distance) {
   return distance < CONFIG.handoffViewDistance ? 1 : 0;
 }
 
-/** IAU figures and the Constellations control exist only in the solar system. */
+/** Solar skybox (Hipparcos, IAU, Gaia band) stays through the MW tail / disk. */
 export function skyStaysOn(distance) {
-  return scaleLayer(distance) === "solar";
+  const layer = scaleLayer(distance);
+  return layer === "solar" || layer === "transition" || layer === "milkyway";
 }
 
 /**
- * 3D disk is the bright tail at the first extra-zoom frame. Camera aim,
- * not a fade, keeps that frame from reading as a distant plate.
+ * Full 3D disk waits until after the tail. First extra-zoom frames are
+ * the bright solar MW trails, not a distant face-on plate.
  */
 export function milkyWayDiskOpacity(distance) {
-  return distance >= CONFIG.handoffViewDistance ? 1 : 0;
-}
-
-/** Gaia / Hipparcos sky is solar. It is gone by the first extra-zoom tail. */
-export function celestialSkyOpacity(distance) {
-  if (distance <= CONFIG.solarMaxDistance) return 1;
-  if (distance >= CONFIG.handoffViewDistance) return 0;
-  return 1 - smoothstep01(
-    (distance - CONFIG.solarMaxDistance)
-    / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance),
+  if (distance < CONFIG.handoffViewDistance) return 0;
+  if (distance >= CONFIG.mwViewDistance) return 1;
+  return smoothstep01(
+    (distance - CONFIG.handoffViewDistance)
+    / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance),
   );
 }
 
-/** Solar band strength. Extra-zoom fade is celestialSkyOpacity, not this. */
-export function skyBandBrightness(_distance) {
-  return 0.82;
+/** Gaia / Hipparcos / IAU stay through the tail and disk, then yield. */
+export function celestialSkyOpacity(distance) {
+  if (distance <= CONFIG.mwViewDistance) return 1;
+  if (distance >= CONFIG.neighborhoodViewDistance) return 0;
+  return 1 - smoothstep01(
+    (distance - CONFIG.mwViewDistance)
+    / (CONFIG.neighborhoodViewDistance - CONFIG.mwViewDistance),
+  );
+}
+
+/** Solar band is 0.82. Trails strengthen on the way out; they do not dim. */
+export function skyBandBrightness(distance) {
+  const solar = 0.82;
+  const tail = 1.72;
+  if (distance <= CONFIG.solarMaxDistance) return solar;
+  if (distance <= CONFIG.mwViewDistance) {
+    const t = (distance - CONFIG.solarMaxDistance)
+      / (CONFIG.mwViewDistance - CONFIG.solarMaxDistance);
+    return solar + (tail - solar) * smoothstep01(t);
+  }
+  return tail * celestialSkyOpacity(distance);
+}
+
+/** Hipparcos size/gain. 1 in solar so the in-system sky is unchanged. */
+export function skyStarBrightness(distance) {
+  return skyBandBrightness(distance) / 0.82;
 }
 
 /**
@@ -266,7 +285,7 @@ export function virgoOpacity(distance) {
 
 export function webOpacity(distance) {
   const start = CONFIG.virgoViewDistance
-    + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.7;
+    + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.78;
   if (distance < start) return 0;
   if (distance >= CONFIG.webViewDistance) return 1;
   return smoothstep01((distance - start) / (CONFIG.webViewDistance - start));
@@ -289,21 +308,19 @@ export function universeOpacity(distance) {
 }
 
 /**
- * Far-galaxy field is already up at the first extra-zoom tail, full at the
- * face-on disk. CMB replaces it at the last outside sphere.
+ * Galaxy-image sky takes over after the tail / disk, then stays through
+ * Local Group and Virgo. CMB replaces it at the last outside sphere.
  */
 export function farGalaxySkyOpacity(distance) {
-  if (distance <= CONFIG.solarMaxDistance) return 0;
+  if (distance <= CONFIG.mwViewDistance) return 0;
   const fadeStart = CONFIG.webViewDistance
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.72;
-  let shown;
-  if (distance >= CONFIG.handoffViewDistance) shown = 1;
-  else {
-    shown = smoothstep01(
-      (distance - CONFIG.solarMaxDistance)
-      / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance),
+  const shown = distance >= CONFIG.neighborhoodViewDistance
+    ? 1
+    : smoothstep01(
+      (distance - CONFIG.mwViewDistance)
+      / (CONFIG.neighborhoodViewDistance - CONFIG.mwViewDistance),
     );
-  }
   if (distance <= fadeStart) return shown;
   if (distance >= CONFIG.universeViewDistance) return 0;
   return shown * (1 - smoothstep01(
@@ -375,25 +392,43 @@ export function milkyWayInteriorCameraAim() {
   return { elevation: 0.08, azimuth: Math.PI };
 }
 
-/** 1 at the tail seat, 0 once the full disk is the orbit subject. */
+/** 1 while the camera stays in the arm, 0 at the full-disk orbit. */
 export function extraZoomTailMix(distance) {
   if (distance < CONFIG.handoffViewDistance) return 0;
   if (distance >= CONFIG.mwViewDistance) return 0;
+  const hold = CONFIG.handoffViewDistance
+    + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.42;
+  if (distance <= hold) return 1;
+  return 1 - smoothstep01(
+    (distance - hold) / (CONFIG.mwViewDistance - hold),
+  );
+}
+
+/**
+ * Extra-zoom near range. Slider distance still picks the layer; the
+ * camera itself sits in the arm at handoff and only later pulls back
+ * to the full disk.
+ */
+export function extraZoomCameraDistance(distance) {
+  const near = CONFIG.mwTailNearDistance;
+  if (distance <= CONFIG.solarMaxDistance) return distance;
+  if (distance >= CONFIG.mwViewDistance) return distance;
+  if (distance < CONFIG.handoffViewDistance) return near;
   const t = (distance - CONFIG.handoffViewDistance)
     / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance);
-  return 1 - smoothstep01(t);
+  return near + (CONFIG.mwViewDistance - near) * (t ** 1.45);
 }
 
 /** Sit in the Orion-arm tail near the Sun. Extra-zoom only. */
 export function milkyWayTailSeat() {
   const s = milkyWayUnitsPerKpc();
-  return { x: 0.22 * s, y: 0.24 * s, z: -1.8 * s };
+  return { x: 0.18 * s, y: 0.16 * s, z: -1.15 * s };
 }
 
 /** Look further along the arm so the bright tail fills the frame. */
 export function milkyWayTailLookAt() {
   const s = milkyWayUnitsPerKpc();
-  return { x: 0.7 * s, y: 0, z: -7.2 * s };
+  return { x: 0.55 * s, y: 0, z: -5.4 * s };
 }
 
 /** Near edge-on so disk thickness, bulge, and halo can be audited. */
@@ -1587,70 +1622,71 @@ function createCmbShell(THREE, group) {
   group.add(shell);
 }
 
-/** Distant camera-attached galaxy images. Not a lit world-space ball or pole hole. */
+/** Distant camera-attached galaxy-image sky. Transparent shell, not a lit ball. */
 export function farGalaxySkyRadius() {
   return CONFIG.cameraFar * 0.42;
 }
 
-function createFarGalaxySky(THREE, group, maps) {
+function farGalaxySkyMap(THREE) {
+  const width = 2048;
+  const height = 1024;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  const rand = seedRandom(4608);
+  const stamp = (x, y, radius, color) => {
+    for (const ox of [0, -width, width]) stampSoft(ctx, x + ox, y, radius, color);
+  };
+  for (let i = 0; i < 9000; i += 1) {
+    const theta = rand() * Math.PI * 2;
+    const phi = Math.acos(2 * rand() - 1);
+    const x = (theta / (Math.PI * 2)) * width;
+    const y = (phi / Math.PI) * height;
+    const warm = rand();
+    stamp(
+      x,
+      y,
+      0.9 + rand() * 2.4,
+      `rgba(${Math.floor(170 + 80 * warm)}, ${Math.floor(180 + 50 * warm)}, ${Math.floor(220 - 30 * warm)}, ${0.35 + rand() * 0.5})`,
+    );
+  }
+  for (let i = 0; i < 720; i += 1) {
+    const theta = rand() * Math.PI * 2;
+    const phi = Math.acos(2 * rand() - 1);
+    const x = (theta / (Math.PI * 2)) * width;
+    const y = (phi / Math.PI) * height;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rand() * Math.PI);
+    ctx.scale(1, 0.28 + rand() * 0.34);
+    stampSoft(ctx, 0, 0, 5 + rand() * 9, "rgba(230, 210, 175, 0.55)");
+    ctx.restore();
+  }
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = THREE.RepeatWrapping;
+  map.anisotropy = 4;
+  return map;
+}
+
+function createFarGalaxySky(THREE, group) {
   const sky = new THREE.Group();
   sky.name = "far-galaxy-sky";
   const radius = farGalaxySkyRadius();
-  const rand = seedRandom(4608);
-  const kinds = ["spiral", "elliptical", "spiral", "irregular", "elliptical", "lmc"];
-  const templates = {
-    spiral: unlitSprite(THREE, {
-      map: maps.spiral,
-      color: 0xf4f7ff,
-      opacity: 0.9,
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(radius, 64, 48),
+    unlitBasic(THREE, {
+      map: farGalaxySkyMap(THREE),
+      opacity: 0.92,
+      side: THREE.BackSide,
       depthTest: false,
       fog: false,
-      blending: THREE.AdditiveBlending,
     }),
-    elliptical: unlitSprite(THREE, {
-      map: maps.elliptical,
-      color: 0xffe6c4,
-      opacity: 0.9,
-      depthTest: false,
-      fog: false,
-      blending: THREE.AdditiveBlending,
-    }),
-    irregular: unlitSprite(THREE, {
-      map: maps.irregular,
-      color: 0xfff0dc,
-      opacity: 0.88,
-      depthTest: false,
-      fog: false,
-      blending: THREE.AdditiveBlending,
-    }),
-    lmc: unlitSprite(THREE, {
-      map: maps.lmc,
-      color: 0xffe8c8,
-      opacity: 0.88,
-      depthTest: false,
-      fog: false,
-      blending: THREE.AdditiveBlending,
-    }),
-  };
-  const count = 1680;
-  for (let i = 0; i < count; i += 1) {
-    const theta = rand() * Math.PI * 2;
-    const phi = Math.acos(2 * rand() - 1);
-    const kind = kinds[Math.floor(rand() * kinds.length)];
-    const sprite = new THREE.Sprite(templates[kind].clone());
-    sprite.material.rotation = rand() * Math.PI;
-    sprite.material.opacity = 0.84 + rand() * 0.16;
-    sprite.position.set(
-      radius * Math.sin(phi) * Math.cos(theta),
-      radius * Math.cos(phi),
-      radius * Math.sin(phi) * Math.sin(theta),
-    );
-    const size = radius * (0.012 + (rand() ** 1.05) * 0.048);
-    const aspect = kind === "elliptical" ? 0.78 : kind === "spiral" ? 0.42 : 0.58;
-    sprite.scale.set(size, size * aspect, 1);
-    sprite.frustumCulled = false;
-    sky.add(sprite);
-  }
+  );
+  sphere.name = "far-galaxy-shell";
+  sphere.frustumCulled = false;
+  sky.add(sphere);
   sky.renderOrder = -80;
   group.add(sky);
 }
@@ -1702,7 +1738,7 @@ export function createGalaxyLayer(THREE) {
     irregular: galaxySprite(THREE, "irregular", 3),
     lmc: galaxySprite(THREE, "lmc", 4),
   };
-  createFarGalaxySky(THREE, group, maps);
+  createFarGalaxySky(THREE, group);
   const milkyway = new THREE.Group();
   milkyway.name = "milkyway";
   createDiskGlow(THREE, milkyway);

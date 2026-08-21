@@ -62,6 +62,8 @@ export const CONFIG = Object.freeze({
   // Orrery is already a Sun pin; MW then appears at full brightness.
   // Close enough that the first extra-zoom sits in the disk tail, not above it.
   handoffViewDistance: 2800,
+  // Extra-zoom camera near range: first frames sit in the Orion Arm, not a postcard.
+  mwTailNearDistance: 168,
   // kpc → scene for the Milky Way disk. Not the AU orbit curve.
   mwScale: 82,
   mwPower: 0.95,

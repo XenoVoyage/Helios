@@ -305,15 +305,16 @@ function createStars(THREE, radius) {
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
   const material = new THREE.ShaderMaterial({
-    uniforms: { starMap: { value: starSprite(THREE) } },
+    uniforms: { starMap: { value: starSprite(THREE) }, brightness: { value: 1 } },
     vertexShader: `
       attribute float size;
       attribute vec3 color;
+      uniform float brightness;
       varying vec3 vColor;
       void main() {
-        vColor = color;
+        vColor = color * brightness;
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = size;
+        gl_PointSize = size * (0.82 + 0.18 * brightness);
         gl_Position = projectionMatrix * mv;
       }
     `,
@@ -467,6 +468,14 @@ export function setSkyBandBrightness(sky, brightness) {
   const band = sky?.getObjectByName("milky-way");
   if (band?.material?.uniforms?.brightness) {
     band.material.uniforms.brightness.value = brightness;
+  }
+}
+
+/** 1 keeps the solar Hipparcos look. Extra-zoom may raise this. */
+export function setStarBrightness(sky, brightness) {
+  const stars = sky?.getObjectByName("stars");
+  if (stars?.material?.uniforms?.brightness) {
+    stars.material.uniforms.brightness.value = brightness;
   }
 }
 
