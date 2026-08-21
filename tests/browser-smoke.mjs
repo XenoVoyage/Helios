@@ -35,6 +35,19 @@ function captureErrors(page) {
   return errors;
 }
 
+function launchBrowser() {
+  return chromium.launch({
+    headless: true,
+    executablePath: process.env.HELIOS_CHROMIUM_PATH || undefined,
+    args: [
+      "--no-sandbox",
+      "--use-gl=angle",
+      "--use-angle=swiftshader",
+      "--enable-unsafe-swiftshader",
+    ],
+  });
+}
+
 async function openReady(page, suffix = "") {
   await page.goto(base + suffix, { waitUntil: "networkidle" });
   await page.waitForFunction(
@@ -190,16 +203,7 @@ try {
   ]);
   assert.match(String(line), /Helios local server/);
 
-  browser = await chromium.launch({
-    headless: true,
-    executablePath: process.env.HELIOS_CHROMIUM_PATH || undefined,
-    args: [
-      "--no-sandbox",
-      "--use-gl=angle",
-      "--use-angle=swiftshader",
-      "--enable-unsafe-swiftshader",
-    ],
-  });
+  browser = await launchBrowser();
 
   const desktop = await browser.newContext({
     viewport: { width: 1440, height: 900 },
@@ -336,6 +340,8 @@ try {
   await saveScreenshot(failurePage, "webgl-fallback");
   await failure.close();
 
+  await browser.close();
+  browser = await launchBrowser();
   await captureReviewMatrix(browser);
 
   console.log("browser-smoke ok");
