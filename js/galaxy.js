@@ -1800,13 +1800,13 @@ function createDeepField(THREE, group, maps) {
   for (const hub of hubs) {
     if (hub.home) continue;
     const kind = kinds[Math.floor(rand() * kinds.length)];
-    // Hubs are at least radius * 0.052 apart; staying near half that
-    // spacing keeps every galaxy separated, never a colliding swarm.
-    const size = radius * (0.016 + rand() * 0.014);
+    // Hubs are at least radius * 0.052 apart; staying under two half-sizes
+    // of that spacing keeps every galaxy separated, never a colliding swarm.
+    const size = radius * (0.026 + rand() * 0.02);
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map: maps[kind],
       color: kind === "elliptical" ? 0xffe6c4 : 0xf2f6ff,
-      opacity: 0.92,
+      opacity: 0.95,
       rotation: rand() * Math.PI,
       blending: THREE.AdditiveBlending,
     }));
