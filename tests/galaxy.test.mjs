@@ -63,7 +63,6 @@ import {
   skyStaysOn,
   solarOpacity,
   spiralRadiusKpc,
-  sunPinOpacity,
   sunScenePosition,
   universeOpacity,
   virgoOpacity,
@@ -415,8 +414,11 @@ test("solar skybox stays through the tail and the camera sits in the arm", () =>
     "first extra-zoom is already inside the local arm / disk trail",
   );
   assert.equal(milkyWayDiskOpacity(CONFIG.mwViewDistance), 1);
-  assert.equal(sunPinOpacity(CONFIG.handoffViewDistance), 0);
-  assert.equal(sunPinOpacity(CONFIG.mwViewDistance), 1);
+  assert.equal(
+    extraZoomTailMix(CONFIG.mwViewDistance),
+    0,
+    "trail mark is gone at disk scale; only the tail seat shows it",
+  );
   assert.equal(farGalaxySkyOpacity(CONFIG.handoffViewDistance), 1);
   assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 1);
   assert.equal(skyBandBrightness(CONFIG.cameraDistance), 0.82);
@@ -612,7 +614,17 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /quietAndromedaMap|andromeda\.png/);
   assert.doesNotMatch(galaxySource, /if \(pole < 0\.28\) continue/);
   assert.match(galaxySource, /cameraFar \* 0\.42/);
-  assert.doesNotMatch(galaxySource, /function farGalaxySkyMap/);
+  assert.match(
+    galaxySource,
+    /function farGalaxySkyMap/,
+    "the sky is the restored galaxy-image skybox texture, not sprites or points",
+  );
+  assert.match(galaxySource, /side:\s*THREE\.BackSide/);
+  assert.doesNotMatch(
+    galaxySource,
+    /const size = 68000/,
+    "no massive sky sprites sitting next to the Milky Way",
+  );
   assert.doesNotMatch(galaxySource, /farGalaxySkyRadius\(\) \* 0\.045/);
   assert.doesNotMatch(galaxySource, /t: 0\.16/);
   assert.match(
@@ -625,8 +637,8 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
     /hubs = collectWebHubs\(rand, radius, hubCount, includeVirgo, includeHome\)/,
     "the web volume uses the same hub collector",
   );
-  assert.match(galaxySource, /createFarGalaxySky\(THREE, group, maps\)/);
-  assert.doesNotMatch(galaxySource, /far-galaxy-shell/);
+  assert.match(galaxySource, /createFarGalaxySky\(THREE, group\)/);
+  assert.match(galaxySource, /far-galaxy-shell/);
   assert.doesNotMatch(galaxySource, /fillSpherePoints/);
   assert.doesNotMatch(galaxySource, /far-galaxy-blobs/);
   assert.match(galaxySource, /brightenLoadedMap/);
@@ -639,13 +651,32 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /farGalaxySkyOpacity/);
   assert.match(galaxySource, /cmbSkyOpacity/);
   assert.match(galaxySource, /milkyWayDiskOpacity/);
-  assert.match(galaxySource, /sunPinOpacity/);
+  assert.doesNotMatch(
+    galaxySource,
+    /sun-pin-mark|sunPinOpacity/,
+    "no white Sun pin survives past the tail",
+  );
   assert.match(galaxySource, /mw-arm-trail/);
   assert.match(galaxySource, /mw-arm-sun/);
+  assert.match(
+    galaxySource,
+    /fadeNamedGroup\(group, "mw-tail", opacity, extraZoomTailMix\(distance\) \* family\)/,
+    "the close-in trail mark fades out with the tail seat",
+  );
+  assert.match(
+    galaxySource,
+    /const family = 1 - cluster;/,
+    "no leftover MW streak at Virgo scale",
+  );
+  assert.match(
+    galaxySource,
+    /sprite\.position\.set\(hub\.x, hub\.y, hub\.z\)/,
+    "one separated pre-web galaxy per hub, no scattered clumps",
+  );
+  assert.doesNotMatch(galaxySource, /const members = 2 \+/);
   assert.match(galaxySource, /extraZoomCameraNear/);
   assert.match(galaxySource, /skyStaysOn/);
   assert.match(galaxySource, /attachFarGalaxySky/);
-  assert.match(galaxySource, /sun-pin-mark/);
   assert.match(galaxySource, /sun-nearby-mark/);
   assert.match(galaxySource, /toneMapped:\s*false/);
   assert.match(galaxySource, /unlitSprite|toneMapped:\s*false/);
