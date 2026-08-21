@@ -184,6 +184,20 @@ export function solarOpacity(distance) {
   return 1 - galaxyOpacity(distance);
 }
 
+/**
+ * Asteroid / Kuiper debris fades out right after the solar cap, before
+ * the MW crossfade begins, so on the trail the solar system reads as a
+ * single tiny star among the arm — no ring, no dust halo.
+ */
+export function solarDebrisOpacity(distance) {
+  if (distance <= CONFIG.solarMaxDistance) return 1;
+  const end = handoffBlendStart();
+  if (distance >= end) return 0;
+  return 1 - smoothstep01(
+    (distance - CONFIG.solarMaxDistance) / (end - CONFIG.solarMaxDistance),
+  );
+}
+
 /** Hipparcos / IAU stay through the solar cap. Extra-zoom uses the galaxy-image sky. */
 export function skyStaysOn(distance) {
   const layer = scaleLayer(distance);

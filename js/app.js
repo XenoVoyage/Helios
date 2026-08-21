@@ -46,6 +46,7 @@ import {
   setGalaxyLayerVisible,
   skyBandBrightness,
   skyStaysOn,
+  solarDebrisOpacity,
   solarOpacity,
   universeCameraAim,
   virgoCameraAim,
@@ -877,8 +878,9 @@ function paintScaleLayer() {
   kuiperBelt.scale.setScalar(shrink);
   orbitLines.scale.setScalar(shrink);
   orbitLines.visible = orbitLineOpacity(state.distance) > 0.04;
-  fadeRoot(asteroidBelt, solar);
-  fadeRoot(kuiperBelt, solar);
+  const debris = solarDebrisOpacity(state.distance);
+  fadeRoot(asteroidBelt, debris);
+  fadeRoot(kuiperBelt, debris);
   fadeRoot(orbitLines, orbitLineOpacity(state.distance));
   setCelestialFade(celestial, celestialSkyOpacity(state.distance));
   setSkyBandBrightness(celestial, skyBandBrightness(state.distance));

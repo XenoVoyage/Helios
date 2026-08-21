@@ -58,6 +58,7 @@ import {
   skyBandBrightness,
   skyStarBrightness,
   skyStaysOn,
+  solarDebrisOpacity,
   solarOpacity,
   spiralRadiusKpc,
   sunScenePosition,
@@ -260,6 +261,19 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
       `no empty black sky at ${d}`,
     );
   }
+  // Regression (ring / dust halo on the trail): the asteroid and Kuiper
+  // debris is gone before the MW crossfade begins, so the solar system
+  // reads as a single tiny star on the arm.
+  assert.equal(solarDebrisOpacity(CONFIG.cameraDistance), 1);
+  assert.equal(solarDebrisOpacity(CONFIG.solarMaxDistance), 1, "inner debris look unchanged");
+  assert.ok(
+    solarDebrisOpacity((CONFIG.solarMaxDistance + blendStart) / 2) < 1,
+    "debris fades smoothly after the cap, no pop",
+  );
+  assert.equal(solarDebrisOpacity(blendStart), 0, "no ring or dust halo once the MW fades in");
+  assert.equal(solarDebrisOpacity(midBlend), 0);
+  assert.equal(solarDebrisOpacity(CONFIG.handoffViewDistance), 0);
+  assert.equal(solarDebrisOpacity(CONFIG.mwViewDistance), 0);
   assert.equal(scaleLayer(CONFIG.mwViewDistance), "milkyway");
   assert.equal(scaleLayer(CONFIG.neighborhoodViewDistance), "neighborhood");
   assert.equal(scaleLayer(CONFIG.localGroupViewDistance), "localgroup");

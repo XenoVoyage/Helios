@@ -90,6 +90,7 @@ assert.match(app, /galaxyLook === "disk"/);
 assert.match(sky, /gl_PointSize = size \* brightness \* brightness/);
 assert.match(app, /orreryScale/);
 assert.match(app, /orbitLineOpacity/);
+assert.match(app, /solarDebrisOpacity/);
 assert.match(app, /warmExtraZoom/);
 assert.match(app, /paintConstellations/);
 assert.match(app, /ui\.sky\.hidden/);
