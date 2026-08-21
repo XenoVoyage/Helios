@@ -391,9 +391,15 @@ export function visualRadius(radiusKm) {
   return CONFIG.sizeScale * (radiusKm / CONFIG.earthRadiusKm) ** CONFIG.sizePower;
 }
 
-/** Displayed globe size. Moons share the size curve; moonSizeScale is 1. */
+/**
+ * Displayed globe size. Moons share the size curve (moonSizeScale 1) with a
+ * visual floor: the curve maps Phobos / Deimos to a sub-pixel ~0.002 units,
+ * so without the floor they vanish at every allowed camera distance while
+ * their labels stay up. Published radiusKm is untouched.
+ */
 export function visualBodyRadius(body) {
-  return visualRadius(body.radiusKm) * (body.kind === "moon" ? CONFIG.moonSizeScale : 1);
+  if (body.kind !== "moon") return visualRadius(body.radiusKm);
+  return Math.max(visualRadius(body.radiusKm) * CONFIG.moonSizeScale, CONFIG.moonMinRadius);
 }
 
 export function visualOrbit(orbitAu) {

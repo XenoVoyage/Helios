@@ -72,6 +72,16 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function seedRandom(seed) {
+  let n = seed >>> 0;
+  return () => {
+    n = (n + 0x6d2b79f5) | 0;
+    let t = Math.imul(n ^ (n >>> 15), 1 | n);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function wrapRad(radians) {
   return ((radians % TAU) + TAU) % TAU;
 }
@@ -345,6 +355,60 @@ function createStars(THREE, radius) {
   return points;
 }
 
+/**
+ * Faint seeded backdrop stars behind the Hipparcos catalog, denser toward
+ * the galactic plane, so the solar sky reads as a full universe inside the
+ * MW. Dressing only: constant brightness at every zoom, no catalog claims,
+ * and always dimmer / smaller than the catalog stars.
+ */
+function createFaintStars(THREE, radius, { count, size, seed, opacity, name }) {
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const rand = seedRandom(seed);
+  let n = 0;
+  let guard = 0;
+  while (n < count && guard < count * 30) {
+    guard += 1;
+    const raDeg = rand() * 360;
+    const decDeg = Math.asin(2 * rand() - 1) / DEG;
+    const { bDeg } = equatorialToGalactic(raDeg, decDeg);
+    // Real faint-star density rises toward the band; mild, not a stripe.
+    const keep = 0.32 + 0.68 * Math.exp(-((bDeg / 16) ** 2));
+    if (rand() > keep) continue;
+    const at = scaleDir(equatorialToScene(raDeg, decDeg), radius);
+    const o = n * 3;
+    positions[o] = at.x;
+    positions[o + 1] = at.y;
+    positions[o + 2] = at.z;
+    const tint = colorFromBV(-0.2 + rand() * 1.5);
+    const shade = 0.4 + rand() * 0.45;
+    colors[o] = tint.r * shade;
+    colors[o + 1] = tint.g * shade;
+    colors[o + 2] = tint.b * shade;
+    n += 1;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions.slice(0, n * 3), 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors.slice(0, n * 3), 3));
+  const points = new THREE.Points(
+    geometry,
+    new THREE.PointsMaterial({
+      map: starSprite(THREE),
+      size,
+      sizeAttenuation: false,
+      vertexColors: true,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    }),
+  );
+  points.name = name;
+  points.frustumCulled = false;
+  return points;
+}
+
 function createConstellationLines(THREE, radius) {
   const positions = [];
   for (const constellation of CONSTELLATION_LINES) {
@@ -514,6 +578,20 @@ export function createCelestialSphere(THREE, radius = CONFIG.skyRadius) {
   const group = new THREE.Group();
   group.name = "celestial-sphere";
   group.add(createMilkyWay(THREE, radius));
+  group.add(createFaintStars(THREE, radius * 0.992, {
+    count: Math.round(CONFIG.skyFaintStarCount * 0.82),
+    size: 1.8,
+    seed: 20260821,
+    opacity: 0.85,
+    name: "faint-stars",
+  }));
+  group.add(createFaintStars(THREE, radius * 0.99, {
+    count: Math.round(CONFIG.skyFaintStarCount * 0.18),
+    size: 2.5,
+    seed: 47251,
+    opacity: 0.7,
+    name: "faint-stars-bright",
+  }));
   group.add(createStars(THREE, radius * 0.985));
   group.add(createConstellationLines(THREE, radius * 0.972));
   group.add(createAndromeda(THREE, radius * 0.978));

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { CONFIG } from "../js/config.js";
 import {
   ANDROMEDA,
@@ -105,10 +108,31 @@ test("catalog is a few thousand brightest Hipparcos stars and the far plane clea
   assert.ok(STARS.length > 3000 && STARS.length < 8000);
   assert.ok(STARS.every((row) => row[0] > 0 && Number.isFinite(row[1]) && Number.isFinite(row[2])));
   assert.ok(CONFIG.cameraFar > CONFIG.skyRadius);
-  assert.equal(CONFIG.VERSION, "v2026.8.21b");
+  assert.equal(CONFIG.VERSION, "v2026.8.21c");
 });
 
 test("constellation names stay readable at overview", () => {
   assert.ok(constellationLabelPixelHeight() > 22);
   assert.ok(constellationLabelPixelHeight(800, 52) > 16);
+});
+
+test("faint backdrop stars densify the solar sky without touching the catalog", async () => {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const source = await readFile(path.join(root, "js/sky.js"), "utf8");
+  assert.ok(CONFIG.skyFaintStarCount > 4000, "enough dressing stars to read as a universe");
+  assert.match(source, /createFaintStars/);
+  assert.match(source, /faint-stars/);
+  assert.match(
+    source,
+    /seedRandom/,
+    "backdrop stars are seeded and deterministic, not Math.random",
+  );
+  assert.doesNotMatch(
+    source,
+    /skyFaintStarCount[^\n]*distance/,
+    "backdrop star count never depends on camera distance",
+  );
+  // The catalog stars stay the only Hipparcos claim; the backdrop layer
+  // carries no hip ids and never touches the star shader's brightness.
+  assert.match(source, /dressing only/i);
 });
