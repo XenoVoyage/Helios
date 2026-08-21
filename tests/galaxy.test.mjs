@@ -37,10 +37,10 @@ import {
   heliocentricGalactic,
   localGroupCameraAim,
   localGroupMemberOpacity,
-  magellanicOpacity,
+  neighborBodyOpacity,
   milkyWayBelowCameraAim,
   milkyWayNameOpacity,
-  sunBadgeOpacity,
+  solarBadgeOpacity,
   milkyWayInteriorCameraAim,
   lookAngleTo,
   milkyWayDiskDiameter,
@@ -293,31 +293,53 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.equal(
     neighborOpacity(CONFIG.handoffViewDistance),
     0,
-    "catalog neighbors wait until the disk is leaving the tail",
+    "neighbor labels wait until the disk is leaving the tail",
   );
-  // Regression (LMC / SMC pop-in): the Magellanic Clouds ride with the
-  // disk from the first trail frame; only their labels wait for the
-  // neighbor-label fade.
-  assert.equal(magellanicOpacity(blendStart - 1), 0);
-  assert.ok(magellanicOpacity(midBlend) > 0 || galaxyOpacity(midBlend) > 0);
+  // Regression (neighbor pop-in): all four catalog neighbor bodies (LMC,
+  // SMC, Andromeda, Triangulum) ride with the disk from the first trail
+  // frame; only their labels wait for the neighbor-label fade.
+  assert.equal(neighborBodyOpacity(blendStart - 1), 0);
+  assert.ok(neighborBodyOpacity(midBlend) > 0 || galaxyOpacity(midBlend) > 0);
   assert.equal(
-    magellanicOpacity(CONFIG.handoffViewDistance),
+    neighborBodyOpacity(CONFIG.handoffViewDistance),
     1,
-    "LMC / SMC already exist while the camera is on the MW trail",
+    "catalog neighbors already exist while the camera is on the MW trail",
   );
-  assert.equal(magellanicOpacity(CONFIG.mwViewDistance), 1);
-  assert.equal(magellanicOpacity(CONFIG.neighborhoodViewDistance), 1);
-  // Trail badge: Sun badge rides the trail, then yields to the Milky Way
-  // name, which appears the same way the other named objects do.
-  assert.equal(sunBadgeOpacity(blendStart - 1), 0);
-  assert.equal(sunBadgeOpacity(CONFIG.handoffViewDistance), 1, "Sun badge is up on the trail");
-  assert.equal(sunBadgeOpacity(CONFIG.mwViewDistance), 0, "Sun badge yields at the full disk");
+  assert.equal(neighborBodyOpacity(CONFIG.mwViewDistance), 1);
+  assert.equal(neighborBodyOpacity(CONFIG.neighborhoodViewDistance), 1);
+  // Trail badge: the "Solar System" badge rides the trail over the white
+  // seat particle, then dies early on the way out — before the Milky Way
+  // name and the neighbor labels arrive — so no empty badge floats over
+  // the trail or the disk.
+  assert.equal(solarBadgeOpacity(blendStart - 1), 0);
+  assert.equal(solarBadgeOpacity(CONFIG.handoffViewDistance), 1, "badge is up on the trail");
+  const badgeGone = CONFIG.handoffViewDistance
+    + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.45;
+  assert.equal(solarBadgeOpacity(badgeGone), 0, "badge dies early on the way out");
+  assert.equal(
+    neighborOpacity(badgeGone),
+    0,
+    "badge is gone before the galaxy names arrive to take over",
+  );
+  assert.equal(solarBadgeOpacity(CONFIG.mwViewDistance), 0, "no badge at the full disk");
   assert.equal(milkyWayNameOpacity(CONFIG.handoffViewDistance), 0);
   assert.equal(milkyWayNameOpacity(CONFIG.mwViewDistance), 1);
   assert.equal(milkyWayNameOpacity(CONFIG.mwViewDistance), neighborOpacity(CONFIG.mwViewDistance));
-  assert.equal(localGroupMemberOpacity(CONFIG.neighborhoodViewDistance), 0);
+  // Regression (Local Group / Virgo pop-in): already-there catalog objects
+  // are faintly present from the first trail frame, never spawn later.
+  assert.equal(localGroupMemberOpacity(blendStart - 1), 0);
+  assert.ok(
+    localGroupMemberOpacity(CONFIG.handoffViewDistance) > 0.2,
+    "Local Group extras are present on the first trail frame",
+  );
+  assert.ok(localGroupMemberOpacity(CONFIG.neighborhoodViewDistance) < 0.5);
   assert.equal(localGroupMemberOpacity(CONFIG.localGroupViewDistance), 1);
-  assert.equal(virgoOpacity(CONFIG.localGroupViewDistance), 0);
+  assert.equal(virgoOpacity(blendStart - 1), 0);
+  assert.ok(
+    virgoOpacity(CONFIG.handoffViewDistance) > 0.2,
+    "Virgo is present on the first trail frame",
+  );
+  assert.ok(virgoOpacity(CONFIG.localGroupViewDistance) < 0.5);
   assert.equal(virgoOpacity(CONFIG.virgoViewDistance), 1);
   assert.equal(nearClusterOpacity(CONFIG.localGroupViewDistance), 0);
   assert.equal(
@@ -426,6 +448,31 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     CONFIG.maxDistance > farthestUniverseDistance(),
     "camera can leave the observable sphere",
   );
+});
+
+test("trail marks: one white Solar System particle, no lingering Sun badge", async () => {
+  const galaxySource = await readFile(path.join(root, "js/galaxy.js"), "utf8");
+  assert.match(galaxySource, /"Solar System"/, "the trail badge names the Solar System");
+  assert.doesNotMatch(
+    galaxySource,
+    /labelSprite\(THREE, "Sun"[,)]/,
+    "no bare Sun badge survives at trail / disk scale",
+  );
+  assert.match(galaxySource, /solar-seat-star/, "one seat particle marks the Sun's spot");
+  assert.match(
+    galaxySource,
+    /"solar-seat-star",\s*new Float32Array\(\[sun\.x, sun\.y, sun\.z\]\),\s*new Float32Array\(\[1, 1, 1\]\)/,
+    "the seat particle is a single white point at the Sun's seat",
+  );
+  assert.doesNotMatch(galaxySource, /solar-seat-ring|seatGlowMap/, "not a ring, not a glow halo");
+  // The badge dies strictly earlier than the old (1 - neighborOpacity)
+  // fade: gone by mid-trail, while the names arrive near the full disk.
+  const start = CONFIG.handoffViewDistance;
+  const span = CONFIG.mwViewDistance - start;
+  assert.ok(solarBadgeOpacity(start + span * 0.2) < 1);
+  assert.equal(solarBadgeOpacity(start + span * 0.5), 0);
+  assert.equal(solarBadgeOpacity(start + span * 0.88), 0);
+  assert.ok(neighborOpacity(start + span * 0.94) > 0, "names take over after the badge is gone");
 });
 
 test("extra-zoom shrinks the orrery to a Sun pin before the MW disk", () => {
