@@ -33,13 +33,10 @@ import {
   localGroupCameraAim,
   extraZoomCameraDistance,
   extraZoomCameraNear,
-  extraZoomTailMix,
   milkyWayBelowCameraAim,
   milkyWayCameraAim,
   milkyWayEdgeCameraAim,
   milkyWayInteriorCameraAim,
-  milkyWayTailLookAt,
-  milkyWayTailSeat,
   skyStarBrightness,
   neighborhoodCameraAim,
   orbitLineOpacity,
@@ -63,8 +60,6 @@ const world = new THREE.Vector3();
 const projected = new THREE.Vector3();
 const focusPoint = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
-const tailSeat = new THREE.Vector3();
-const tailLook = new THREE.Vector3();
 
 const state = {
   days: 0,
@@ -592,11 +587,6 @@ function zoomTo(distance) {
     state.selectedId = null;
     paintCard();
   }
-  if (state.distance < CONFIG.handoffViewDistance && next >= CONFIG.handoffViewDistance) {
-    const aim = milkyWayInteriorCameraAim();
-    state.azimuth = aim.azimuth;
-    state.elevation = aim.elevation;
-  }
   state.distance = next;
 }
 
@@ -824,42 +814,16 @@ function placeCamera(blend) {
     return;
   }
   focusPoint.lerp(desiredTarget, clamp(blend, 0, 1));
+  // Orbit input stays live at every zoom; extra-zoom never seats or
+  // locks the camera, it only remaps the orbit radius.
   const radius = extraZoomCameraDistance(state.distance);
-  const tailMix = extraZoomTailMix(state.distance);
-  if (tailMix >= 0.995) {
-    const seat = milkyWayTailSeat();
-    const along = milkyWayTailLookAt();
-    camera.position.set(
-      focusPoint.x + seat.x,
-      focusPoint.y + seat.y,
-      focusPoint.z + seat.z,
-    );
-    camera.lookAt(
-      focusPoint.x + along.x,
-      focusPoint.y + along.y,
-      focusPoint.z + along.z,
-    );
-  } else {
-    const cosE = Math.cos(state.elevation);
-    camera.position.set(
-      focusPoint.x + radius * cosE * Math.sin(state.azimuth),
-      focusPoint.y + radius * Math.sin(state.elevation),
-      focusPoint.z + radius * cosE * Math.cos(state.azimuth),
-    );
-    camera.lookAt(focusPoint);
-    if (tailMix > 0.01) {
-      const seat = milkyWayTailSeat();
-      const along = milkyWayTailLookAt();
-      tailSeat.set(focusPoint.x + seat.x, focusPoint.y + seat.y, focusPoint.z + seat.z);
-      camera.position.lerp(tailSeat, tailMix);
-      tailLook.set(
-        focusPoint.x + along.x * tailMix,
-        focusPoint.y + along.y * tailMix,
-        focusPoint.z + along.z * tailMix,
-      );
-      camera.lookAt(tailLook);
-    }
-  }
+  const cosE = Math.cos(state.elevation);
+  camera.position.set(
+    focusPoint.x + radius * cosE * Math.sin(state.azimuth),
+    focusPoint.y + radius * Math.sin(state.elevation),
+    focusPoint.z + radius * cosE * Math.cos(state.azimuth),
+  );
+  camera.lookAt(focusPoint);
   camera.near = extraZoomCameraNear(state.distance);
   camera.far = CONFIG.cameraFar;
   camera.updateProjectionMatrix();

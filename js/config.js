@@ -14,7 +14,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20y",
+  VERSION: "v2026.8.21",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -57,10 +57,10 @@ export const CONFIG = Object.freeze({
   // Far enough outside the CMB shell that the sphere reads as a ball.
   universeViewDistance: 2000000,
   galaxyFadeStart: 1880,
-  // Extra-zoom pin shrink after the hard MW cut. Not a solar/MW opacity blend.
+  // Extra-zoom pin shrink after the handoff. Not a solar/MW opacity blend.
   galaxyFadeEnd: 11000,
-  // Orrery is already a Sun pin; MW then appears at full brightness.
-  // Close enough that the first extra-zoom sits in the disk tail, not above it.
+  // Solar sky and MW crossfade over the last stretch before this distance,
+  // so zooming out never shows an empty black sky.
   handoffViewDistance: 2800,
   // Extra-zoom near range: first frames sit among Orion-arm stars, not a postcard.
   mwTailNearDistance: 36,
