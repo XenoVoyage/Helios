@@ -311,13 +311,13 @@ export function universeOpacity(distance) {
 }
 
 /**
- * Distant galaxy-image sky starts in the tail and stays through Virgo.
- * It is a far field, not nearby junk. The existing web replaces it.
+ * Distant galaxy-image sky starts in the tail and stays through Virgo
+ * and the pre-web field. It is a far field, not nearby junk. It yields
+ * to the existing web as the web fades in.
  */
 export function farGalaxySkyOpacity(distance) {
   if (distance < CONFIG.handoffViewDistance) return 0;
-  if (webOpacity(distance) > 0.04) return 0;
-  return 1;
+  return 1 - webOpacity(distance);
 }
 
 /** Microwave sky waits until after a long web, then becomes the outer shell. */
@@ -1537,21 +1537,12 @@ function addFieldGalaxies(THREE, group, name, radius, count, seed) {
   addPoints(THREE, group, name, positions, colors, 220, 0.48, true, THREE.AdditiveBlending);
 }
 
-function createWebVolume(THREE, group, {
-  name,
-  radius,
-  hubCount,
-  seed,
-  hubSize,
-  particleSize,
-  includeVirgo,
-  includeHome = true,
-  fieldCount,
-}) {
-  const web = new THREE.Group();
-  web.name = name;
-  const rand = seedRandom(seed);
-  const hubMap = hubSprite(THREE);
+/**
+ * Web hub positions. The pre-web deep field reuses this with the same
+ * seed and parameters as the cosmic web, so the galaxy images sit
+ * exactly where the lattice hubs appear and the morph is a crossfade.
+ */
+function collectWebHubs(rand, radius, hubCount, includeVirgo, includeHome = true) {
   const hubs = [];
   if (includeHome) hubs.push({ x: 0, y: 0, z: 0, home: true });
   if (includeVirgo) {
@@ -1580,6 +1571,25 @@ function createWebVolume(THREE, group, {
     }
     hubs.push(at);
   }
+  return hubs;
+}
+
+function createWebVolume(THREE, group, {
+  name,
+  radius,
+  hubCount,
+  seed,
+  hubSize,
+  particleSize,
+  includeVirgo,
+  includeHome = true,
+  fieldCount,
+}) {
+  const web = new THREE.Group();
+  web.name = name;
+  const rand = seedRandom(seed);
+  const hubMap = hubSprite(THREE);
+  const hubs = collectWebHubs(rand, radius, hubCount, includeVirgo, includeHome);
 
   const positions = [];
   const colors = [];
@@ -1717,13 +1727,13 @@ function createFarGalaxySky(THREE, group, maps) {
   const radius = farGalaxySkyRadius();
   const rand = seedRandom(4608);
   const kinds = ["spiral", "elliptical", "spiral", "irregular"];
-  const count = 800;
+  const count = 900;
   for (let i = 0; i < count; i += 1) {
     const kind = kinds[Math.floor(rand() * kinds.length)];
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map: maps[kind],
       color: kind === "elliptical" ? 0xffe6c4 : 0xf2f6ff,
-      opacity: 0.62,
+      opacity: 0.74,
       rotation: rand() * Math.PI,
       blending: THREE.AdditiveBlending,
       depthTest: false,
@@ -1737,7 +1747,7 @@ function createFarGalaxySky(THREE, group, maps) {
       r * Math.cos(phi),
       r * Math.sin(phi) * Math.sin(theta),
     );
-    const size = 22000 + rand() * 30000;
+    const size = 68000 + rand() * 84000;
     sprite.scale.set(size, size * (kind === "elliptical" ? 0.78 : 0.48), 1);
     sprite.frustumCulled = false;
     sky.add(sprite);
@@ -1746,29 +1756,41 @@ function createFarGalaxySky(THREE, group, maps) {
   group.add(sky);
 }
 
-/** Farther clusters after Virgo. Not a packed ball at the origin. */
+/**
+ * Pre-web field: galaxy images sitting exactly on the cosmic-web hub
+ * positions (same seed / radius / count as createLocalWeb). The screen
+ * fills with these galaxies, then the existing lattice fades in through
+ * them, so the web is made out of the pre-web galaxies.
+ */
 function createDeepField(THREE, group, maps) {
   const field = new THREE.Group();
   field.name = "deep-field";
-  const virgo = virgoScenePosition();
-  const virgoLen = Math.hypot(virgo.x, virgo.y, virgo.z);
-  const mark = visualVirgo(CONFIG.virgoMarkRadiusMpc * 1000);
+  const radius = visualWeb(CONFIG.webRadiusMpc);
+  const hubs = collectWebHubs(seedRandom(88421), radius, 168, true);
   const rand = seedRandom(7711);
-  const hubs = [
-    { t: 3.3, lon: 1.2, lat: 0.62 },
-    { t: 4.1, lon: 3.3, lat: -0.5 },
-    { t: 4.9, lon: 5.0, lat: 0.12 },
-  ];
-  for (const item of hubs) {
-    addClusterHub(
-      THREE,
-      field,
-      maps,
-      clusterHubAt(virgoLen, item.t, item.lon, item.lat),
-      mark * 1.15,
-      rand,
-      18 + Math.floor(rand() * 8),
-    );
+  const kinds = ["spiral", "elliptical", "spiral", "irregular"];
+  for (const hub of hubs) {
+    if (hub.home) continue;
+    const members = 2 + Math.floor(rand() * 3);
+    for (let i = 0; i < members; i += 1) {
+      const kind = kinds[Math.floor(rand() * kinds.length)];
+      const size = 6400 + rand() * 9200;
+      const sprite = new THREE.Sprite(unlitSprite(THREE, {
+        map: maps[kind],
+        color: kind === "elliptical" ? 0xffe6c4 : 0xf2f6ff,
+        opacity: 0.9,
+        rotation: rand() * Math.PI,
+        blending: THREE.AdditiveBlending,
+      }));
+      sprite.position.set(
+        hub.x + (rand() - 0.5) * radius * 0.03,
+        hub.y + (rand() - 0.5) * radius * 0.018,
+        hub.z + (rand() - 0.5) * radius * 0.03,
+      );
+      sprite.scale.set(size, size * (kind === "elliptical" ? 0.78 : 0.48), 1);
+      sprite.frustumCulled = false;
+      field.add(sprite);
+    }
   }
   group.add(field);
 }

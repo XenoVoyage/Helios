@@ -615,6 +615,16 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.doesNotMatch(galaxySource, /function farGalaxySkyMap/);
   assert.doesNotMatch(galaxySource, /farGalaxySkyRadius\(\) \* 0\.045/);
   assert.doesNotMatch(galaxySource, /t: 0\.16/);
+  assert.match(
+    galaxySource,
+    /collectWebHubs\(seedRandom\(88421\), radius, 168, true\)/,
+    "pre-web galaxies sit on the cosmic-web hub positions",
+  );
+  assert.match(
+    galaxySource,
+    /hubs = collectWebHubs\(rand, radius, hubCount, includeVirgo, includeHome\)/,
+    "the web volume uses the same hub collector",
+  );
   assert.match(galaxySource, /createFarGalaxySky\(THREE, group, maps\)/);
   assert.doesNotMatch(galaxySource, /far-galaxy-shell/);
   assert.doesNotMatch(galaxySource, /fillSpherePoints/);
