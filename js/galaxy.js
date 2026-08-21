@@ -171,15 +171,14 @@ export function solarOpacity(distance) {
   return distance < CONFIG.handoffViewDistance ? 1 : 0;
 }
 
-/** Local sky / constellations stay while the camera is still in the disk. */
+/** IAU figures and the Constellations control exist only in the solar system. */
 export function skyStaysOn(distance) {
-  const layer = scaleLayer(distance);
-  return layer === "solar" || layer === "transition" || layer === "milkyway";
+  return scaleLayer(distance) === "solar";
 }
 
 /**
- * 3D disk waits until after the pin. First extra-zoom frame is the interior
- * sky / Orion-arm crack, not a distant face-on plate.
+ * 3D disk waits until after the pin. First extra-zoom frame is the tail
+ * on the far-galaxy field, not a distant face-on plate.
  */
 export function milkyWayDiskOpacity(distance) {
   if (distance < CONFIG.handoffViewDistance) return 0;
@@ -190,28 +189,19 @@ export function milkyWayDiskOpacity(distance) {
   );
 }
 
-/** Gaia skybox stays through the disk, then yields to the far-galaxy field. */
+/** Gaia / Hipparcos sky is solar. It is gone by the first extra-zoom tail. */
 export function celestialSkyOpacity(distance) {
-  if (distance <= CONFIG.mwViewDistance) return 1;
-  if (distance >= CONFIG.neighborhoodViewDistance) return 0;
+  if (distance <= CONFIG.solarMaxDistance) return 1;
+  if (distance >= CONFIG.handoffViewDistance) return 0;
   return 1 - smoothstep01(
-    (distance - CONFIG.mwViewDistance)
-    / (CONFIG.neighborhoodViewDistance - CONFIG.mwViewDistance),
+    (distance - CONFIG.solarMaxDistance)
+    / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance),
   );
 }
 
-/** Local MW band brightens on the interior ride, then hands off. */
-export function skyBandBrightness(distance) {
-  const solar = 0.82;
-  const interior = 1.68;
-  if (distance <= CONFIG.solarMaxDistance) return solar;
-  if (distance <= CONFIG.handoffViewDistance) {
-    const t = (distance - CONFIG.solarMaxDistance)
-      / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance);
-    return solar + (interior - solar) * smoothstep01(t);
-  }
-  if (distance <= CONFIG.mwViewDistance) return interior;
-  return interior * celestialSkyOpacity(distance);
+/** Solar band strength. Extra-zoom fade is celestialSkyOpacity, not this. */
+export function skyBandBrightness(_distance) {
+  return 0.82;
 }
 
 /**
@@ -292,18 +282,27 @@ export function universeOpacity(distance) {
 }
 
 /**
- * Far-galaxy skybox fades in as the Orion-arm tail becomes the full disk,
- * so the MW look already sits on a field. CMB replaces it later.
+ * Far-galaxy field is already up at the first extra-zoom tail, full at the
+ * face-on disk. CMB replaces it at the last outside sphere.
  */
 export function farGalaxySkyOpacity(distance) {
-  const start = CONFIG.handoffViewDistance
-    + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.28;
-  if (distance <= start) return 0;
+  if (distance <= CONFIG.solarMaxDistance) return 0;
   const fadeStart = CONFIG.webViewDistance
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.72;
-  const shown = distance >= CONFIG.mwViewDistance
-    ? 1
-    : smoothstep01((distance - start) / (CONFIG.mwViewDistance - start));
+  const up = 0.58;
+  let shown;
+  if (distance >= CONFIG.mwViewDistance) shown = 1;
+  else if (distance >= CONFIG.handoffViewDistance) {
+    shown = up + (1 - up) * smoothstep01(
+      (distance - CONFIG.handoffViewDistance)
+      / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance),
+    );
+  } else {
+    shown = up * smoothstep01(
+      (distance - CONFIG.solarMaxDistance)
+      / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance),
+    );
+  }
   if (distance <= fadeStart) return shown;
   if (distance >= CONFIG.universeViewDistance) return 0;
   return shown * (1 - smoothstep01(
@@ -1515,6 +1514,12 @@ function createCmbShell(THREE, group) {
   group.add(shell);
 }
 
+function stampSoftWrapped(ctx, width, x, y, radius, color) {
+  stampSoft(ctx, x, y, radius, color);
+  if (x < radius) stampSoft(ctx, x + width, y, radius, color);
+  if (x > width - radius) stampSoft(ctx, x - width, y, radius, color);
+}
+
 function farGalaxySkyMap(THREE) {
   const width = 2048;
   const height = 1024;
@@ -1525,43 +1530,38 @@ function farGalaxySkyMap(THREE) {
   ctx.fillStyle = "#02050c";
   ctx.fillRect(0, 0, width, height);
   const rand = seedRandom(4608);
-  for (let i = 0; i < 14000; i += 1) {
+  for (let i = 0; i < 18000; i += 1) {
     const theta = rand() * Math.PI * 2;
     const phi = Math.acos(2 * rand() - 1);
     const x = (theta / (Math.PI * 2)) * width;
     const y = (phi / Math.PI) * height;
-    const pole = Math.sin(phi);
     const warm = rand();
-    stampSoft(
+    stampSoftWrapped(
       ctx,
+      width,
       x,
       y,
-      (0.7 + rand() * 2.2) * (0.4 + 0.6 * pole),
-      `rgba(${Math.floor(150 + 95 * warm)}, ${Math.floor(165 + 55 * warm)}, ${Math.floor(215 - 40 * warm)}, ${0.28 + rand() * 0.5})`,
+      0.7 + rand() * 2.0,
+      `rgba(${Math.floor(150 + 95 * warm)}, ${Math.floor(165 + 55 * warm)}, ${Math.floor(215 - 40 * warm)}, ${0.32 + rand() * 0.48})`,
     );
   }
-  for (let i = 0; i < 420; i += 1) {
+  for (let i = 0; i < 320; i += 1) {
     const theta = rand() * Math.PI * 2;
     const phi = Math.acos(2 * rand() - 1);
-    const pole = Math.sin(phi);
-    if (pole < 0.28) continue;
     const x = (theta / (Math.PI * 2)) * width;
     const y = (phi / Math.PI) * height;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(rand() * Math.PI);
-    ctx.scale(1, 0.3 + rand() * 0.28);
-    stampSoft(ctx, 0, 0, 4 + rand() * 7, "rgba(220, 200, 170, 0.4)");
-    ctx.restore();
+    stampSoftWrapped(ctx, width, x, y, 2.2 + rand() * 3.4, "rgba(220, 200, 170, 0.26)");
   }
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace;
   map.anisotropy = 4;
+  map.wrapS = THREE.RepeatWrapping;
   return map;
 }
 
+/** Huge camera-attached shell so MW / neighborhood never read a nearby ball. */
 export function farGalaxySkyRadius() {
-  return CONFIG.skyRadius * 1.18;
+  return CONFIG.cameraFar * 0.42;
 }
 
 function createFarGalaxySky(THREE, group) {
@@ -1580,6 +1580,8 @@ function createFarGalaxySky(THREE, group) {
   );
   sphere.name = "far-galaxy-shell";
   sphere.frustumCulled = false;
+  sphere.renderOrder = -80;
+  sky.renderOrder = -80;
   sky.add(sphere);
   group.add(sky);
 }
