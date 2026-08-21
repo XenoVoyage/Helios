@@ -32,7 +32,6 @@ import {
   celestialSkyOpacity,
   extraZoomCameraDistance,
   extraZoomCameraNear,
-  extraZoomTailMix,
   farGalaxySkyRadius,
   galaxyOpacity,
   heliocentricGalactic,
@@ -40,8 +39,6 @@ import {
   localGroupMemberOpacity,
   milkyWayBelowCameraAim,
   milkyWayInteriorCameraAim,
-  milkyWayTailLookAt,
-  milkyWayTailSeat,
   lookAngleTo,
   milkyWayDiskDiameter,
   milkyWayDiskOpacity,
@@ -61,6 +58,7 @@ import {
   skyBandBrightness,
   skyStarBrightness,
   skyStaysOn,
+  solarDebrisOpacity,
   solarOpacity,
   spiralRadiusKpc,
   sunScenePosition,
@@ -229,15 +227,22 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.ok(CONFIG.handoffViewDistance > CONFIG.solarMaxDistance);
   assert.ok(CONFIG.handoffViewDistance < CONFIG.galaxyFadeEnd);
   assert.equal(scaleLayer(CONFIG.handoffViewDistance), "milkyway");
+  const blendStart = CONFIG.solarMaxDistance
+    + (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance) * 0.7;
   assert.equal(
-    galaxyOpacity(CONFIG.handoffViewDistance - 1),
+    galaxyOpacity(blendStart - 1),
     0,
     "MW stays off while the orrery shrinks to a pin",
   );
   assert.equal(
-    solarOpacity(CONFIG.handoffViewDistance - 1),
+    solarOpacity(blendStart - 1),
     1,
-    "solar stays up until the pin handoff",
+    "solar stays up until the handoff crossfade begins",
+  );
+  const midBlend = (blendStart + CONFIG.handoffViewDistance) / 2;
+  assert.ok(
+    galaxyOpacity(midBlend) > 0.1 && galaxyOpacity(midBlend) < 0.9,
+    "solar sky and MW crossfade gently, not a hard cut",
   );
   assert.equal(
     galaxyOpacity(CONFIG.handoffViewDistance),
@@ -247,8 +252,28 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.equal(
     solarOpacity(CONFIG.handoffViewDistance),
     0,
-    "solar does not blend with the MW disk",
+    "solar yields once the MW crossfade completes",
   );
+  // Regression (zoom-out black void): sky + galaxy always cover the frame.
+  for (let d = CONFIG.cameraDistance; d <= CONFIG.mwViewDistance; d += 40) {
+    assert.ok(
+      celestialSkyOpacity(d) + galaxyOpacity(d) >= 1 - 1e-9,
+      `no empty black sky at ${d}`,
+    );
+  }
+  // Regression (ring / dust halo on the trail): the asteroid and Kuiper
+  // debris is gone before the MW crossfade begins, so the solar system
+  // reads as a single tiny star on the arm.
+  assert.equal(solarDebrisOpacity(CONFIG.cameraDistance), 1);
+  assert.equal(solarDebrisOpacity(CONFIG.solarMaxDistance), 1, "inner debris look unchanged");
+  assert.ok(
+    solarDebrisOpacity((CONFIG.solarMaxDistance + blendStart) / 2) < 1,
+    "debris fades smoothly after the cap, no pop",
+  );
+  assert.equal(solarDebrisOpacity(blendStart), 0, "no ring or dust halo once the MW fades in");
+  assert.equal(solarDebrisOpacity(midBlend), 0);
+  assert.equal(solarDebrisOpacity(CONFIG.handoffViewDistance), 0);
+  assert.equal(solarDebrisOpacity(CONFIG.mwViewDistance), 0);
   assert.equal(scaleLayer(CONFIG.mwViewDistance), "milkyway");
   assert.equal(scaleLayer(CONFIG.neighborhoodViewDistance), "neighborhood");
   assert.equal(scaleLayer(CONFIG.localGroupViewDistance), "localgroup");
@@ -396,7 +421,9 @@ test("extra-zoom shrinks the orrery to a Sun pin before the MW disk", () => {
   assert.equal(orbitLineOpacity(CONFIG.mwViewDistance), 0);
 });
 
-test("solar skybox stays through the tail and the camera sits in the arm", () => {
+test("solar skybox stays at constant brightness and crossfades into the MW", () => {
+  const blendStart = CONFIG.solarMaxDistance
+    + (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance) * 0.7;
   assert.equal(skyStaysOn(CONFIG.cameraDistance), true);
   assert.equal(skyStaysOn(CONFIG.solarMaxDistance), true);
   assert.equal(skyStaysOn(CONFIG.solarMaxDistance + 1), true);
@@ -404,82 +431,65 @@ test("solar skybox stays through the tail and the camera sits in the arm", () =>
   assert.equal(skyStaysOn(CONFIG.mwViewDistance), false);
   assert.equal(skyStaysOn(CONFIG.neighborhoodViewDistance), false);
   assert.equal(celestialSkyOpacity(CONFIG.solarMaxDistance), 1);
+  assert.equal(
+    celestialSkyOpacity((CONFIG.solarMaxDistance + CONFIG.handoffViewDistance) / 2),
+    1,
+    "regression: zoomed-out solar view keeps the full skybox, no black void",
+  );
   assert.equal(celestialSkyOpacity(CONFIG.handoffViewDistance), 0);
   assert.equal(celestialSkyOpacity(CONFIG.mwViewDistance), 0);
   assert.equal(celestialSkyOpacity(CONFIG.neighborhoodViewDistance), 0);
-  assert.equal(milkyWayDiskOpacity(CONFIG.handoffViewDistance - 1), 0);
+  assert.equal(milkyWayDiskOpacity(blendStart - 1), 0);
   assert.equal(
     milkyWayDiskOpacity(CONFIG.handoffViewDistance),
     1,
     "first extra-zoom is already inside the local arm / disk trail",
   );
   assert.equal(milkyWayDiskOpacity(CONFIG.mwViewDistance), 1);
-  assert.equal(
-    extraZoomTailMix(CONFIG.mwViewDistance),
-    0,
-    "trail mark is gone at disk scale; only the tail seat shows it",
-  );
   assert.equal(farGalaxySkyOpacity(CONFIG.handoffViewDistance), 1);
   assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 1);
+  // Regression: no feature may brighten the skybox on the way to the cap.
   assert.equal(skyBandBrightness(CONFIG.cameraDistance), 0.82);
-  assert.ok(
-    skyBandBrightness(CONFIG.solarMaxDistance) > skyBandBrightness(CONFIG.cameraDistance),
-    "solar sky brightens on the way out to the cap",
-  );
-  assert.ok(
-    skyStarBrightness(CONFIG.solarMaxDistance) > 3,
-    "stars at the solar cap fill the frame, not a dim leftover sky",
-  );
+  assert.equal(skyBandBrightness(CONFIG.solarMaxDistance), 0.82);
+  assert.equal(skyStarBrightness(CONFIG.cameraDistance), 1);
+  assert.equal(skyStarBrightness(CONFIG.solarMaxDistance), 1);
+  for (let d = CONFIG.minDistance; d < CONFIG.handoffViewDistance; d += 25) {
+    assert.equal(skyBandBrightness(d), 0.82, `constant band brightness at ${d}`);
+    assert.equal(skyStarBrightness(d), 1, `constant star brightness at ${d}`);
+  }
   assert.equal(
     skyBandBrightness(CONFIG.handoffViewDistance),
     0,
-    "Gaia band is off the moment extra-zoom begins; the tail is the local arm, not the solar skybox",
+    "Gaia band is off once extra-zoom owns the sky",
   );
-  assert.equal(
-    skyBandBrightness(CONFIG.mwViewDistance),
-    0,
-    "full-disk frame has no solar MW band",
-  );
-  assert.equal(skyStarBrightness(CONFIG.cameraDistance), 1);
+  assert.equal(skyBandBrightness(CONFIG.mwViewDistance), 0);
   assert.equal(
     skyStarBrightness(CONFIG.handoffViewDistance),
     0,
-    "Hipparcos is off after the tail",
+    "Hipparcos is off after the handoff",
   );
   assert.equal(skyStarBrightness(CONFIG.mwViewDistance), 0);
-  assert.ok(
-    extraZoomTailMix(CONFIG.handoffViewDistance + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.90) < 0.2,
-    "growing look has already left the tail seat",
-  );
   const interior = milkyWayInteriorCameraAim();
   assert.ok(interior.elevation < 0.12, "first extra-zoom look stays in the disk tail");
   assert.ok(interior.elevation > 0, "interior look is not from under the plane");
   assert.equal(extraZoomCameraDistance(CONFIG.cameraDistance), CONFIG.cameraDistance);
   assert.equal(
-    extraZoomCameraDistance((CONFIG.solarMaxDistance + CONFIG.handoffViewDistance) / 2),
+    extraZoomCameraDistance(blendStart - 1),
     CONFIG.solarMaxDistance,
-    "transition stays on the solar-cap field until extra-zoom",
+    "transition stays on the solar-cap field until the crossfade",
   );
   assert.equal(extraZoomCameraDistance(CONFIG.handoffViewDistance), CONFIG.mwTailNearDistance);
+  assert.ok(
+    Math.abs(extraZoomCameraDistance(CONFIG.handoffViewDistance - 1) - CONFIG.mwTailNearDistance) < 1,
+    "regression: camera glides through the handoff, no jump that reads as a hitch",
+  );
   assert.ok(
     extraZoomCameraDistance(CONFIG.handoffViewDistance) < milkyWayDiskDiameter() * 0.03,
     "first extra-zoom camera sits in the arm, not a postcard of the disk",
   );
-  assert.ok(extraZoomCameraNear(CONFIG.handoffViewDistance) <= 0.04);
+  assert.ok(extraZoomCameraNear(CONFIG.handoffViewDistance) < 0.3);
   assert.ok(extraZoomCameraNear(CONFIG.cameraDistance) > extraZoomCameraNear(CONFIG.handoffViewDistance));
   assert.equal(extraZoomCameraDistance(CONFIG.mwViewDistance), CONFIG.mwViewDistance);
-  assert.equal(extraZoomTailMix(CONFIG.handoffViewDistance), 1);
-  assert.equal(extraZoomTailMix(CONFIG.mwViewDistance), 0);
-  assert.equal(
-    extraZoomTailMix(CONFIG.handoffViewDistance + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.4),
-    1,
-  );
-  const seat = milkyWayTailSeat();
-  const along = milkyWayTailLookAt();
-  assert.ok(Math.hypot(seat.x, seat.y, seat.z) < milkyWayDiskDiameter() * 0.12, "tail seat stays inside the disk");
-  assert.ok(Math.abs(seat.y) < milkyWayDiskDiameter() * 0.03, "tail seat stays in the arm, not above the plate");
-  assert.ok(Math.abs(seat.z) > Math.abs(seat.x), "tail seat looks along the arm");
-  assert.ok(seat.z * along.z < 0, "tail look goes past the Sun along the arm");
   assert.ok(
     farGalaxySkyRadius() > CONFIG.neighborhoodViewDistance * 8,
     "far-galaxy shell is far past the neighborhood camera",
@@ -656,17 +666,19 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
     /sun-pin-mark|sunPinOpacity/,
     "no white Sun pin survives past the tail",
   );
-  assert.match(galaxySource, /mw-arm-trail/);
-  assert.match(galaxySource, /mw-arm-sun/);
+  // Regression (blown-out tail / white arm patch): the dense additive
+  // arm-trail dressing is gone, not dimmed.
+  assert.doesNotMatch(galaxySource, /mw-arm-trail/);
+  assert.doesNotMatch(galaxySource, /mw-arm-sun/);
+  assert.doesNotMatch(galaxySource, /mw-tail/);
+  assert.doesNotMatch(galaxySource, /extraZoomTailMix/);
+  // Regression (Local Group rewrite): the real Milky Way stays itself
+  // through Virgo; no generic stand-in family.
+  assert.doesNotMatch(galaxySource, /local-group-family/);
   assert.match(
     galaxySource,
-    /fadeNamedGroup\(group, "mw-tail", opacity, extraZoomTailMix\(distance\) \* family\)/,
-    "the close-in trail mark fades out with the tail seat",
-  );
-  assert.match(
-    galaxySource,
-    /const family = 1 - cluster;/,
-    "no leftover MW streak at Virgo scale",
+    /const family = 1 - web;/,
+    "MW and catalog neighbors yield only to the volume-filling web",
   );
   assert.match(
     galaxySource,
@@ -677,7 +689,7 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /extraZoomCameraNear/);
   assert.match(galaxySource, /skyStaysOn/);
   assert.match(galaxySource, /attachFarGalaxySky/);
-  assert.match(galaxySource, /sun-nearby-mark/);
+  assert.doesNotMatch(galaxySource, /sun-nearby/, "no warm Sun blob in the arm");
   assert.match(galaxySource, /toneMapped:\s*false/);
   assert.match(galaxySource, /unlitSprite|toneMapped:\s*false/);
   assert.doesNotMatch(galaxySource, /hubCount:\s*20\b/);
@@ -686,7 +698,7 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /fog:\s*false/);
   assert.match(galaxySource, /name = "cmb-sphere"/);
   assert.match(galaxySource, /side:\s*THREE\.DoubleSide/);
-  assert.match(galaxySource, /return distance >= CONFIG\.handoffViewDistance \? 1 : 0/);
+  assert.match(galaxySource, /function handoffBlendStart/);
   assert.doesNotMatch(galaxySource, /far-galaxy-glow/);
   assert.match(
     galaxySource,
