@@ -3,12 +3,12 @@ import { CONFIG } from "./config.js";
 const DEG = Math.PI / 180;
 const TAU = Math.PI * 2;
 
-/** NAIF pck00011 J2000 parent poles used only to express Laplace elements locally. */
+/** NAIF pck00011 parent poles evaluated at J2000, including periodic terms. */
 const PARENT_POLES = Object.freeze({
-  mars: Object.freeze({ raDeg: 317.269202, decDeg: 54.432516 }),
-  jupiter: Object.freeze({ raDeg: 268.056595, decDeg: 64.495303 }),
+  mars: Object.freeze({ raDeg: 317.6808544073, decDeg: 52.8864392751 }),
+  jupiter: Object.freeze({ raDeg: 268.0572040427, decDeg: 64.4958099534 }),
   saturn: Object.freeze({ raDeg: 40.589, decDeg: 83.537 }),
-  neptune: Object.freeze({ raDeg: 299.36, decDeg: 43.46 }),
+  neptune: Object.freeze({ raDeg: 299.3337389588, decDeg: 42.9503590218 }),
 });
 
 function laplaceFrame(parent, poleRaDeg, poleDecDeg) {

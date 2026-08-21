@@ -51,7 +51,9 @@ canonical; `CONFIG.VERSION` and the README badge are intentional mirrors.
 
 ## Verification
 
-- `npm test` runs the static contract check, body/scale/Kepler tests, and the HTTP smoke.
+- From a clean checkout, run `npm ci` and `npx playwright install chromium` before the test suite. CI uses Playwright's `--with-deps` variant on Linux.
+- `npm test` runs the static contract check, body/scale/Kepler tests, HTTP smoke, and browser/WebGL smoke.
+- `npm run test:static` runs the deterministic checks without launching a browser.
 - `npm run serve` is the Pages-equivalent local path: `http://127.0.0.1:4173/Helios/`.
 - Add a regression for a confirmed math or catalog defect.
 - Audit desktop and touch before calling a change done. Browser automation is not physical-device proof.

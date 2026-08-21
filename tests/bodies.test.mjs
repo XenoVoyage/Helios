@@ -212,15 +212,26 @@ test("rendered moon planes and retrograde directions use each source frame once"
   assert.equal(titan.orbitFrame.kind, "laplace");
   assert.equal(moonOrbitAttachment(titan), "parent-equatorial");
   assert.deepEqual(findBody("phobos").orbitFrame.parentPole, {
-    raDeg: 317.269202,
-    decDeg: 54.432516,
+    raDeg: 317.6808544073,
+    decDeg: 52.8864392751,
+  });
+  assert.deepEqual(findBody("io").orbitFrame.parentPole, {
+    raDeg: 268.0572040427,
+    decDeg: 64.4958099534,
+  });
+  assert.deepEqual(triton.orbitFrame.parentPole, {
+    raDeg: 299.3337389588,
+    decDeg: 42.9503590218,
   });
   assert.ok(Math.abs(angleDeg(orbitNormal(moon), { x: 0, y: 1, z: 0 }) - 5.16) < 0.01);
 
+  const marsPole = rotateZ({ x: 0, y: 1, z: 0 }, findBody("mars").tiltDeg);
+  assert.ok(Math.abs(angleDeg(orbitNormal(findBody("phobos")), marsPole) - 1.1155) < 0.01);
+  assert.ok(Math.abs(angleDeg(orbitNormal(findBody("deimos")), marsPole) - 0.9223) < 0.01);
   const saturnPole = rotateZ({ x: 0, y: 1, z: 0 }, findBody("saturn").tiltDeg);
   assert.ok(angleDeg(orbitNormal(titan), saturnPole) < 1.1);
   const neptunePole = rotateZ({ x: 0, y: 1, z: 0 }, findBody("neptune").tiltDeg);
-  assert.ok(angleDeg(orbitNormal(triton), neptunePole) > 150);
+  assert.ok(Math.abs(angleDeg(orbitNormal(triton), neptunePole) - 157.4576) < 0.01);
   assert.ok(renderedPeriod(triton.orbitDays, triton.inclinationDeg) > 0);
 });
 

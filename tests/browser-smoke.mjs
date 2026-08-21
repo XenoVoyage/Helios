@@ -80,6 +80,16 @@ async function saveScreenshot(page, name) {
   await writeFile(path.join(screenshotDir, `${name}.png`), await page.screenshot());
 }
 
+async function orbitCameraHalfTurn(page) {
+  const box = await page.locator("#viewport").boundingBox();
+  assert.ok(box);
+  const y = box.y + box.height * 0.55;
+  await page.mouse.move(box.x + box.width * 0.28, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.72, y, { steps: 8 });
+  await page.mouse.up();
+}
+
 async function captureTriton(page) {
   if (!screenshotDir) return;
   await page.locator("#reset-button").click();
@@ -87,7 +97,10 @@ async function captureTriton(page) {
     await page.locator("#play-button").click();
   }
   await page.evaluate(() => document.querySelector('[data-body-id="triton"]').click());
-  await page.waitForTimeout(1_000);
+  await page.waitForTimeout(1_500);
+  await orbitCameraHalfTurn(page);
+  await page.mouse.wheel(0, -1_200);
+  await page.waitForTimeout(500);
   await saveScreenshot(page, "triton-rotation-a");
   await page.locator("#speed-slider").evaluate((slider) => {
     const minimum = 1 / 24;
@@ -100,6 +113,9 @@ async function captureTriton(page) {
   await page.locator("#play-button").click();
   await page.waitForTimeout(500);
   await page.locator("#play-button").click();
+  await page.waitForTimeout(500);
+  await orbitCameraHalfTurn(page);
+  await page.waitForTimeout(500);
   await saveScreenshot(page, "triton-rotation-b");
 }
 
@@ -252,6 +268,7 @@ try {
   await saveScreenshot(desktopPage, "desktop-overview");
   await captureTriton(desktopPage);
   assert.deepEqual(desktopErrors, []);
+  await desktopPage.close();
 
   const directPage = await desktop.newPage();
   const directErrors = captureErrors(directPage);
@@ -260,6 +277,15 @@ try {
   await assertRenderedCanvas(directPage);
   await saveScreenshot(directPage, "desktop-milkyway");
   assert.deepEqual(directErrors, []);
+  await directPage.close();
+
+  const skyPage = await desktop.newPage();
+  const skyErrors = captureErrors(skyPage);
+  await openReady(skyPage, "?look=sky");
+  await assertRenderedCanvas(skyPage);
+  assert.equal(await skyPage.locator("#card-name").textContent(), "Earth");
+  assert.deepEqual(skyErrors, []);
+  await skyPage.close();
   await desktop.close();
 
   const touch = await browser.newContext({

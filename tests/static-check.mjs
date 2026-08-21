@@ -57,6 +57,8 @@ for (const workflow of [auditWorkflow, pagesWorkflow]) {
 assert.match(pagesWorkflow, /cp index\.html styles\.css \.nojekyll _site\//);
 assert.match(pagesWorkflow, /cp -R assets js vendor _site\//);
 assert.match(pagesWorkflow, /path: _site/);
+assert.match(pagesWorkflow, /actions\/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9/);
+assert.match(pagesWorkflow, /include-hidden-files: true/);
 assert.match(html, /Content-Security-Policy/);
 assert.match(html, /connect-src 'none'/);
 assert.match(html, /id="play-button"/);

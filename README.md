@@ -58,11 +58,13 @@ The Milky Way disk is a deterministic, stylized four-arm illustration. Its catal
 ## Run locally
 
 ```sh
+npm ci
+npx playwright install chromium
 npm test
 npm run serve
 ```
 
-Then open `http://127.0.0.1:4173/Helios/`. Opening `index.html` through a local static server also works. A WebGL browser is required.
+The first two commands install the pinned test dependency and browser for a clean checkout. Then open `http://127.0.0.1:4173/Helios/`. Opening `index.html` through a local static server also works. A WebGL browser is required.
 
 | Action | Desktop | Touch |
 | --- | --- | --- |

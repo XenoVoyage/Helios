@@ -904,7 +904,10 @@ function ensureGalaxyLayer() {
 }
 
 function paintScaleLayer() {
-  if (earthSkyLook) return;
+  if (earthSkyLook) {
+    document.documentElement.dataset.heliosReady = "1";
+    return;
+  }
   const solar = solarOpacity(state.distance);
   const galactic = galaxyOpacity(state.distance);
   if (galactic > 0) ensureGalaxyLayer();
