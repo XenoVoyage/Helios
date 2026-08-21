@@ -296,16 +296,10 @@ export function farGalaxySkyOpacity(distance) {
   if (distance <= CONFIG.solarMaxDistance) return 0;
   const fadeStart = CONFIG.webViewDistance
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.72;
-  const up = 0.58;
   let shown;
-  if (distance >= CONFIG.mwViewDistance) shown = 1;
-  else if (distance >= CONFIG.handoffViewDistance) {
-    shown = up + (1 - up) * smoothstep01(
-      (distance - CONFIG.handoffViewDistance)
-      / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance),
-    );
-  } else {
-    shown = up * smoothstep01(
+  if (distance >= CONFIG.handoffViewDistance) shown = 1;
+  else {
+    shown = smoothstep01(
       (distance - CONFIG.solarMaxDistance)
       / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance),
     );
@@ -1065,10 +1059,10 @@ function neighborSpriteSize(neighbor) {
 
 function neighborSizeBoost(neighbor) {
   if (neighbor.id === "m31") return 3.05;
-  if (neighbor.id === "lmc") return 2.45;
-  if (neighbor.id === "smc") return 2.35;
-  if (neighbor.id === "m33") return 2.7;
-  return 1.85;
+  if (neighbor.id === "lmc") return 2.85;
+  if (neighbor.id === "smc") return 2.7;
+  if (neighbor.id === "m33") return 3.15;
+  return 2.1;
 }
 
 export function neighborApparentSize(neighbor) {
@@ -1116,17 +1110,29 @@ function createNeighbors(THREE, group, maps) {
     const map = neighbor.id === "m31"
       ? quietAndromedaMap(THREE)
       : maps[galaxyKind(neighbor.id)] ?? maps.spiral;
+    const size = neighborApparentSize(neighbor);
+    const aspect = neighbor.id === "m31" ? 0.4 : neighbor.id === "m33" ? 0.46 : 0.68;
+    const glow = new THREE.Sprite(unlitSprite(THREE, {
+      map: diskGlowMap(THREE),
+      color: 0xfff1d2,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+    }));
+    glow.position.set(at.x, at.y, at.z);
+    glow.scale.set(size * 1.7, size * aspect * 1.7, 1);
+    glow.renderOrder = 3;
+    glow.frustumCulled = false;
+    cluster.add(glow);
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map,
-      color: 0xfff4e8,
+      color: 0xfff8ee,
       depthTest: neighbor.id !== "m31",
       opacity: 1,
       blending: THREE.AdditiveBlending,
     }));
     sprite.renderOrder = neighbor.id === "m31" ? 6 : 4;
     sprite.position.set(at.x, at.y, at.z);
-    const size = neighborApparentSize(neighbor);
-    const aspect = neighbor.id === "m31" ? 0.4 : neighbor.id === "m33" ? 0.46 : 0.68;
     sprite.scale.set(size, size * aspect, 1);
     sprite.name = neighbor.id;
     sprite.frustumCulled = false;
@@ -1162,15 +1168,26 @@ function createLocalGroupMembers(THREE, group, maps) {
   for (const member of LOCAL_GROUP) {
     const at = neighborScenePosition(member);
     const kind = galaxyKind(member.id);
+    const size = memberSpriteSize(member);
+    const aspect = kind === "elliptical" ? 0.78 : 0.64;
+    const glow = new THREE.Sprite(unlitSprite(THREE, {
+      map: diskGlowMap(THREE),
+      color: 0xffeed8,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+    }));
+    glow.position.set(at.x, at.y, at.z);
+    glow.scale.set(size * 1.8, size * aspect * 1.8, 1);
+    glow.frustumCulled = false;
+    family.add(glow);
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map: maps[kind] ?? maps.irregular,
-      color: 0xfff4e8,
+      color: 0xfff8ee,
       opacity: 1,
       blending: THREE.AdditiveBlending,
     }));
     sprite.position.set(at.x, at.y, at.z);
-    const size = memberSpriteSize(member);
-    const aspect = kind === "elliptical" ? 0.78 : 0.64;
     sprite.scale.set(size, size * aspect, 1);
     sprite.name = member.id;
     sprite.frustumCulled = false;
@@ -1615,20 +1632,20 @@ function createFarGalaxySky(THREE, group, maps) {
       blending: THREE.AdditiveBlending,
     }),
   };
-  const count = 420;
+  const count = 1680;
   for (let i = 0; i < count; i += 1) {
     const theta = rand() * Math.PI * 2;
     const phi = Math.acos(2 * rand() - 1);
     const kind = kinds[Math.floor(rand() * kinds.length)];
     const sprite = new THREE.Sprite(templates[kind].clone());
     sprite.material.rotation = rand() * Math.PI;
-    sprite.material.opacity = 0.78 + rand() * 0.2;
+    sprite.material.opacity = 0.84 + rand() * 0.16;
     sprite.position.set(
       radius * Math.sin(phi) * Math.cos(theta),
       radius * Math.cos(phi),
       radius * Math.sin(phi) * Math.sin(theta),
     );
-    const size = radius * (0.014 + (rand() ** 1.15) * 0.055);
+    const size = radius * (0.012 + (rand() ** 1.05) * 0.048);
     const aspect = kind === "elliptical" ? 0.78 : kind === "spiral" ? 0.42 : 0.58;
     sprite.scale.set(size, size * aspect, 1);
     sprite.frustumCulled = false;
@@ -1644,7 +1661,7 @@ function createDeepField(THREE, group, maps) {
   const radius = visualWeb(CONFIG.webRadiusMpc) * 0.32;
   const rand = seedRandom(7711);
   const kinds = ["spiral", "elliptical", "spiral", "irregular"];
-  const count = 520;
+  const count = 820;
   for (let i = 0; i < count; i += 1) {
     const kind = kinds[Math.floor(rand() * kinds.length)];
     const r = radius * (0.12 + 0.88 * (rand() ** 0.62));

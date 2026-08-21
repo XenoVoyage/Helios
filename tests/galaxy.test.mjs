@@ -290,18 +290,15 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   assert.equal(universeOpacity(CONFIG.universeViewDistance), 1);
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
-  assert.ok(
-    farGalaxySkyOpacity(CONFIG.handoffViewDistance) > 0.45,
+  assert.equal(
+    farGalaxySkyOpacity(CONFIG.handoffViewDistance),
+    1,
     "far-galaxy field is already up at the first extra-zoom tail",
   );
-  assert.ok(
-    farGalaxySkyOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) > 0.6,
+  assert.equal(
+    farGalaxySkyOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2),
+    1,
     "far-galaxy field stays up while the tail becomes the disk",
-  );
-  assert.ok(
-    farGalaxySkyOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2)
-      < farGalaxySkyOpacity(CONFIG.mwViewDistance),
-    "far-galaxy field is stronger at the full disk than mid-ride",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.mwViewDistance),
@@ -399,10 +396,7 @@ test("constellations are solar-only and the far-galaxy field is up at the tail",
     "tail / disk stays up after the first extra-zoom frame",
   );
   assert.equal(milkyWayDiskOpacity(CONFIG.mwViewDistance), 1);
-  assert.ok(
-    farGalaxySkyOpacity(CONFIG.handoffViewDistance) > 0.45,
-    "far-galaxy field is already up at handoff",
-  );
+  assert.equal(farGalaxySkyOpacity(CONFIG.handoffViewDistance), 1);
   assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 1);
   assert.equal(skyBandBrightness(CONFIG.cameraDistance), 0.82);
   assert.equal(skyBandBrightness(CONFIG.handoffViewDistance), 0.82);
