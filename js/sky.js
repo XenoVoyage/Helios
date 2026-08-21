@@ -165,7 +165,7 @@ export function colorFromBV(bv) {
 }
 
 export function sizeFromMag(mag) {
-  return clamp(6.4 * 10 ** (-0.13 * mag), 1.3, 14);
+  return clamp(7.2 * 10 ** (-0.13 * mag), 1.7, 14);
 }
 
 /**
@@ -327,7 +327,7 @@ function createStars(THREE, radius) {
     positions[i * 3 + 2] = at.z;
     const figure = isConstellationLineStar(star.hip);
     const tint = colorFromBV(star.bv);
-    const shade = clamp(1.26 - star.mag * 0.08, 0.42, 1.32)
+    const shade = clamp(1.3 - star.mag * 0.08, 0.5, 1.34)
       * (figure ? CONSTELLATION_STAR_BOOST.shade : 1);
     colors[i * 3] = tint.r * shade;
     colors[i * 3 + 1] = tint.g * shade;
@@ -403,7 +403,7 @@ function createFaintStars(THREE, radius, { count, size, seed, opacity, name }) {
     positions[o + 1] = at.y;
     positions[o + 2] = at.z;
     const tint = colorFromBV(-0.2 + rand() * 1.5);
-    const shade = 0.52 + rand() * 0.48;
+    const shade = 0.7 + rand() * 0.42;
     colors[o] = tint.r * shade;
     colors[o + 1] = tint.g * shade;
     colors[o + 2] = tint.b * shade;
@@ -602,16 +602,16 @@ export function createCelestialSphere(THREE, radius = CONFIG.skyRadius) {
   group.add(createMilkyWay(THREE, radius));
   group.add(createFaintStars(THREE, radius * 0.992, {
     count: Math.round(CONFIG.skyFaintStarCount * 0.82),
-    size: 2.1,
+    size: 3.1,
     seed: 20260821,
     opacity: 1,
     name: "faint-stars",
   }));
   group.add(createFaintStars(THREE, radius * 0.99, {
     count: Math.round(CONFIG.skyFaintStarCount * 0.18),
-    size: 2.9,
+    size: 4,
     seed: 47251,
-    opacity: 0.9,
+    opacity: 0.95,
     name: "faint-stars-bright",
   }));
   group.add(createStars(THREE, radius * 0.985));
