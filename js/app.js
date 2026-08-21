@@ -233,6 +233,20 @@ function boot() {
       state.azimuth = CONFIG.cameraAzimuth;
       state.elevation = CONFIG.cameraElevation;
       state.focusedId = "sun";
+    } else if (galaxyLook === "tailsky") {
+      const aim = milkyWayInteriorCameraAim();
+      state.distance = CONFIG.handoffViewDistance
+        + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.32;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "growing") {
+      const aim = milkyWayCameraAim();
+      state.distance = CONFIG.handoffViewDistance
+        + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.82;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
     } else if (galaxyLook === "disk") {
       const aim = milkyWayCameraAim();
       state.distance = CONFIG.mwViewDistance;

@@ -83,6 +83,8 @@ assert.match(app, /webViewDistance/);
 assert.match(app, /universeViewDistance/);
 assert.match(app, /handoffViewDistance/);
 assert.match(app, /galaxyLook === "solarfar"/);
+assert.match(app, /galaxyLook === "tailsky"/);
+assert.match(app, /galaxyLook === "growing"/);
 assert.match(app, /galaxyLook === "disk"/);
 assert.match(sky, /gl_PointSize = size \* brightness \* brightness/);
 assert.match(app, /orreryScale/);

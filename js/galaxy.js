@@ -206,25 +206,14 @@ export function celestialSkyOpacity(distance) {
 export function skyBandBrightness(distance) {
   const solar = 0.82;
   const cap = 2.85;
-  const handoff = 2.2;
-  const disk = 2.6;
   if (distance <= CONFIG.cameraDistance) return solar;
   if (distance <= CONFIG.solarMaxDistance) {
     const t = (distance - CONFIG.cameraDistance)
       / (CONFIG.solarMaxDistance - CONFIG.cameraDistance);
     return solar + (cap - solar) * smoothstep01(t);
   }
-  if (distance <= CONFIG.handoffViewDistance) {
-    const t = (distance - CONFIG.solarMaxDistance)
-      / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance);
-    return cap + (handoff - cap) * smoothstep01(t);
-  }
-  if (distance <= CONFIG.mwViewDistance) {
-    const t = (distance - CONFIG.handoffViewDistance)
-      / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance);
-    return handoff + (disk - handoff) * smoothstep01(t);
-  }
-  return disk * celestialSkyOpacity(distance);
+  if (distance <= CONFIG.mwViewDistance) return cap;
+  return cap * celestialSkyOpacity(distance);
 }
 
 /** Hipparcos size/gain. 1 in solar so the in-system sky is unchanged. */
@@ -330,7 +319,7 @@ export function farGalaxySkyOpacity(distance) {
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.72;
   const growing = distance >= CONFIG.mwViewDistance
     ? 1
-    : 0.38 + 0.62 * smoothstep01(
+    : 0.52 + 0.48 * smoothstep01(
       (distance - CONFIG.handoffViewDistance)
       / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance),
     );
@@ -369,6 +358,8 @@ export function requestedGalaxyLook() {
   if (look === "cmb") return "universe";
   if (
     look === "solarfar"
+    || look === "tailsky"
+    || look === "growing"
     || look === "disk"
     || look === "milkyway"
     || look === "mwedge"
@@ -428,7 +419,7 @@ export function extraZoomCameraDistance(distance) {
   const near = CONFIG.mwTailNearDistance;
   if (distance <= CONFIG.solarMaxDistance) return distance;
   if (distance >= CONFIG.mwViewDistance) return distance;
-  if (distance < CONFIG.handoffViewDistance) return near;
+  if (distance < CONFIG.handoffViewDistance) return CONFIG.solarMaxDistance;
   const t = (distance - CONFIG.handoffViewDistance)
     / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance);
   return near + (CONFIG.mwViewDistance - near) * (t ** 1.55);

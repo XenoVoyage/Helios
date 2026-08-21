@@ -414,13 +414,23 @@ test("solar skybox stays through the tail and the camera sits in the arm", () =>
     skyBandBrightness(CONFIG.handoffViewDistance) > 2,
     "Gaia trails are already strong at the first extra-zoom frame",
   );
-  assert.ok(skyBandBrightness(CONFIG.mwViewDistance) > skyBandBrightness(CONFIG.handoffViewDistance));
+  assert.equal(
+    skyBandBrightness(CONFIG.handoffViewDistance),
+    skyBandBrightness(CONFIG.solarMaxDistance),
+    "sky does not dim after the solar cap",
+  );
+  assert.equal(skyBandBrightness(CONFIG.mwViewDistance), skyBandBrightness(CONFIG.solarMaxDistance));
   assert.equal(skyStarBrightness(CONFIG.cameraDistance), 1);
   assert.ok(skyStarBrightness(CONFIG.handoffViewDistance) > 2);
   const interior = milkyWayInteriorCameraAim();
   assert.ok(interior.elevation < 0.12, "first extra-zoom look stays in the disk tail");
   assert.ok(interior.elevation > 0, "interior look is not from under the plane");
   assert.equal(extraZoomCameraDistance(CONFIG.cameraDistance), CONFIG.cameraDistance);
+  assert.equal(
+    extraZoomCameraDistance((CONFIG.solarMaxDistance + CONFIG.handoffViewDistance) / 2),
+    CONFIG.solarMaxDistance,
+    "transition stays on the solar-cap field until extra-zoom",
+  );
   assert.equal(extraZoomCameraDistance(CONFIG.handoffViewDistance), CONFIG.mwTailNearDistance);
   assert.ok(
     extraZoomCameraDistance(CONFIG.handoffViewDistance) < milkyWayDiskDiameter() * 0.03,
