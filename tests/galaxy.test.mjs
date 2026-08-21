@@ -601,6 +601,7 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /milkyWayDiskOpacity/);
   assert.match(galaxySource, /sunPinOpacity/);
   assert.match(galaxySource, /mw-arm-trail/);
+  assert.match(galaxySource, /mw-arm-sun/);
   assert.match(galaxySource, /extraZoomCameraNear/);
   assert.match(galaxySource, /skyStaysOn/);
   assert.match(galaxySource, /attachFarGalaxySky/);

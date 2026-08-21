@@ -1000,9 +1000,9 @@ function createLocalArmTrail(THREE, group) {
     positions[o + 1] = scene.y;
     positions[o + 2] = scene.z;
     const warm = rand();
-    colors[o] = 0.78 + 0.22 * warm;
-    colors[o + 1] = 0.82 + 0.14 * warm;
-    colors[o + 2] = 0.96 - 0.18 * warm;
+    colors[o] = 0.92 + 0.08 * warm;
+    colors[o + 1] = 0.72 + 0.16 * warm;
+    colors[o + 2] = 0.52 + 0.18 * warm;
     n += 1;
   }
   addPoints(
@@ -1011,11 +1011,35 @@ function createLocalArmTrail(THREE, group) {
     "mw-arm-trail",
     positions.slice(0, n * 3),
     colors.slice(0, n * 3),
-    6.4,
+    8.2,
     0.96,
     true,
     THREE.AdditiveBlending,
   );
+}
+
+/** Nearby suns as large warm dots on the local Orion-arm path. Extra-zoom only. */
+function createNearbyArmSuns(THREE, group) {
+  const arm = findSpiralArm("orion");
+  const map = pinSprite(THREE);
+  const betas = [-6, -3, 0, 3, 7, 11, 16, 21];
+  for (const beta of betas) {
+    if (Math.abs(beta) < 0.5) continue;
+    const radius = spiralRadiusKpc(arm, beta);
+    const at = armPointKpc(radius, beta, (beta % 2 === 0 ? 0.04 : -0.03));
+    const scene = milkyWayToScene(at.x, at.y, at.z);
+    const sprite = new THREE.Sprite(unlitSprite(THREE, {
+      map,
+      color: 0xffc98a,
+      blending: THREE.AdditiveBlending,
+    }));
+    sprite.position.set(scene.x, scene.y, scene.z);
+    const size = 28 + Math.abs(beta) * 0.8;
+    sprite.scale.set(size, size, 1);
+    sprite.name = `mw-arm-sun-${beta}`;
+    sprite.frustumCulled = false;
+    group.add(sprite);
+  }
 }
 
 function createHalo(THREE, group) {
@@ -1130,10 +1154,10 @@ function createSunPin(THREE, group) {
   nearby.name = "sun-nearby-mark";
   const local = new THREE.Sprite(unlitSprite(THREE, {
     map: pinSprite(THREE),
-    color: 0xffe6c4,
+    color: 0xffc98a,
     blending: THREE.AdditiveBlending,
   }));
-  local.scale.set(18, 18, 1);
+  local.scale.set(52, 52, 1);
   local.name = "sun-nearby";
   local.position.set(0, 0, 0);
   local.frustumCulled = false;
@@ -1814,6 +1838,7 @@ export function createGalaxyLayer(THREE) {
   createDiskGlow(THREE, milkyway);
   createSpiralStars(THREE, milkyway);
   createLocalArmTrail(THREE, milkyway);
+  createNearbyArmSuns(THREE, milkyway);
   createHalo(THREE, milkyway);
   createBulge(THREE, milkyway);
   group.add(milkyway);
