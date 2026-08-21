@@ -2,7 +2,13 @@
  * Selection-only orbit, spin-axis, and spin-direction marks.
  * Visual helpers. They do not change NASA / JPL motion.
  */
-import { findBody, keplerOffset, visualBodyRadius } from "./bodies.js";
+import {
+  findBody,
+  keplerOffset,
+  moonOrbitAttachment,
+  renderedPeriod,
+  visualBodyRadius,
+} from "./bodies.js";
 
 const AXIS_COLOR = 0xff57d8;
 const SPIN_COLOR = 0x66f7ff;
@@ -46,7 +52,7 @@ export function setHelperVisibility(helpers, { selected, orbit, axis, spin }) {
 export function bindFocusHelpers(THREE, helpers, { body, node, parentNode, scene }) {
   const radius = visualBodyRadius(body);
   rebuildAxis(THREE, helpers.axis, radius);
-  rebuildSpin(THREE, helpers.spin, radius, body.rotationHours < 0);
+  rebuildSpin(THREE, helpers.spin, radius, renderedPeriod(body.rotationHours, body.tiltDeg) < 0);
   node.tilt.add(helpers.axis);
   node.tilt.add(helpers.spin);
 
@@ -70,7 +76,7 @@ export function bindFocusHelpers(THREE, helpers, { body, node, parentNode, scene
 
   const attach = !parentNode
     ? scene
-    : body.kind === "moon"
+    : body.kind === "moon" && moonOrbitAttachment(body) === "parent-equatorial"
       ? parentNode.tilt
       : parentNode.pivot;
   attach.add(helpers.orbit);

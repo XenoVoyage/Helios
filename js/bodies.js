@@ -3,6 +3,25 @@ import { CONFIG } from "./config.js";
 const DEG = Math.PI / 180;
 const TAU = Math.PI * 2;
 
+/** NAIF pck00011 J2000 parent poles used only to express Laplace elements locally. */
+const PARENT_POLES = Object.freeze({
+  mars: Object.freeze({ raDeg: 317.269202, decDeg: 54.432516 }),
+  jupiter: Object.freeze({ raDeg: 268.056595, decDeg: 64.495303 }),
+  saturn: Object.freeze({ raDeg: 40.589, decDeg: 83.537 }),
+  neptune: Object.freeze({ raDeg: 299.36, decDeg: 43.46 }),
+});
+
+function laplaceFrame(parent, poleRaDeg, poleDecDeg) {
+  return Object.freeze({
+    kind: "laplace",
+    poleRaDeg,
+    poleDecDeg,
+    parentPole: PARENT_POLES[parent],
+  });
+}
+
+const ECLIPTIC_FRAME = Object.freeze({ kind: "ecliptic" });
+
 /**
  * Published NASA / JPL values used by v1.
  * Distances: AU for heliocentric bodies, km for moons.
@@ -94,12 +113,13 @@ export const BODIES = Object.freeze([
     parent: "earth",
     radiusKm: 1737.4,
     orbitKm: 384400,
-    eccentricity: 0.0549,
-    inclinationDeg: 5.145,
+    eccentricity: 0.0554,
+    inclinationDeg: 5.16,
     nodeDeg: 125.08,
     periDeg: 318.15,
-    meanAnomalyDeg: 134.96,
-    orbitDays: 27.3217,
+    meanAnomalyDeg: 135.27,
+    orbitDays: 27.322,
+    orbitFrame: ECLIPTIC_FRAME,
     rotationHours: 655.728,
     tiltDeg: 6.68,
     texture: "assets/textures/moon.jpg",
@@ -131,12 +151,13 @@ export const BODIES = Object.freeze([
     // JPL SSD phys_par mean radius; MAR099 mean elements at J2000.
     radiusKm: 11.08,
     orbitKm: 9375,
-    eccentricity: 0.0151,
+    eccentricity: 0.015,
     inclinationDeg: 1.1,
     nodeDeg: 169.2,
     periDeg: 216.3,
     meanAnomalyDeg: 189.7,
-    orbitDays: 0.31891,
+    orbitDays: 0.3187,
+    orbitFrame: laplaceFrame("mars", 317.7, 52.9),
     rotationHours: 7.6538,
     tiltDeg: 0,
     texture: "assets/textures/phobos.jpg",
@@ -149,12 +170,13 @@ export const BODIES = Object.freeze([
     parent: "mars",
     radiusKm: 6.2,
     orbitKm: 23457,
-    eccentricity: 0.00033,
+    eccentricity: 0,
     inclinationDeg: 1.8,
     nodeDeg: 54.3,
     periDeg: 0,
     meanAnomalyDeg: 205,
-    orbitDays: 1.26244,
+    orbitDays: 1.2625,
+    orbitFrame: laplaceFrame("mars", 316.6, 53.5),
     rotationHours: 30.2986,
     tiltDeg: 0.9,
     texture: "assets/textures/deimos.jpg",
@@ -203,12 +225,13 @@ export const BODIES = Object.freeze([
     parent: "jupiter",
     radiusKm: 1821.6,
     orbitKm: 421800,
-    eccentricity: 0.0041,
-    inclinationDeg: 0.036,
-    nodeDeg: 43.98,
-    periDeg: 84.13,
-    meanAnomalyDeg: 342.021,
-    orbitDays: 1.769,
+    eccentricity: 0.004,
+    inclinationDeg: 0,
+    nodeDeg: 0,
+    periDeg: 49.1,
+    meanAnomalyDeg: 330.9,
+    orbitDays: 1.762732,
+    orbitFrame: laplaceFrame("jupiter", 268.1, 64.5),
     rotationHours: 42.456,
     tiltDeg: 0,
     texture: "assets/textures/io.jpg",
@@ -222,11 +245,12 @@ export const BODIES = Object.freeze([
     radiusKm: 1560.8,
     orbitKm: 671100,
     eccentricity: 0.009,
-    inclinationDeg: 0.47,
-    nodeDeg: 219.11,
-    periDeg: 88.97,
-    meanAnomalyDeg: 171.016,
-    orbitDays: 3.551,
+    inclinationDeg: 0.5,
+    nodeDeg: 184,
+    periDeg: 45,
+    meanAnomalyDeg: 345.4,
+    orbitDays: 3.525463,
+    orbitFrame: laplaceFrame("jupiter", 268.1, 64.5),
     rotationHours: 85.224,
     tiltDeg: 0.1,
     texture: "assets/textures/europa.jpg",
@@ -239,12 +263,13 @@ export const BODIES = Object.freeze([
     parent: "jupiter",
     radiusKm: 2631.2,
     orbitKm: 1070400,
-    eccentricity: 0.0013,
-    inclinationDeg: 0.177,
-    nodeDeg: 63.55,
-    periDeg: 192.42,
-    meanAnomalyDeg: 317.54,
-    orbitDays: 7.155,
+    eccentricity: 0.001,
+    inclinationDeg: 0.2,
+    nodeDeg: 58.5,
+    periDeg: 198.3,
+    meanAnomalyDeg: 324.8,
+    orbitDays: 7.155588,
+    orbitFrame: laplaceFrame("jupiter", 268.2, 64.6),
     rotationHours: 171.709,
     tiltDeg: 0.33,
     texture: "assets/textures/ganymede.jpg",
@@ -257,12 +282,13 @@ export const BODIES = Object.freeze([
     parent: "jupiter",
     radiusKm: 2410.3,
     orbitKm: 1882700,
-    eccentricity: 0.0074,
-    inclinationDeg: 0.192,
-    nodeDeg: 298.85,
-    periDeg: 52.64,
-    meanAnomalyDeg: 263.747,
-    orbitDays: 16.689,
+    eccentricity: 0.007,
+    inclinationDeg: 0.3,
+    nodeDeg: 309.1,
+    periDeg: 43.8,
+    meanAnomalyDeg: 87.4,
+    orbitDays: 16.69044,
+    orbitFrame: laplaceFrame("jupiter", 268.7, 64.8),
     rotationHours: 400.536,
     tiltDeg: 0,
     texture: "assets/textures/callisto.jpg",
@@ -296,13 +322,14 @@ export const BODIES = Object.freeze([
     kind: "moon",
     parent: "saturn",
     radiusKm: 2574.7,
-    orbitKm: 1221870,
-    eccentricity: 0.0288,
-    inclinationDeg: 0.349,
-    nodeDeg: 28.06,
-    periDeg: 180.53,
-    meanAnomalyDeg: 186.586,
-    orbitDays: 15.945,
+    orbitKm: 1221900,
+    eccentricity: 0.029,
+    inclinationDeg: 0.3,
+    nodeDeg: 78.6,
+    periDeg: 78.3,
+    meanAnomalyDeg: 11.7,
+    orbitDays: 15.945448,
+    orbitFrame: laplaceFrame("saturn", 36.4, 84.0),
     rotationHours: 382.68,
     tiltDeg: 0,
     texture: "assets/textures/titan.jpg",
@@ -350,14 +377,15 @@ export const BODIES = Object.freeze([
     kind: "moon",
     parent: "neptune",
     radiusKm: 1353.4,
-    orbitKm: 354759,
-    eccentricity: 0.000016,
-    inclinationDeg: 156.865,
-    nodeDeg: 167.71,
+    orbitKm: 354800,
+    eccentricity: 0,
+    inclinationDeg: 157.3,
+    nodeDeg: 178.1,
     periDeg: 0,
-    // JPL NEP097 mean elements at J2000; M was incorrectly left at 0.
+    // JPL NEP097 mean elements at J2000.
     meanAnomalyDeg: 63,
-    orbitDays: -5.877,
+    orbitDays: 5.876994,
+    orbitFrame: laplaceFrame("neptune", 299.8, 43.1),
     rotationHours: -141.048,
     tiltDeg: 0,
     texture: "assets/textures/triton.jpg",
@@ -481,6 +509,69 @@ export function wrapAngle(radians) {
   return ((radians % TAU) + TAU) % TAU;
 }
 
+/**
+ * Inclination/obliquity above 90° owns the retrograde direction. Otherwise
+ * the period sign owns it. This prevents the same direction being encoded
+ * twice while preserving the published catalog fields.
+ */
+export function renderedPeriod(period, orientationDeg = 0) {
+  if (!period) return 0;
+  return orientationDeg > 90 ? Math.abs(period) : period;
+}
+
+/** Scene-parent choice for a moon's explicitly declared element frame. */
+export function moonOrbitAttachment(body) {
+  return body?.kind === "moon" && body.orbitFrame?.kind !== "ecliptic"
+    ? "parent-equatorial"
+    : "parent-ecliptic";
+}
+
+function poleBasis(pole) {
+  const ra = pole.raDeg * DEG;
+  const dec = pole.decDeg * DEG;
+  const normal = {
+    x: Math.cos(dec) * Math.cos(ra),
+    y: Math.cos(dec) * Math.sin(ra),
+    z: Math.sin(dec),
+  };
+  const length = Math.hypot(normal.x, normal.y) || 1;
+  const xAxis = { x: -normal.y / length, y: normal.x / length, z: 0 };
+  const yAxis = {
+    x: normal.y * xAxis.z - normal.z * xAxis.y,
+    y: normal.z * xAxis.x - normal.x * xAxis.z,
+    z: normal.x * xAxis.y - normal.y * xAxis.x,
+  };
+  return { xAxis, yAxis, normal };
+}
+
+function combineBasis(vector, basis) {
+  return {
+    x: vector.x * basis.xAxis.x + vector.y * basis.yAxis.x + vector.z * basis.normal.x,
+    y: vector.x * basis.xAxis.y + vector.y * basis.yAxis.y + vector.z * basis.normal.y,
+    z: vector.x * basis.xAxis.z + vector.y * basis.yAxis.z + vector.z * basis.normal.z,
+  };
+}
+
+function projectBasis(vector, basis) {
+  return {
+    x: vector.x * basis.xAxis.x + vector.y * basis.xAxis.y + vector.z * basis.xAxis.z,
+    y: vector.x * basis.yAxis.x + vector.y * basis.yAxis.y + vector.z * basis.yAxis.z,
+    z: vector.x * basis.normal.x + vector.y * basis.normal.y + vector.z * basis.normal.z,
+  };
+}
+
+function sourceToRenderFrame(body, vector) {
+  const frame = body.orbitFrame;
+  if (frame?.kind === "laplace") {
+    const icrf = combineBasis(vector, poleBasis({
+      raDeg: frame.poleRaDeg,
+      decDeg: frame.poleDecDeg,
+    }));
+    return projectBasis(icrf, poleBasis(frame.parentPole));
+  }
+  return vector;
+}
+
 /** Newton-Raphson for M = E - e sin E. Units: radians. */
 export function solveKepler(meanAnomaly, eccentricity) {
   const M = wrapAngle(meanAnomaly);
@@ -498,13 +589,15 @@ export function solveKepler(meanAnomaly, eccentricity) {
  * Returns scene units; parent offset is applied by the caller.
  */
 export function keplerOffset(body, parent, days) {
-  const spin = body.rotationHours
-    ? (days / (body.rotationHours / 24)) * TAU
+  const spinPeriod = renderedPeriod(body.rotationHours, body.tiltDeg);
+  const spin = spinPeriod
+    ? (days / (spinPeriod / 24)) * TAU
     : 0;
   const a = visualSemiMajor(body, parent);
   if (a <= 0 || !body.orbitDays) return { x: 0, y: 0, z: 0, spin };
 
-  const n = (TAU / body.orbitDays) * days;
+  const orbitPeriod = renderedPeriod(body.orbitDays, body.inclinationDeg);
+  const n = (TAU / orbitPeriod) * days;
   const M = wrapAngle(body.meanAnomalyDeg * DEG + n);
   const e = body.eccentricity;
   const E = solveKepler(M, e);
@@ -523,10 +616,12 @@ export function keplerOffset(body, parent, days) {
   const sinA = Math.sin(arg);
   const cosI = Math.cos(i);
   const sinI = Math.sin(i);
-  const x = r * (cosN * cosA - sinN * sinA * cosI);
-  const astroY = r * (sinN * cosA + cosN * sinA * cosI);
-  const astroZ = r * (sinA * sinI);
-  return { x, y: astroZ, z: -astroY, spin };
+  const source = sourceToRenderFrame(body, {
+    x: r * (cosN * cosA - sinN * sinA * cosI),
+    y: r * (sinN * cosA + cosN * sinA * cosI),
+    z: r * (sinA * sinI),
+  });
+  return { x: source.x, y: source.z, z: -source.y, spin };
 }
 
 export function describeBody(body) {

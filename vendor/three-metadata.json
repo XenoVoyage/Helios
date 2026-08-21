@@ -2,15 +2,17 @@
   "package": "three",
   "version": "0.185.0",
   "license": "MIT",
-  "source": "https://www.npmjs.com/package/three",
+  "source": "https://registry.npmjs.org/three/-/three-0.185.0.tgz",
   "module": {
     "path": "vendor/three.module.min.js",
     "bytes": 365552,
+    "sha256": "86bcee248b64f44bcfc23c331ae74619061957d59cab040171dcb6fb5900beb6",
     "imports": ["vendor/three.core.min.js"]
   },
   "core": {
     "path": "vendor/three.core.min.js",
-    "bytes": 385390
+    "bytes": 385390,
+    "sha256": "0e9dd2793e01d0d9eb4f2ab00b4ffcdd4488275ebebee5c31fa8d347bc29f0bf"
   },
   "licenseFile": {
     "path": "vendor/THREE-LICENSE"

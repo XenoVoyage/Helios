@@ -32,6 +32,7 @@ try {
     "js/galaxy.js",
     "js/galaxy-catalog.js",
     "js/helpers.js",
+    "js/time.js",
     "styles.css",
     "vendor/three.module.min.js",
     "vendor/three.core.min.js",

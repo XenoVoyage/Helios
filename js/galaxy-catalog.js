@@ -40,81 +40,6 @@ export const GALACTIC_CENTER = Object.freeze({
 });
 
 /**
- * Reid et al. 2019, ApJ 885, 131, Table 2. Logarithmic spirals from
- * BeSSeL maser parallaxes. β is galactocentric azimuth in degrees,
- * 0 toward the Sun, increasing with galactic longitude. Pitch angles
- * inner/outer of the kink. Local Arm is the Orion Arm.
- */
-export const SPIRAL_ARMS = Object.freeze([
-  {
-    id: "norma",
-    name: "Norma",
-    betaMinDeg: 5,
-    betaMaxDeg: 54,
-    betaKinkDeg: 18,
-    rKinkKpc: 4.46,
-    pitchInnerDeg: -1.0,
-    pitchOuterDeg: 19.5,
-    widthKpc: 0.14,
-  },
-  {
-    id: "scutum",
-    name: "Scutum-Centaurus",
-    betaMinDeg: 0,
-    betaMaxDeg: 104,
-    betaKinkDeg: 23,
-    rKinkKpc: 4.91,
-    pitchInnerDeg: 14.1,
-    pitchOuterDeg: 12.1,
-    widthKpc: 0.23,
-  },
-  {
-    id: "sagittarius",
-    name: "Sagittarius-Carina",
-    betaMinDeg: 2,
-    betaMaxDeg: 97,
-    betaKinkDeg: 24,
-    rKinkKpc: 6.04,
-    pitchInnerDeg: 17.1,
-    pitchOuterDeg: 1.0,
-    widthKpc: 0.27,
-  },
-  {
-    id: "orion",
-    name: "Orion Arm",
-    betaMinDeg: -8,
-    betaMaxDeg: 34,
-    betaKinkDeg: 9,
-    rKinkKpc: 8.26,
-    pitchInnerDeg: 11.4,
-    pitchOuterDeg: 11.4,
-    widthKpc: 0.31,
-  },
-  {
-    id: "perseus",
-    name: "Perseus",
-    betaMinDeg: -23,
-    betaMaxDeg: 115,
-    betaKinkDeg: 40,
-    rKinkKpc: 8.87,
-    pitchInnerDeg: 10.3,
-    pitchOuterDeg: 8.7,
-    widthKpc: 0.35,
-  },
-  {
-    id: "outer",
-    name: "Outer",
-    betaMinDeg: -16,
-    betaMaxDeg: 71,
-    betaKinkDeg: 18,
-    rKinkKpc: 12.24,
-    pitchInnerDeg: 3.0,
-    pitchOuterDeg: 9.4,
-    widthKpc: 0.65,
-  },
-]);
-
-/**
  * Nearby galaxies. Positions: SIMBAD ICRS / IAU galactic J2000.
  * Distances: LMC Pietrzyński et al. 2019, Nature 567, 200;
  * SMC Graczyk et al. 2020, ApJ 904, 13;
@@ -257,8 +182,9 @@ export const LOCAL_GROUP = Object.freeze([
 /**
  * Nearest large cluster. Centered on M87. Distance: Mei et al. 2007,
  * ApJ 655, 144, ACS Virgo Cluster Survey mean 16.5 Mpc. Position: SIMBAD
- * M87 ICRS / IAU galactic J2000. We sit in the Local Group, not in Virgo;
- * Virgo is the nearest large cluster (Virgo Supercluster).
+ * M87 ICRS / IAU galactic J2000. We sit in the Local Group, not in the Virgo
+ * Cluster. The historical Local/Virgo Supercluster is the larger containing
+ * region; it is not an alias for this cluster.
  */
 export const VIRGO_CLUSTER = Object.freeze({
   id: "virgo",
@@ -281,27 +207,31 @@ export const VIRGO_CLUSTER = Object.freeze({
 export const LANIAKEA = Object.freeze({
   id: "laniakea",
   name: "Laniakea",
-  also: "Virgo Supercluster",
+  contains: "Local (Virgo) Supercluster",
   home: true,
   diameterMpc: 160,
 });
 
 /**
- * Planck 2018 ΛCDM particle-horizon / last-scattering radius (Aghanim et al.
- * 2020, A&A 641, A6). Comoving radius ~46.5 billion ly (~14.25 Gpc).
- * 1 Gpc = 3.26156 Gly. The CMB shell uses this radius. Hubble constant and
- * age are not displayed.
+ * Planck 2018 ΛCDM particle-horizon scale (Aghanim et al. 2020, A&A 641,
+ * A6). Comoving radius ~46.5 billion ly (~14.25 Gpc). 1 Gpc = 3.26156 Gly.
  */
-export const OBSERVABLE_UNIVERSE = Object.freeze({
+export const PARTICLE_HORIZON = Object.freeze({
+  name: "Particle horizon",
   comovingRadiusGly: 46.5,
   comovingRadiusGpc: 14.25,
   lyPerGpc: 3.26156,
 });
 
-/** Last-scattering surface. Same comoving radius as the observable universe. */
+/**
+ * The physical last-scattering surface is distinct from the particle horizon.
+ * Helios deliberately co-locates this illustrative shell with the outer
+ * display radius so the approved scale transition stays readable.
+ */
 export const CMB_SHELL = Object.freeze({
-  name: "CMB",
-  comovingRadiusGpc: OBSERVABLE_UNIVERSE.comovingRadiusGpc,
+  name: "Illustrative CMB shell",
+  displayRadiusGpc: PARTICLE_HORIZON.comovingRadiusGpc,
+  physicalRelation: "inside-particle-horizon",
   map: "assets/sky/cmb.jpg",
 });
 
@@ -315,8 +245,4 @@ export function findLocalGroupMember(id) {
 
 export function localGroupFamily() {
   return [...NEIGHBORS, ...LOCAL_GROUP];
-}
-
-export function findSpiralArm(id) {
-  return SPIRAL_ARMS.find((item) => item.id === id) ?? null;
 }

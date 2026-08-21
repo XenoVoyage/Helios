@@ -7,7 +7,9 @@ import {
   findBody,
   keplerOffset,
   moonClearance,
+  moonOrbitAttachment,
   moonsOf,
+  renderedPeriod,
   ringTextureU,
   solveKepler,
   visualBodyRadius,
@@ -40,6 +42,55 @@ const required = [
   "ceres",
 ];
 
+function subtract(a, b) {
+  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+}
+
+function cross(a, b) {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
+  };
+}
+
+function normalized(vector) {
+  const length = Math.hypot(vector.x, vector.y, vector.z);
+  return { x: vector.x / length, y: vector.y / length, z: vector.z / length };
+}
+
+function dot(a, b) {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+function angleDeg(a, b) {
+  return Math.acos(Math.max(-1, Math.min(1, dot(normalized(a), normalized(b))))) * 180 / Math.PI;
+}
+
+function rotateZ(vector, degrees) {
+  const angle = degrees * Math.PI / 180;
+  return {
+    x: vector.x * Math.cos(angle) - vector.y * Math.sin(angle),
+    y: vector.x * Math.sin(angle) + vector.y * Math.cos(angle),
+    z: vector.z,
+  };
+}
+
+function worldOffset(body, days) {
+  const parent = findBody(body.parent);
+  const offset = keplerOffset(body, parent, days);
+  return moonOrbitAttachment(body) === "parent-equatorial"
+    ? rotateZ(offset, parent.tiltDeg)
+    : offset;
+}
+
+function orbitNormal(body) {
+  const step = Math.abs(body.orbitDays) * 1e-5;
+  const at = worldOffset(body, 0);
+  const next = worldOffset(body, step);
+  return normalized(cross(at, subtract(next, at)));
+}
+
 test("catalog includes the v1 bodies with published periods, spins, and tilts", () => {
   assert.deepEqual(BODIES.map((body) => body.id).sort(), [...required].sort());
   assert.equal(BODIES.filter((body) => body.kind === "planet").length, 8);
@@ -55,7 +106,7 @@ test("catalog includes the v1 bodies with published periods, spins, and tilts", 
   assert.ok(findBody("venus").rotationHours < 0);
   assert.ok(findBody("uranus").rotationHours < 0);
   assert.ok(findBody("pluto").rotationHours < 0);
-  assert.ok(findBody("triton").orbitDays < 0);
+  assert.ok(findBody("triton").inclinationDeg > 90);
   assert.ok(findBody("triton").rotationHours < 0);
   assert.ok(findBody("earth").orbitDays > 365 && findBody("earth").orbitDays < 366);
   assert.ok(findBody("jupiter").tiltDeg < 5);
@@ -122,13 +173,18 @@ test("physical catalog matches published NASA / JPL figures", () => {
   assert.equal(findBody("europa").orbitKm, 671100);
   assert.equal(findBody("ganymede").orbitKm, 1070400);
   assert.equal(findBody("callisto").orbitKm, 1882700);
-  assert.equal(findBody("titan").orbitKm, 1221870);
-  assert.equal(findBody("triton").orbitKm, 354759);
+  assert.equal(findBody("titan").orbitKm, 1221900);
+  assert.equal(findBody("triton").orbitKm, 354800);
 
-  // JPL NEP097 mean elements at J2000 (retrograde period keeps the NASA sign).
+  // JPL NEP097 mean elements at J2000; inclination owns retrograde direction.
   assert.equal(findBody("triton").meanAnomalyDeg, 63);
   assert.equal(findBody("triton").periDeg, 0);
-  assert.ok(findBody("triton").orbitDays < 0);
+  assert.equal(findBody("triton").orbitDays, 5.876994);
+
+  // SAT441 J2000 orbital angles; the old M=186.586 value was a spin constant.
+  assert.equal(findBody("titan").periDeg, 78.3);
+  assert.equal(findBody("titan").meanAnomalyDeg, 11.7);
+  assert.equal(findBody("titan").nodeDeg, 78.6);
 });
 
 test("Kepler's equation recovers a circular and an eccentric orbit", () => {
@@ -145,6 +201,38 @@ test("Kepler's equation recovers a circular and an eccentric orbit", () => {
   const periR = Math.hypot(peri.x, peri.y, peri.z);
   const apoR = Math.hypot(apo.x, apo.y, apo.z);
   assert.ok(apoR > periR);
+});
+
+test("rendered moon planes and retrograde directions use each source frame once", () => {
+  const moon = findBody("moon");
+  const titan = findBody("titan");
+  const triton = findBody("triton");
+  assert.equal(moon.orbitFrame.kind, "ecliptic");
+  assert.equal(moonOrbitAttachment(moon), "parent-ecliptic");
+  assert.equal(titan.orbitFrame.kind, "laplace");
+  assert.equal(moonOrbitAttachment(titan), "parent-equatorial");
+  assert.deepEqual(findBody("phobos").orbitFrame.parentPole, {
+    raDeg: 317.269202,
+    decDeg: 54.432516,
+  });
+  assert.ok(Math.abs(angleDeg(orbitNormal(moon), { x: 0, y: 1, z: 0 }) - 5.16) < 0.01);
+
+  const saturnPole = rotateZ({ x: 0, y: 1, z: 0 }, findBody("saturn").tiltDeg);
+  assert.ok(angleDeg(orbitNormal(titan), saturnPole) < 1.1);
+  const neptunePole = rotateZ({ x: 0, y: 1, z: 0 }, findBody("neptune").tiltDeg);
+  assert.ok(angleDeg(orbitNormal(triton), neptunePole) > 150);
+  assert.ok(renderedPeriod(triton.orbitDays, triton.inclinationDeg) > 0);
+});
+
+test("retrograde spin is not reversed twice by period and obliquity", () => {
+  for (const id of ["venus", "uranus", "pluto"]) {
+    const body = findBody(id);
+    assert.ok(body.tiltDeg > 90);
+    assert.ok(body.rotationHours < 0);
+    assert.ok(renderedPeriod(body.rotationHours, body.tiltDeg) > 0);
+    const axis = rotateZ({ x: 0, y: 1, z: 0 }, body.tiltDeg);
+    assert.ok(dot(axis, orbitNormal(body)) < 0, `${id} spin is retrograde`);
+  }
 });
 
 test("time floor is one simulated hour per real second", () => {

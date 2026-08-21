@@ -3,7 +3,12 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONFIG, pinchZoomDistance, wheelZoomMultiplier } from "../js/config.js";
+import {
+  CONFIG,
+  isShortcutTargetInteractive,
+  pinchZoomDistance,
+  wheelZoomMultiplier,
+} from "../js/config.js";
 import { visualOrbit } from "../js/bodies.js";
 import { equatorialToGalactic } from "../js/sky.js";
 import {
@@ -13,13 +18,11 @@ import {
   LOCAL_GROUP,
   MILKY_WAY,
   NEIGHBORS,
-  OBSERVABLE_UNIVERSE,
-  SPIRAL_ARMS,
+  PARTICLE_HORIZON,
   SUN_GALACTIC,
   VIRGO_CLUSTER,
   findLocalGroupMember,
   findNeighbor,
-  findSpiralArm,
   localGroupFamily,
 } from "../js/galaxy-catalog.js";
 import {
@@ -63,7 +66,6 @@ import {
   skyStaysOn,
   solarDebrisOpacity,
   solarOpacity,
-  spiralRadiusKpc,
   sunScenePosition,
   universeOpacity,
   virgoOpacity,
@@ -97,11 +99,6 @@ test("Sun sits about 8 kpc from the Galactic Center in the Orion Arm", () => {
   assert.equal(GALACTIC_CENTER.distanceKpc, SUN_GALACTIC.rKpc);
   assert.ok(Math.abs(GALACTIC_CENTER.lDeg) < 1e-9);
   assert.ok(Math.abs(GALACTIC_CENTER.bDeg) < 1e-9);
-  const orion = findSpiralArm("orion");
-  assert.equal(orion.name, "Orion Arm");
-  assert.ok(orion.rKinkKpc > 8.2 && orion.rKinkKpc < 8.4);
-  const atSun = spiralRadiusKpc(orion, 0);
-  assert.ok(Math.abs(atSun - SUN_GALACTIC.rKpc) < 0.5, "Orion Arm passes near the Sun");
 });
 
 test("nearby galaxies keep SIMBAD positions and published distances", () => {
@@ -598,17 +595,23 @@ test("solar skybox stays at constant brightness and crossfades into the MW", () 
   assert.ok(farGalaxySkyRadius() < CONFIG.cameraFar);
 });
 
-test("pinch-out zooms out and mouse wheel stays as it is", () => {
-  assert.ok(pinchZoomDistance(1000, 40, 80) > 1000, "pinch-out increases camera distance");
-  assert.ok(pinchZoomDistance(1000, 40, 20) < 1000, "pinch-in decreases camera distance");
-  assert.equal(pinchZoomDistance(1000, 40, 80), 2000);
-  assert.equal(pinchZoomDistance(1000, 40, 20), 500);
-  assert.ok(wheelZoomMultiplier(100, false) > 1, "positive mouse wheel zooms out");
-  assert.ok(wheelZoomMultiplier(100, true) < 1, "touch pinch-out wheel is inverted to zoom out");
-  assert.ok(wheelZoomMultiplier(-100, true) > 1, "iOS pinch-out (negative delta) zooms out");
+test("pinch direction, wheel direction, and shortcut targets follow native behavior", () => {
+  assert.ok(pinchZoomDistance(1000, 40, 80) < 1000, "pinch-out decreases camera distance");
+  assert.ok(pinchZoomDistance(1000, 40, 20) > 1000, "pinch-in increases camera distance");
+  assert.equal(pinchZoomDistance(1000, 40, 80), 500);
+  assert.equal(pinchZoomDistance(1000, 40, 20), 2000);
+  assert.ok(wheelZoomMultiplier(100) > 1, "positive wheel delta zooms out");
+  assert.ok(wheelZoomMultiplier(-100) < 1, "negative browser-pinch delta zooms in");
+
+  for (const tagName of ["BUTTON", "A", "INPUT", "SELECT", "TEXTAREA"]) {
+    assert.equal(isShortcutTargetInteractive({ tagName }), true);
+  }
+  assert.equal(isShortcutTargetInteractive({ tagName: "DIV", isContentEditable: true }), true);
+  assert.equal(isShortcutTargetInteractive({ tagName: "SPAN", parentElement: { tagName: "BUTTON" } }), true);
+  assert.equal(isShortcutTargetInteractive({ tagName: "CANVAS" }), false);
 });
 
-test("camera far plane clears the neighborhood and spiral math stays Reid-like", () => {
+test("camera far plane clears the neighborhood and galactic coordinates stay coherent", () => {
   const farthest = Math.max(
     farthestNeighborhoodDistance(),
     farthestVirgoDistance(),
@@ -617,9 +620,6 @@ test("camera far plane clears the neighborhood and spiral math stays Reid-like",
   );
   assert.ok(CONFIG.cameraFar > CONFIG.maxDistance);
   assert.ok(CONFIG.cameraFar > farthest + CONFIG.maxDistance * 0.25);
-  assert.equal(SPIRAL_ARMS.length, 6);
-  const orion = findSpiralArm("orion");
-  assert.equal(spiralRadiusKpc(orion, orion.betaKinkDeg), orion.rKinkKpc);
   const sunHel = armPointKpc(SUN_GALACTIC.rKpc, 0, SUN_GALACTIC.zKpc);
   assert.ok(Math.hypot(sunHel.x, sunHel.y, sunHel.z) < 1e-9);
   const gcHel = heliocentricGalactic(0, 0, SUN_GALACTIC.rKpc);
@@ -694,7 +694,7 @@ test("Virgo Cluster keeps the published 16.5 Mpc M87 position", () => {
 
 test("cosmic web keeps Laniakea published size and drops named supercluster pins", async () => {
   assert.equal(LANIAKEA.name, "Laniakea");
-  assert.equal(LANIAKEA.also, "Virgo Supercluster");
+  assert.equal(LANIAKEA.contains, "Local (Virgo) Supercluster");
   assert.equal(LANIAKEA.home, true);
   assert.equal(LANIAKEA.diameterMpc, 160);
   const catalogSource = await readFile(path.join(root, "js/galaxy-catalog.js"), "utf8");
@@ -709,6 +709,8 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /cosmic-web/);
   assert.match(galaxySource, /cmb-shell/);
   assert.match(galaxySource, /export function createGalaxyLayer/);
+  assert.match(galaxySource, /visibilityCache/);
+  assert.match(galaxySource, /cache\.opacity === opacity && cache\.distance === distance/);
   assert.match(galaxySource, /far-galaxy-sky/);
   assert.match(galaxySource, /near-clusters/);
   assert.match(galaxySource, /mw-disk-edge/);
@@ -831,18 +833,20 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.notEqual(visualWeb(16.5), visualVirgo(16500));
 });
 
-test("observable universe keeps the Planck 2018 comoving radius", () => {
-  assert.equal(OBSERVABLE_UNIVERSE.comovingRadiusGly, 46.5);
-  assert.equal(OBSERVABLE_UNIVERSE.comovingRadiusGpc, 14.25);
-  assert.equal(OBSERVABLE_UNIVERSE.lyPerGpc, 3.26156);
-  const fromGpc = OBSERVABLE_UNIVERSE.comovingRadiusGpc * OBSERVABLE_UNIVERSE.lyPerGpc;
+test("particle horizon and the artistically co-located CMB shell stay distinct", () => {
+  assert.equal(PARTICLE_HORIZON.name, "Particle horizon");
+  assert.equal(PARTICLE_HORIZON.comovingRadiusGly, 46.5);
+  assert.equal(PARTICLE_HORIZON.comovingRadiusGpc, 14.25);
+  assert.equal(PARTICLE_HORIZON.lyPerGpc, 3.26156);
+  const fromGpc = PARTICLE_HORIZON.comovingRadiusGpc * PARTICLE_HORIZON.lyPerGpc;
   assert.ok(Math.abs(fromGpc - 46.5) < 0.03);
   assert.equal(
-    visualUniverse(OBSERVABLE_UNIVERSE.comovingRadiusGpc),
+    visualUniverse(PARTICLE_HORIZON.comovingRadiusGpc),
     CONFIG.universeScale * 14.25 ** CONFIG.universePower,
   );
-  assert.equal(CMB_SHELL.name, "CMB");
-  assert.equal(CMB_SHELL.comovingRadiusGpc, OBSERVABLE_UNIVERSE.comovingRadiusGpc);
+  assert.equal(CMB_SHELL.name, "Illustrative CMB shell");
+  assert.equal(CMB_SHELL.displayRadiusGpc, PARTICLE_HORIZON.comovingRadiusGpc);
+  assert.equal(CMB_SHELL.physicalRelation, "inside-particle-horizon");
   assert.equal(CMB_SHELL.map, "assets/sky/cmb.jpg");
   assert.ok(farthestUniverseDistance() > farthestWebDistance());
   assert.ok(CONFIG.cameraFar > farthestUniverseDistance() + CONFIG.maxDistance * 0.25);
