@@ -291,16 +291,19 @@ export function universeOpacity(distance) {
   return webOpacity(distance);
 }
 
-/** Far-galaxy skybox takes over after the disk; CMB replaces it later. */
+/**
+ * Far-galaxy skybox fades in as the Orion-arm tail becomes the full disk,
+ * so the MW look already sits on a field. CMB replaces it later.
+ */
 export function farGalaxySkyOpacity(distance) {
-  if (distance <= CONFIG.mwViewDistance) return 0;
-  const ready = CONFIG.mwViewDistance
-    + (CONFIG.neighborhoodViewDistance - CONFIG.mwViewDistance) * 0.35;
+  const start = CONFIG.handoffViewDistance
+    + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.28;
+  if (distance <= start) return 0;
   const fadeStart = CONFIG.webViewDistance
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.72;
-  const shown = distance >= ready
+  const shown = distance >= CONFIG.mwViewDistance
     ? 1
-    : smoothstep01((distance - CONFIG.mwViewDistance) / (ready - CONFIG.mwViewDistance));
+    : smoothstep01((distance - start) / (CONFIG.mwViewDistance - start));
   if (distance <= fadeStart) return shown;
   if (distance >= CONFIG.universeViewDistance) return 0;
   return shown * (1 - smoothstep01(

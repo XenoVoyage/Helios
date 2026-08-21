@@ -281,13 +281,27 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.equal(universeOpacity(CONFIG.universeViewDistance), 1);
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
   assert.equal(
-    farGalaxySkyOpacity(CONFIG.mwViewDistance),
+    farGalaxySkyOpacity(CONFIG.handoffViewDistance),
     0,
-    "interior MW uses the local skybox, not the far-galaxy field",
+    "first extra-zoom frame is still the local Orion-arm sky",
+  );
+  assert.ok(
+    farGalaxySkyOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) > 0.15,
+    "far-galaxy field starts while the tail becomes the disk",
+  );
+  assert.ok(
+    farGalaxySkyOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2)
+      < farGalaxySkyOpacity(CONFIG.mwViewDistance),
+    "far-galaxy field is stronger at the full disk than mid-ride",
+  );
+  assert.equal(
+    farGalaxySkyOpacity(CONFIG.mwViewDistance),
+    1,
+    "full-disk look already sits on the far-galaxy field",
   );
   assert.ok(
     farGalaxySkyOpacity(CONFIG.neighborhoodViewDistance) > 0.9,
-    "far-galaxy sky takes over after the disk",
+    "far-galaxy sky stays up through the neighborhood",
   );
   assert.ok(
     farGalaxySkyOpacity(CONFIG.virgoViewDistance) > 0.9,
@@ -377,6 +391,8 @@ test("solar to MW ride stays inside the disk before the face-on plate", () => {
     "disk is not a full plate at mid-ride",
   );
   assert.equal(milkyWayDiskOpacity(CONFIG.mwViewDistance), 1);
+  assert.equal(farGalaxySkyOpacity(CONFIG.handoffViewDistance), 0);
+  assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 1);
   assert.ok(skyBandBrightness(CONFIG.handoffViewDistance) > skyBandBrightness(CONFIG.cameraDistance));
   assert.ok(skyBandBrightness(CONFIG.mwViewDistance) > skyBandBrightness(CONFIG.solarMaxDistance));
   const interior = milkyWayInteriorCameraAim();
