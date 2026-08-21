@@ -17,7 +17,11 @@ An interactive 3D orrery of the solar system.
 
 ![Milky Way after extra zoom-out: already inside the bright Orion-arm trail at the Sun, not a distant plate.](docs/assets/helios-milky-way.webp)
 
-![Full Milky Way disk after leaving the tail, with the galaxy-image sky coming up.](docs/assets/helios-disk.webp)
+![Same tail, with the unlit galaxy-image sky already starting behind the arm.](docs/assets/helios-tail-sky.webp)
+
+![The full Milky Way disk growing out of that tail.](docs/assets/helios-growing.webp)
+
+![Full Milky Way disk after leaving the tail, with the galaxy-image sky up.](docs/assets/helios-disk.webp)
 
 ![Nearby galaxies on the second scale: bright Andromeda, Triangulum, and the Magellanic Clouds on a galaxy-image sky.](docs/assets/helios-neighborhood.webp)
 

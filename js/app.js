@@ -243,7 +243,7 @@ function boot() {
     } else if (galaxyLook === "growing") {
       const aim = milkyWayCameraAim();
       state.distance = CONFIG.handoffViewDistance
-        + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.82;
+        + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.68;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
