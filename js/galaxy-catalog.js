@@ -26,8 +26,9 @@ export const SUN_GALACTIC = Object.freeze({
 /**
  * Stellar disk size from Bland-Hawthorn & Gerhard 2016, ARA&A 54, 529.
  * heightKpc is the thin-disk scale height; thickHeightKpc is the thick
- * disk. haloRadiusKpc is the stellar halo, not the dark-matter halo.
- * Visual disk thickness lives in CONFIG.mwVisualHeightKpc.
+ * disk. haloRadiusKpc is a stylized inner-stellar-halo display scale, not a
+ * physical outer boundary or the dark-matter halo. Visual disk thickness
+ * lives in CONFIG.mwVisualHeightKpc.
  */
 export const MILKY_WAY = Object.freeze({
   diskRadiusKpc: 16.5,
