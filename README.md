@@ -13,13 +13,19 @@ An interactive 3D orrery of the solar system.
 
 ![Constellation names readable at overview, with Sagittarius and Scorpius labeled.](docs/assets/helios-constellations.webp)
 
-![Milky Way after extra zoom-out: already inside the bright Orion-arm trail, solar sky stronger, before the full disk.](docs/assets/helios-milky-way.webp)
+![Far solar overview: Hipparcos and the Gaia band fill the frame as the camera reaches the solar cap.](docs/assets/helios-solar-far.webp)
+
+![Milky Way after extra zoom-out: already inside the bright Orion-arm trail at the Sun, not a distant plate.](docs/assets/helios-milky-way.webp)
+
+![Full Milky Way disk after leaving the tail, with the galaxy-image sky coming up.](docs/assets/helios-disk.webp)
 
 ![Nearby galaxies on the second scale: bright Andromeda, Triangulum, and the Magellanic Clouds on a galaxy-image sky.](docs/assets/helios-neighborhood.webp)
 
 ![Local Group after a further zoom: M31, M33, the Magellanic Clouds, and a short set of other members.](docs/assets/helios-local-group.webp)
 
 ![Virgo Cluster with the Local Group nearby and more clusters appearing around them.](docs/assets/helios-virgo.webp)
+
+![After Virgo: a denser field of galaxy images before the cosmic web.](docs/assets/helios-preweb.webp)
 
 ![Volume-filling cosmic web: neuron / SDSS filaments through the local volume.](docs/assets/helios-web.webp)
 
