@@ -30,9 +30,12 @@ import {
   createGalaxyLayer,
   galaxyOpacity,
   localGroupCameraAim,
+  extraZoomTailMix,
   milkyWayBelowCameraAim,
   milkyWayEdgeCameraAim,
   milkyWayInteriorCameraAim,
+  milkyWayTailLookAt,
+  milkyWayTailSeat,
   neighborhoodCameraAim,
   orbitLineOpacity,
   orreryScale,
@@ -55,6 +58,8 @@ const world = new THREE.Vector3();
 const projected = new THREE.Vector3();
 const focusPoint = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
+const tailSeat = new THREE.Vector3();
+const tailLook = new THREE.Vector3();
 
 const state = {
   days: 0,
@@ -795,6 +800,19 @@ function placeCamera(blend) {
     focusPoint.z + state.distance * cosE * Math.cos(state.azimuth),
   );
   camera.lookAt(focusPoint);
+  const tailMix = extraZoomTailMix(state.distance);
+  if (tailMix > 0.01) {
+    const seat = milkyWayTailSeat();
+    const along = milkyWayTailLookAt();
+    tailSeat.set(focusPoint.x + seat.x, focusPoint.y + seat.y, focusPoint.z + seat.z);
+    camera.position.lerp(tailSeat, tailMix);
+    tailLook.set(
+      focusPoint.x + along.x * tailMix,
+      focusPoint.y + along.y * tailMix,
+      focusPoint.z + along.z * tailMix,
+    );
+    camera.lookAt(tailLook);
+  }
   camera.near = Math.max(0.05, state.distance / 2500);
   camera.far = CONFIG.cameraFar;
   camera.updateProjectionMatrix();

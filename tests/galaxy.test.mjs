@@ -30,6 +30,7 @@ import {
   farthestWebDistance,
   galacticCenterScenePosition,
   celestialSkyOpacity,
+  extraZoomTailMix,
   farGalaxySkyRadius,
   galaxyOpacity,
   heliocentricGalactic,
@@ -37,6 +38,8 @@ import {
   localGroupMemberOpacity,
   milkyWayBelowCameraAim,
   milkyWayInteriorCameraAim,
+  milkyWayTailLookAt,
+  milkyWayTailSeat,
   lookAngleTo,
   milkyWayDiskDiameter,
   milkyWayDiskOpacity,
@@ -409,8 +412,17 @@ test("constellations are solar-only and the far-galaxy field is up at the tail",
   assert.ok(interior.elevation > 0, "interior look is not from under the plane");
   assert.ok(
     CONFIG.handoffViewDistance < milkyWayDiskDiameter() * 1.35,
-    "first extra-zoom camera sits in the tail, not a distant plate",
+    "handoff is still near the disk scale",
   );
+  assert.equal(extraZoomTailMix(CONFIG.handoffViewDistance), 1);
+  assert.equal(extraZoomTailMix(CONFIG.mwViewDistance), 0);
+  assert.ok(extraZoomTailMix((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) > 0.2);
+  assert.ok(extraZoomTailMix((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) < 0.8);
+  const seat = milkyWayTailSeat();
+  const along = milkyWayTailLookAt();
+  assert.ok(Math.hypot(seat.x, seat.y, seat.z) < milkyWayDiskDiameter() * 0.2, "tail seat stays inside the disk");
+  assert.ok(Math.abs(seat.z) > Math.abs(seat.x), "tail seat looks along the arm");
+  assert.ok(along.z < seat.z, "tail look continues along the arm");
   assert.ok(
     farGalaxySkyRadius() > CONFIG.neighborhoodViewDistance * 8,
     "far-galaxy shell is far past the neighborhood camera",

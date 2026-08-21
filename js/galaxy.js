@@ -381,6 +381,27 @@ export function milkyWayInteriorCameraAim() {
   return { elevation: 0.08, azimuth: Math.PI };
 }
 
+/** 1 at the tail seat, 0 once the full disk is the orbit subject. */
+export function extraZoomTailMix(distance) {
+  if (distance < CONFIG.handoffViewDistance) return 0;
+  if (distance >= CONFIG.mwViewDistance) return 0;
+  const t = (distance - CONFIG.handoffViewDistance)
+    / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance);
+  return 1 - smoothstep01(t);
+}
+
+/** Sit in the Orion-arm tail near the Sun. Extra-zoom only. */
+export function milkyWayTailSeat() {
+  const s = milkyWayUnitsPerKpc();
+  return { x: 0.22 * s, y: 0.24 * s, z: -1.8 * s };
+}
+
+/** Look further along the arm so the bright tail fills the frame. */
+export function milkyWayTailLookAt() {
+  const s = milkyWayUnitsPerKpc();
+  return { x: 0.7 * s, y: 0, z: -7.2 * s };
+}
+
 /** Near edge-on so disk thickness, bulge, and halo can be audited. */
 export function milkyWayEdgeCameraAim() {
   return { elevation: 0.04, azimuth: 1.15 };
@@ -1594,20 +1615,20 @@ function createFarGalaxySky(THREE, group, maps) {
       blending: THREE.AdditiveBlending,
     }),
   };
-  const count = 860;
+  const count = 420;
   for (let i = 0; i < count; i += 1) {
     const theta = rand() * Math.PI * 2;
     const phi = Math.acos(2 * rand() - 1);
     const kind = kinds[Math.floor(rand() * kinds.length)];
     const sprite = new THREE.Sprite(templates[kind].clone());
     sprite.material.rotation = rand() * Math.PI;
-    sprite.material.opacity = 0.72 + rand() * 0.26;
+    sprite.material.opacity = 0.78 + rand() * 0.2;
     sprite.position.set(
       radius * Math.sin(phi) * Math.cos(theta),
       radius * Math.cos(phi),
       radius * Math.sin(phi) * Math.sin(theta),
     );
-    const size = radius * (0.0032 + (rand() ** 1.45) * 0.02);
+    const size = radius * (0.014 + (rand() ** 1.15) * 0.055);
     const aspect = kind === "elliptical" ? 0.78 : kind === "spiral" ? 0.42 : 0.58;
     sprite.scale.set(size, size * aspect, 1);
     sprite.frustumCulled = false;
@@ -1641,7 +1662,7 @@ function createDeepField(THREE, group, maps) {
       r * Math.cos(phi) * 0.86,
       r * Math.sin(phi) * Math.sin(theta),
     );
-    const size = 720 + rand() * 1680;
+    const size = 5200 + rand() * 14000;
     sprite.scale.set(size, size * (kind === "elliptical" ? 0.78 : 0.46), 1);
     sprite.frustumCulled = false;
     field.add(sprite);

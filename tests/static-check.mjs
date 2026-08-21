@@ -93,6 +93,8 @@ assert.match(app, /setConstellationsVisible\(celestial, inSolar && state\.showCo
 assert.match(app, /setCelestialFade/);
 assert.match(app, /setSkyBandBrightness/);
 assert.match(app, /attachFarGalaxySky/);
+assert.match(app, /extraZoomTailMix/);
+assert.match(app, /milkyWayTailSeat/);
 assert.match(app, /pinchZoomDistance/);
 assert.match(app, /wheelZoomMultiplier/);
 assert.match(app, /clearSelection/);
