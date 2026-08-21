@@ -527,15 +527,16 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /mw-disk-edge/);
   assert.match(galaxySource, /mw-halo/);
   assert.match(galaxySource, /Large Magellanic Cloud|neighbor\.name/);
-  assert.match(galaxySource, /farGalaxySkyMap/);
+  assert.match(galaxySource, /fillSpherePoints/);
+  assert.match(galaxySource, /far-galaxy-blobs/);
   assert.match(galaxySource, /CanvasTexture/);
   assert.match(galaxySource, /toneMapped:\s*false/);
   assert.match(galaxySource, /AdditiveBlending/);
   assert.match(galaxySource, /SKY_ASSETS\.andromeda/);
   assert.match(galaxySource, /quietAndromedaMap|andromeda\.png/);
   assert.doesNotMatch(galaxySource, /if \(pole < 0\.28\) continue/);
-  assert.match(galaxySource, /stampSoftWrapped/);
   assert.match(galaxySource, /cameraFar \* 0\.42/);
+  assert.match(galaxySource, /false,\s*THREE\.AdditiveBlending/);
   assert.doesNotMatch(galaxySource, /kind === "andromeda"/);
   assert.doesNotMatch(galaxySource, /lineWidth = 13/);
   assert.doesNotMatch(galaxySource, /smc: galaxySprite/);
@@ -551,7 +552,8 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /unlitSprite|toneMapped:\s*false/);
   assert.doesNotMatch(galaxySource, /hubCount:\s*20\b/);
   assert.match(galaxySource, /includeHome:\s*false/);
-  assert.match(galaxySource, /side:\s*THREE\.BackSide/);
+  assert.match(galaxySource, /material\.depthTest = false/);
+  assert.match(galaxySource, /material\.fog = false/);
   assert.match(galaxySource, /name = "cmb-sphere"/);
   assert.match(galaxySource, /side:\s*THREE\.DoubleSide/);
   assert.match(galaxySource, /return distance >= CONFIG\.handoffViewDistance \? 1 : 0/);

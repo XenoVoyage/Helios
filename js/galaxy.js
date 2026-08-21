@@ -1514,52 +1514,27 @@ function createCmbShell(THREE, group) {
   group.add(shell);
 }
 
-function stampSoftWrapped(ctx, width, x, y, radius, color) {
-  stampSoft(ctx, x, y, radius, color);
-  if (x < radius) stampSoft(ctx, x + width, y, radius, color);
-  if (x > width - radius) stampSoft(ctx, x - width, y, radius, color);
-}
-
-function farGalaxySkyMap(THREE) {
-  const width = 2048;
-  const height = 1024;
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#02050c";
-  ctx.fillRect(0, 0, width, height);
-  const rand = seedRandom(4608);
-  for (let i = 0; i < 18000; i += 1) {
+function fillSpherePoints(count, radius, seed) {
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const rand = seedRandom(seed);
+  for (let i = 0; i < count; i += 1) {
     const theta = rand() * Math.PI * 2;
     const phi = Math.acos(2 * rand() - 1);
-    const x = (theta / (Math.PI * 2)) * width;
-    const y = (phi / Math.PI) * height;
+    const sinP = Math.sin(phi);
+    positions[i * 3] = radius * sinP * Math.cos(theta);
+    positions[i * 3 + 1] = radius * Math.cos(phi);
+    positions[i * 3 + 2] = radius * sinP * Math.sin(theta);
     const warm = rand();
-    stampSoftWrapped(
-      ctx,
-      width,
-      x,
-      y,
-      0.7 + rand() * 2.0,
-      `rgba(${Math.floor(150 + 95 * warm)}, ${Math.floor(165 + 55 * warm)}, ${Math.floor(215 - 40 * warm)}, ${0.32 + rand() * 0.48})`,
-    );
+    const shade = 0.42 + rand() * 0.58;
+    colors[i * 3] = ((150 + 95 * warm) / 255) * shade;
+    colors[i * 3 + 1] = ((165 + 55 * warm) / 255) * shade;
+    colors[i * 3 + 2] = ((215 - 40 * warm) / 255) * shade;
   }
-  for (let i = 0; i < 320; i += 1) {
-    const theta = rand() * Math.PI * 2;
-    const phi = Math.acos(2 * rand() - 1);
-    const x = (theta / (Math.PI * 2)) * width;
-    const y = (phi / Math.PI) * height;
-    stampSoftWrapped(ctx, width, x, y, 2.2 + rand() * 3.4, "rgba(220, 200, 170, 0.26)");
-  }
-  const map = new THREE.CanvasTexture(canvas);
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.anisotropy = 4;
-  map.wrapS = THREE.RepeatWrapping;
-  return map;
+  return { positions, colors };
 }
 
-/** Huge camera-attached shell so MW / neighborhood never read a nearby ball. */
+/** Distant camera-attached field. Screen-fixed points, not a lit world-space ball. */
 export function farGalaxySkyRadius() {
   return CONFIG.cameraFar * 0.42;
 }
@@ -1568,21 +1543,35 @@ function createFarGalaxySky(THREE, group) {
   const sky = new THREE.Group();
   sky.name = "far-galaxy-sky";
   const radius = farGalaxySkyRadius();
-  const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(radius, 64, 48),
-    unlitBasic(THREE, {
-      map: farGalaxySkyMap(THREE),
-      opacity: 0.88,
-      side: THREE.BackSide,
-      depthTest: false,
-      fog: false,
-    }),
+  const field = fillSpherePoints(14000, radius, 4608);
+  const shell = addPoints(
+    THREE,
+    sky,
+    "far-galaxy-shell",
+    field.positions,
+    field.colors,
+    2.2,
+    0.92,
+    false,
+    THREE.AdditiveBlending,
   );
-  sphere.name = "far-galaxy-shell";
-  sphere.frustumCulled = false;
-  sphere.renderOrder = -80;
+  const blobs = fillSpherePoints(280, radius, 9124);
+  const marks = addPoints(
+    THREE,
+    sky,
+    "far-galaxy-blobs",
+    blobs.positions,
+    blobs.colors,
+    5.4,
+    0.55,
+    false,
+    THREE.AdditiveBlending,
+  );
+  for (const pts of [shell, marks]) {
+    pts.material.depthTest = false;
+    pts.material.fog = false;
+  }
   sky.renderOrder = -80;
-  sky.add(sphere);
   group.add(sky);
 }
 
