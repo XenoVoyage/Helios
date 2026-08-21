@@ -30,6 +30,8 @@ import {
   milkyWayCameraAim,
   milkyWayEdgeCameraAim,
   neighborhoodCameraAim,
+  orbitLineOpacity,
+  orreryScale,
   requestedGalaxyLook,
   scaleLayer,
   setGalaxyLayerVisible,
@@ -742,6 +744,13 @@ function tick(now) {
   updateLabels();
   paintClock();
   renderer.render(scene, camera);
+  if (extraZoomWarmState === 0 && !earthSkyLook) {
+    extraZoomWarmState = 1;
+    const later = typeof requestIdleCallback === "function"
+      ? (fn) => requestIdleCallback(fn, { timeout: 280 })
+      : (fn) => requestAnimationFrame(fn);
+    later(warmExtraZoom);
+  }
   requestAnimationFrame(tick);
 }
 
@@ -800,14 +809,30 @@ function fadeBodyNode(node, factor) {
 }
 
 let lastScaleLayer = "solar";
+let extraZoomWarmState = 0;
+
+function warmExtraZoom() {
+  if (extraZoomWarmState === 2 || !galaxy || !renderer || earthSkyLook) return;
+  extraZoomWarmState = 2;
+  setGalaxyLayerVisible(galaxy, 0.001, CONFIG.mwViewDistance);
+  renderer.compile(scene, camera);
+  renderer.render(scene, camera);
+  setGalaxyLayerVisible(galaxy, galaxyOpacity(state.distance), state.distance);
+}
 
 function paintScaleLayer() {
   if (earthSkyLook) return;
   const solar = solarOpacity(state.distance);
   const galactic = galaxyOpacity(state.distance);
+  const shrink = orreryScale(state.distance);
+  const sun = nodes.get("sun");
+  if (sun) sun.pivot.scale.setScalar(shrink);
+  asteroidBelt.scale.setScalar(shrink);
+  kuiperBelt.scale.setScalar(shrink);
+  orbitLines.scale.setScalar(shrink);
   fadeRoot(asteroidBelt, solar);
   fadeRoot(kuiperBelt, solar);
-  fadeRoot(orbitLines, solar);
+  fadeRoot(orbitLines, orbitLineOpacity(state.distance) * solar);
   celestial.visible = solar > 0.12;
   paintConstellations();
   setGalaxyLayerVisible(galaxy, galactic, state.distance);
@@ -823,7 +848,7 @@ function paintScaleLayer() {
     else if (layer === "localgroup") say("Local Group.");
     else if (layer === "virgo") say("Virgo Cluster. The Local Group is a nearby family; Virgo is the nearest large cluster.");
     else if (layer === "web") say("Cosmic web. Filaments and clusters around the Milky Way.");
-    else if (layer === "universe") say("Observable universe. The CMB shell sits beyond the web.");
+    else if (layer === "universe") say("Observable universe. The CMB sphere is the last outside layer.");
     else if (layer === "solar") say("Solar system.");
   }
 }

@@ -60,6 +60,7 @@ body {
 .labels {
   position: absolute;
   inset: 0;
+  z-index: 1;
   pointer-events: none;
 }
 
@@ -188,6 +189,7 @@ h2 {
 .dock {
   left: 50%;
   bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 4;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -195,6 +197,7 @@ h2 {
   justify-content: center;
   width: min(820px, calc(100vw - 16px));
   padding: 0;
+  isolation: isolate;
   transform: translateX(-50%);
 }
 
@@ -213,8 +216,19 @@ button {
 }
 
 #play-button,
+#reset-button,
+#sky-button {
+  position: relative;
+  z-index: 2;
+}
+
+#play-button,
 #reset-button {
   min-width: 108px;
+}
+
+#sky-button {
+  flex-shrink: 0;
 }
 
 button:focus-visible,
@@ -226,17 +240,22 @@ input:focus-visible,
 }
 
 .speed-group {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex: 1 1 220px;
   gap: 8px;
   align-items: center;
-  min-width: min(100%, 240px);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .speed-label {
   display: flex;
   flex: 1;
   align-items: center;
+  min-width: 0;
 }
 
 input[type="range"] {

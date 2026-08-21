@@ -45,6 +45,8 @@ import {
   neighborApparentSize,
   neighborOpacity,
   neighborScenePosition,
+  orbitLineOpacity,
+  orreryScale,
   scaleLayer,
   solarOpacity,
   spiralRadiusKpc,
@@ -282,18 +284,38 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     "microwave waits until after the web",
   );
   assert.equal(cmbSkyOpacity(CONFIG.universeViewDistance), 1);
+  assert.equal(
+    farGalaxySkyOpacity(CONFIG.universeViewDistance),
+    0,
+    "far-galaxy sky yields to the CMB sphere outside",
+  );
   assert.ok(
     farthestUniverseDistance() > CONFIG.webViewDistance,
     "CMB shell is still ahead at web scale",
   );
   assert.ok(
-    CONFIG.universeViewDistance < farthestUniverseDistance(),
-    "universe look sits inside the CMB shell, not outside a glowing ball",
+    CONFIG.universeViewDistance > farthestUniverseDistance() * 1.2,
+    "universe look sits outside the CMB shell so the sphere reads",
   );
   assert.ok(
     CONFIG.maxDistance > farthestUniverseDistance(),
     "camera can leave the observable sphere",
   );
+});
+
+test("extra-zoom shrinks the orrery to a Sun pin before the MW disk", () => {
+  assert.equal(orreryScale(CONFIG.cameraDistance), 1);
+  assert.equal(orreryScale(CONFIG.solarMaxDistance), 1);
+  assert.ok(orreryScale(CONFIG.handoffViewDistance) < 0.12);
+  assert.ok(orreryScale(CONFIG.mwViewDistance) < 0.04);
+  const kuiper = visualOrbit(CONFIG.kuiperOuterAu) * orreryScale(CONFIG.handoffViewDistance);
+  assert.ok(
+    kuiper < milkyWayDiskDiameter() * 0.1,
+    "Kuiper / planet orbits are a pin on the MW, not a system-sized overlay",
+  );
+  assert.equal(orbitLineOpacity(CONFIG.solarMaxDistance), 1);
+  assert.equal(orbitLineOpacity(CONFIG.handoffViewDistance), 0);
+  assert.equal(orbitLineOpacity(CONFIG.mwViewDistance), 0);
 });
 
 test("camera far plane clears the neighborhood and spiral math stays Reid-like", () => {
@@ -421,6 +443,8 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.doesNotMatch(galaxySource, /hubCount:\s*20\b/);
   assert.match(galaxySource, /includeHome:\s*false/);
   assert.match(galaxySource, /side:\s*THREE\.BackSide/);
+  assert.match(galaxySource, /name = "cmb-sphere"/);
+  assert.match(galaxySource, /side:\s*THREE\.DoubleSide/);
   assert.doesNotMatch(galaxySource, /Math\.max\(web, universe/);
   const m31 = findNeighbor("m31");
   assert.ok(

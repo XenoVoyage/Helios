@@ -3,7 +3,7 @@
  * far-galaxy sky that stays up through Virgo and the filled web, a short
  * Local Group, Virgo with more clusters around it, a colored cosmic web
  * that stays volume-filling at larger scale, and a CMB / observable-universe
- * shell you approach from inside and can leave.
+ * sphere you leave and can see from outside.
  *
  * Catalog kpc / Mpc / Gpc stay in js/galaxy-catalog.js. Visual compression
  * lives here and in CONFIG. This map is a different representation from
@@ -173,6 +173,32 @@ export function solarOpacity(distance) {
   return 1 - galaxyOpacity(distance);
 }
 
+/**
+ * Extra-zoom only. In solar the orrery stays 1:1 with visualScale.
+ * Past the solar cap it shrinks to a Sun pin before the MW disk dominates.
+ */
+export function orreryScale(distance) {
+  if (distance <= CONFIG.solarMaxDistance) return 1;
+  const pin = 0.08;
+  if (distance >= CONFIG.handoffViewDistance) {
+    const t = (distance - CONFIG.handoffViewDistance)
+      / Math.max(1, CONFIG.galaxyFadeEnd - CONFIG.handoffViewDistance);
+    return Math.max(0.012, pin * (1 - smoothstep01(t)));
+  }
+  const t = (distance - CONFIG.solarMaxDistance)
+    / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance);
+  return 1 - (1 - pin) * smoothstep01(t ** 0.75);
+}
+
+/** Planet orbit rings leave before the MW disk is the picture. */
+export function orbitLineOpacity(distance) {
+  if (distance <= CONFIG.solarMaxDistance) return 1;
+  const end = CONFIG.solarMaxDistance
+    + (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance) * 0.42;
+  if (distance >= end) return 0;
+  return 1 - smoothstep01((distance - CONFIG.solarMaxDistance) / (end - CONFIG.solarMaxDistance));
+}
+
 export function scaleLayer(distance) {
   if (distance <= CONFIG.solarMaxDistance) return "solar";
   if (distance < CONFIG.galaxyFadeEnd) return "transition";
@@ -225,7 +251,7 @@ export function webOpacity(distance) {
 
 export function universeOpacity(distance) {
   const start = CONFIG.webViewDistance
-    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.55;
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.22;
   if (distance < start) return 0;
   if (distance >= CONFIG.universeViewDistance) return 1;
   return smoothstep01((distance - start) / (CONFIG.universeViewDistance - start));
@@ -237,8 +263,8 @@ export function farGalaxySkyOpacity(distance) {
   const fadeStart = CONFIG.webViewDistance
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.72;
   if (distance <= fadeStart) return 1;
-  if (distance >= CONFIG.universeViewDistance) return 0.38;
-  return 1 - 0.62 * smoothstep01(
+  if (distance >= CONFIG.universeViewDistance) return 0;
+  return 1 - smoothstep01(
     (distance - fadeStart) / (CONFIG.universeViewDistance - fadeStart),
   );
 }
@@ -361,7 +387,7 @@ export function webCameraAim() {
   return { elevation: 0.38, azimuth: 1.05 };
 }
 
-/** Inside the CMB shell, looking through a filled web rather than at a ball. */
+/** Outside the CMB shell so the observable sphere reads as a sphere. */
 export function universeCameraAim() {
   return { elevation: 0.38, azimuth: 1.05 };
 }
@@ -407,12 +433,31 @@ function makeLabelMap(THREE, text) {
   ctx.font = `700 ${fontPx}px ui-sans-serif, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  const cx = LABEL.canvasWidth / 2;
+  const cy = LABEL.canvasHeight / 2;
+  const tw = ctx.measureText(text).width;
+  const padX = 36;
+  const padY = 28;
+  const x = cx - tw / 2 - padX;
+  const y = cy - fontPx / 2 - padY;
+  const w = tw + padX * 2;
+  const h = fontPx + padY * 2;
+  const r = 28;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(2, 8, 18, 0.86)";
+  ctx.fill();
   ctx.lineJoin = "round";
-  ctx.lineWidth = 12;
-  ctx.strokeStyle = "rgba(2, 5, 12, 0.88)";
-  ctx.fillStyle = "rgba(214, 244, 250, 0.96)";
-  ctx.strokeText(text, LABEL.canvasWidth / 2, LABEL.canvasHeight / 2);
-  ctx.fillText(text, LABEL.canvasWidth / 2, LABEL.canvasHeight / 2);
+  ctx.lineWidth = 16;
+  ctx.strokeStyle = "rgba(2, 5, 12, 1)";
+  ctx.fillStyle = "rgba(255, 255, 255, 1)";
+  ctx.strokeText(text, cx, cy);
+  ctx.fillText(text, cx, cy);
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace;
   return map;
@@ -421,11 +466,13 @@ function makeLabelMap(THREE, text) {
 function labelSprite(THREE, text, position, scale = 1) {
   const sprite = new THREE.Sprite(unlitSprite(THREE, {
     map: makeLabelMap(THREE, text),
-    opacity: 0.96,
+    opacity: 1,
+    depthTest: false,
     sizeAttenuation: true,
   }));
   sprite.position.set(position.x, position.y, position.z);
   sprite.scale.set(LABEL.scaleX * scale, LABEL.scaleY * scale, 1);
+  sprite.renderOrder = 20;
   sprite.frustumCulled = false;
   return sprite;
 }
@@ -901,7 +948,7 @@ function createSunPin(THREE, group) {
   pin.position.set(0, 0, 0);
   pin.frustumCulled = false;
   group.add(pin);
-  group.add(labelSprite(THREE, "Sun", { x: 0, y: visualDiskHalfHeight() + 220, z: 0 }, 3.4));
+  group.add(labelSprite(THREE, "Sun", { x: 0, y: visualDiskHalfHeight() + 160, z: 0 }, 1.55));
 }
 
 function neighborSpriteSize(neighbor) {
@@ -1402,8 +1449,8 @@ function createCmbShell(THREE, group) {
     new THREE.SphereGeometry(radius, 96, 64),
     unlitBasic(THREE, {
       map: loadMap(THREE, CMB_SHELL.map),
-      opacity: 0.26,
-      side: THREE.BackSide,
+      opacity: 0.42,
+      side: THREE.DoubleSide,
     }),
   );
   cmb.name = "cmb-sphere";

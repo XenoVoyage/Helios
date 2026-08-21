@@ -14,7 +14,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20o",
+  VERSION: "v2026.8.20p",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -47,14 +47,14 @@ export const CONFIG = Object.freeze({
   minDistance: 2.4,
   // Solar overview / Kuiper camera cap. Further zoom is the galaxy layer.
   solarMaxDistance: 1880,
-  maxDistance: 1100000,
+  maxDistance: 1800000,
   mwViewDistance: 11000,
   neighborhoodViewDistance: 24000,
   localGroupViewDistance: 40000,
   virgoViewDistance: 75000,
   webViewDistance: 240000,
-  // Inside the CMB shell so ?look=universe reads a filled web, not an outside ball.
-  universeViewDistance: 480000,
+  // Outside the CMB shell so ?look=universe reads the sphere from outside.
+  universeViewDistance: 1250000,
   galaxyFadeStart: 1880,
   galaxyFadeEnd: 11000,
   // Mid solar→MW fade: Kuiper still reads, planet labels already gone.
@@ -86,7 +86,7 @@ export const CONFIG = Object.freeze({
   universePower: 0.48,
   // Celestial sphere sits around the camera; far plane must clear the universe layer.
   skyRadius: 2000,
-  cameraFar: 3600000,
+  cameraFar: 5000000,
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
   focusLerp: 6,
