@@ -1,8 +1,9 @@
 /**
  * Extra-zoom map: a luminous 3D Milky Way, nearby galaxies against a
- * far-galaxy sky that stays up through Virgo and turns microwave, a short
- * Local Group, Virgo with more clusters around it, a colored cosmic web,
- * and a CMB / observable-universe sphere you approach and then leave.
+ * far-galaxy sky that stays up through Virgo and the filled web, a short
+ * Local Group, Virgo with more clusters around it, a colored cosmic web
+ * that stays volume-filling at larger scale, and a CMB / observable-universe
+ * shell you approach from inside and can leave.
  *
  * Catalog kpc / Mpc / Gpc stay in js/galaxy-catalog.js. Visual compression
  * lives here and in CONFIG. This map is a different representation from
@@ -234,18 +235,18 @@ export function universeOpacity(distance) {
 export function farGalaxySkyOpacity(distance) {
   if (distance <= CONFIG.galaxyFadeStart) return 0;
   const fadeStart = CONFIG.webViewDistance
-    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.62;
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.72;
   if (distance <= fadeStart) return 1;
-  if (distance >= CONFIG.universeViewDistance) return 0.06;
-  return 1 - 0.94 * smoothstep01(
+  if (distance >= CONFIG.universeViewDistance) return 0.38;
+  return 1 - 0.62 * smoothstep01(
     (distance - fadeStart) / (CONFIG.universeViewDistance - fadeStart),
   );
 }
 
-/** Microwave sky waits until after a long web, then becomes the shell you approach. */
+/** Microwave sky waits until after a long web, then becomes the outer shell. */
 export function cmbSkyOpacity(distance) {
   const start = CONFIG.webViewDistance
-    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.58;
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.72;
   if (distance <= start) return 0;
   if (distance >= CONFIG.universeViewDistance) return 1;
   return smoothstep01(
@@ -360,9 +361,9 @@ export function webCameraAim() {
   return { elevation: 0.38, azimuth: 1.05 };
 }
 
-/** Pulled back so the CMB shell reads after the filled web, not instead of it. */
+/** Inside the CMB shell, looking through a filled web rather than at a ball. */
 export function universeCameraAim() {
-  return { elevation: 0.42, azimuth: 0.9 };
+  return { elevation: 0.38, azimuth: 1.05 };
 }
 
 export function farthestNeighborhoodDistance() {
@@ -1250,13 +1251,15 @@ function createWebVolume(THREE, group, {
   hubSize,
   particleSize,
   includeVirgo,
+  includeHome = true,
   fieldCount,
 }) {
   const web = new THREE.Group();
   web.name = name;
   const rand = seedRandom(seed);
   const hubMap = hubSprite(THREE);
-  const hubs = [{ x: 0, y: 0, z: 0, home: true }];
+  const hubs = [];
+  if (includeHome) hubs.push({ x: 0, y: 0, z: 0, home: true });
   if (includeVirgo) {
     const virgo = webHubScenePosition({
       lDeg: VIRGO_CLUSTER.lDeg,
@@ -1379,13 +1382,14 @@ function createUniverseWeb(THREE, group) {
   const radius = visualUniverse(CMB_SHELL.comovingRadiusGpc);
   createWebVolume(THREE, shell, {
     name: "universe-web",
-    radius: radius * 0.82,
-    hubCount: 220,
+    radius: radius * 0.92,
+    hubCount: 240,
     seed: 2018,
-    hubSize: 9600,
-    particleSize: 860,
+    hubSize: 7800,
+    particleSize: 760,
     includeVirgo: false,
-    fieldCount: 22000,
+    includeHome: false,
+    fieldCount: 24000,
   });
   group.add(shell);
 }
@@ -1398,8 +1402,8 @@ function createCmbShell(THREE, group) {
     new THREE.SphereGeometry(radius, 96, 64),
     unlitBasic(THREE, {
       map: loadMap(THREE, CMB_SHELL.map),
-      opacity: 0.88,
-      side: THREE.DoubleSide,
+      opacity: 0.26,
+      side: THREE.BackSide,
     }),
   );
   cmb.name = "cmb-sphere";
@@ -1558,8 +1562,8 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
   fadeNamedGroup(group, "local-group-family", opacity, virgoShown);
   fadeNamedGroup(group, "near-clusters", opacity, near);
   fadeNamedGroup(group, "virgo", opacity, virgoShown);
-  fadeNamedGroup(group, "cosmic-web", opacity, Math.max(web, universe * 0.85));
-  fadeNamedGroup(group, "home-mark", opacity, Math.max(web, universe));
+  fadeNamedGroup(group, "cosmic-web", opacity, web * (1 - universe));
+  fadeNamedGroup(group, "home-mark", opacity, web * (1 - universe));
   fadeNamedGroup(group, "universe", opacity, universe);
   fadeNamedGroup(group, "cmb-shell", opacity, cmbSkyOpacity(distance));
 }
