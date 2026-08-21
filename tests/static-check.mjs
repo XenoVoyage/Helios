@@ -122,6 +122,7 @@ assert.match(galaxy, /visualUniverse/);
 assert.match(galaxy, /cmb-shell|cmb\.jpg/);
 assert.match(galaxy, /cosmic-web/);
 assert.match(galaxy, /far-galaxy-sky/);
+assert.match(galaxy, /deep-field/);
 assert.match(galaxy, /mw-disk-edge/);
 assert.doesNotMatch(galaxy, /You are here/);
 assert.doesNotMatch(galaxyCatalog, /SUPERCLUSTERS/);

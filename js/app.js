@@ -31,7 +31,6 @@ import {
   galaxyOpacity,
   localGroupCameraAim,
   milkyWayBelowCameraAim,
-  milkyWayCameraAim,
   milkyWayEdgeCameraAim,
   milkyWayInteriorCameraAim,
   neighborhoodCameraAim,
@@ -219,9 +218,9 @@ function boot() {
     paintCard();
   } else {
     const galaxyLook = requestedGalaxyLook();
-    if (galaxyLook === "milkyway") {
-      const aim = milkyWayCameraAim();
-      state.distance = CONFIG.mwViewDistance;
+    if (galaxyLook === "milkyway" || galaxyLook === "handoff" || galaxyLook === "mwinterior") {
+      const aim = milkyWayInteriorCameraAim();
+      state.distance = CONFIG.handoffViewDistance;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
@@ -234,12 +233,6 @@ function boot() {
     } else if (galaxyLook === "mwbelow") {
       const aim = milkyWayBelowCameraAim();
       state.distance = CONFIG.mwViewDistance;
-      state.azimuth = aim.azimuth;
-      state.elevation = aim.elevation;
-      state.focusedId = "sun";
-    } else if (galaxyLook === "handoff" || galaxyLook === "mwinterior") {
-      const aim = milkyWayInteriorCameraAim();
-      state.distance = CONFIG.handoffViewDistance;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
@@ -258,6 +251,13 @@ function boot() {
     } else if (galaxyLook === "virgo") {
       const aim = virgoCameraAim();
       state.distance = CONFIG.virgoViewDistance;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "preweb") {
+      const aim = virgoCameraAim();
+      state.distance = CONFIG.virgoViewDistance
+        + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.55;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
@@ -555,6 +555,11 @@ function zoomTo(distance) {
     state.focusedId = "sun";
     state.selectedId = null;
     paintCard();
+  }
+  if (state.distance < CONFIG.handoffViewDistance && next >= CONFIG.handoffViewDistance) {
+    const aim = milkyWayInteriorCameraAim();
+    state.azimuth = aim.azimuth;
+    state.elevation = aim.elevation;
   }
   state.distance = next;
 }

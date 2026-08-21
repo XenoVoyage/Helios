@@ -1,10 +1,11 @@
 /**
  * Extra-zoom map: a luminous 3D Milky Way, nearby galaxies against a
- * far-galaxy sky that stays up through Virgo and the filled web, a short
- * Local Group, Virgo with more clusters around it, a colored cosmic web
- * that stays volume-filling from inside, and a CMB / observable-universe
- * sphere you leave and can see from outside. The web look is that filled
- * volume. The last universe look is the outside sphere. They do not mix.
+ * far-galaxy image sky that stays up through Virgo and the filled web, a
+ * short Local Group, Virgo, then a denser galaxy field before a colored
+ * cosmic web that stays volume-filling from inside, and a CMB /
+ * observable-universe sphere you leave and can see from outside. The web
+ * look is that filled volume. The last universe look is the outside
+ * sphere. They do not mix.
  *
  * Catalog kpc / Mpc / Gpc stay in js/galaxy-catalog.js. Visual compression
  * lives here and in CONFIG. This map is a different representation from
@@ -177,16 +178,11 @@ export function skyStaysOn(distance) {
 }
 
 /**
- * 3D disk waits until after the pin. First extra-zoom frame is the tail
- * on the far-galaxy field, not a distant face-on plate.
+ * 3D disk is the bright tail at the first extra-zoom frame. Camera aim,
+ * not a fade, keeps that frame from reading as a distant plate.
  */
 export function milkyWayDiskOpacity(distance) {
-  if (distance < CONFIG.handoffViewDistance) return 0;
-  if (distance >= CONFIG.mwViewDistance) return 1;
-  return smoothstep01(
-    (distance - CONFIG.handoffViewDistance)
-    / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance),
-  );
+  return distance >= CONFIG.handoffViewDistance ? 1 : 0;
 }
 
 /** Gaia / Hipparcos sky is solar. It is gone by the first extra-zoom tail. */
@@ -270,10 +266,21 @@ export function virgoOpacity(distance) {
 
 export function webOpacity(distance) {
   const start = CONFIG.virgoViewDistance
-    + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.48;
+    + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.7;
   if (distance < start) return 0;
   if (distance >= CONFIG.webViewDistance) return 1;
   return smoothstep01((distance - start) / (CONFIG.webViewDistance - start));
+}
+
+/** Denser galaxy images after Virgo, before filaments. One owner. */
+export function deepFieldOpacity(distance) {
+  if (distance < CONFIG.virgoViewDistance) return 0;
+  const span = CONFIG.webViewDistance - CONFIG.virgoViewDistance;
+  const peak = CONFIG.virgoViewDistance + span * 0.62;
+  if (distance < peak) {
+    return smoothstep01((distance - CONFIG.virgoViewDistance) / (peak - CONFIG.virgoViewDistance));
+  }
+  return 1 - webOpacity(distance);
 }
 
 /** Volume-filling web is the web subject. CMB stays a later outside shell. */
@@ -345,6 +352,7 @@ export function requestedGalaxyLook() {
     || look === "neighborhood"
     || look === "localgroup"
     || look === "virgo"
+    || look === "preweb"
     || look === "web"
     || look === "universe"
   ) return look;
@@ -370,7 +378,7 @@ export function milkyWayCameraAim() {
  * (galactic +Y → scene −Z) so the ride is a crack / tail, not a plate.
  */
 export function milkyWayInteriorCameraAim() {
-  return { elevation: 0.11, azimuth: Math.PI };
+  return { elevation: 0.08, azimuth: Math.PI };
 }
 
 /** Near edge-on so disk thickness, bulge, and halo can be audited. */
@@ -472,6 +480,28 @@ function loadMap(THREE, path) {
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
   return texture;
+}
+
+function brightenLoadedMap(THREE, texture, gain) {
+  const image = texture.image;
+  if (!image?.width) return texture;
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(image, 0, 0);
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = pixels.data;
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = Math.min(255, data[i] * gain);
+    data[i + 1] = Math.min(255, data[i + 1] * gain);
+    data[i + 2] = Math.min(255, data[i + 2] * gain);
+  }
+  ctx.putImageData(pixels, 0, 0);
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 4;
+  return map;
 }
 
 function makeLabelMap(THREE, text) {
@@ -579,10 +609,10 @@ function galaxySprite(THREE, kind, seed = 1) {
     ctx.rotate(-0.5 + rand() * 0.2);
     ctx.scale(1, 0.42 + rand() * 0.08);
     const disk = ctx.createRadialGradient(0, 0, 4, 0, 0, 118);
-    disk.addColorStop(0, "rgba(255, 232, 190, 0.96)");
-    disk.addColorStop(0.16, "rgba(210, 190, 160, 0.42)");
-    disk.addColorStop(0.5, "rgba(100, 130, 200, 0.22)");
-    disk.addColorStop(1, "rgba(40, 60, 120, 0)");
+    disk.addColorStop(0, "rgba(255, 244, 210, 1)");
+    disk.addColorStop(0.16, "rgba(255, 220, 170, 0.92)");
+    disk.addColorStop(0.5, "rgba(170, 200, 255, 0.7)");
+    disk.addColorStop(1, "rgba(80, 120, 220, 0)");
     ctx.fillStyle = disk;
     ctx.beginPath();
     ctx.arc(0, 0, 118, 0, Math.PI * 2);
@@ -599,16 +629,16 @@ function galaxySprite(THREE, kind, seed = 1) {
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
-      ctx.strokeStyle = "rgba(170, 210, 255, 0.55)";
-      ctx.lineWidth = 9;
+      ctx.strokeStyle = "rgba(200, 230, 255, 0.95)";
+      ctx.lineWidth = 11;
       ctx.stroke();
-      ctx.strokeStyle = "rgba(255, 210, 160, 0.28)";
-      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(255, 236, 200, 0.7)";
+      ctx.lineWidth = 5;
       ctx.stroke();
     }
     const bulge = ctx.createRadialGradient(0, 0, 2, 0, 0, 28);
-    bulge.addColorStop(0, "rgba(255, 236, 200, 0.95)");
-    bulge.addColorStop(1, "rgba(255, 180, 90, 0)");
+    bulge.addColorStop(0, "rgba(255, 248, 230, 1)");
+    bulge.addColorStop(1, "rgba(255, 200, 120, 0)");
     ctx.fillStyle = bulge;
     ctx.beginPath();
     ctx.arc(0, 0, 28, 0, Math.PI * 2);
@@ -617,10 +647,10 @@ function galaxySprite(THREE, kind, seed = 1) {
     ctx.rotate(rand() * 0.8);
     ctx.scale(1, 0.68 + rand() * 0.1);
     const core = ctx.createRadialGradient(0, 0, 2, 0, 0, 110);
-    core.addColorStop(0, "rgba(255, 236, 210, 0.95)");
-    core.addColorStop(0.18, "rgba(240, 200, 150, 0.55)");
-    core.addColorStop(0.55, "rgba(180, 150, 120, 0.16)");
-    core.addColorStop(1, "rgba(80, 60, 40, 0)");
+    core.addColorStop(0, "rgba(255, 246, 220, 1)");
+    core.addColorStop(0.18, "rgba(255, 220, 170, 0.92)");
+    core.addColorStop(0.55, "rgba(230, 190, 140, 0.5)");
+    core.addColorStop(1, "rgba(120, 90, 60, 0)");
     ctx.fillStyle = core;
     ctx.beginPath();
     ctx.ellipse(0, 0, 110, 90, 0, 0, Math.PI * 2);
@@ -629,14 +659,14 @@ function galaxySprite(THREE, kind, seed = 1) {
     ctx.rotate(-0.35);
     ctx.scale(1, 0.62);
     const body = ctx.createRadialGradient(-10, 0, 8, 0, 0, 120);
-    body.addColorStop(0, "rgba(255, 220, 170, 0.9)");
-    body.addColorStop(0.35, "rgba(255, 160, 110, 0.4)");
-    body.addColorStop(1, "rgba(80, 50, 40, 0)");
+    body.addColorStop(0, "rgba(255, 236, 200, 1)");
+    body.addColorStop(0.35, "rgba(255, 200, 140, 0.85)");
+    body.addColorStop(1, "rgba(160, 100, 70, 0)");
     ctx.fillStyle = body;
     ctx.beginPath();
     ctx.ellipse(0, 0, 118, 78, 0.15, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(255, 190, 140, 0.45)";
+    ctx.strokeStyle = "rgba(255, 220, 170, 0.85)";
     ctx.lineWidth = 8;
     ctx.beginPath();
     ctx.ellipse(8, 6, 70, 22, 0.4, 0, Math.PI * 2);
@@ -645,8 +675,8 @@ function galaxySprite(THREE, kind, seed = 1) {
       const px = (rand() - 0.5) * 90;
       const py = (rand() - 0.5) * 60;
       const blob = ctx.createRadialGradient(px, py, 1, px, py, 16);
-      blob.addColorStop(0, "rgba(255, 210, 170, 0.7)");
-      blob.addColorStop(1, "rgba(255, 120, 80, 0)");
+      blob.addColorStop(0, "rgba(255, 236, 200, 0.95)");
+      blob.addColorStop(1, "rgba(255, 170, 110, 0)");
       ctx.fillStyle = blob;
       ctx.fillRect(px - 16, py - 16, 32, 32);
     }
@@ -657,9 +687,9 @@ function galaxySprite(THREE, kind, seed = 1) {
       const py = (rand() - 0.5) * 50;
       const rr = 40 + rand() * 50;
       const blob = ctx.createRadialGradient(px, py, 4, px, py, rr);
-      blob.addColorStop(0, "rgba(255, 220, 170, 0.72)");
-      blob.addColorStop(0.4, "rgba(255, 170, 110, 0.28)");
-      blob.addColorStop(1, "rgba(90, 50, 30, 0)");
+      blob.addColorStop(0, "rgba(255, 236, 200, 0.95)");
+      blob.addColorStop(0.4, "rgba(255, 200, 150, 0.7)");
+      blob.addColorStop(1, "rgba(160, 100, 70, 0)");
       ctx.fillStyle = blob;
       ctx.beginPath();
       ctx.ellipse(px, py, rr, rr * 0.7, rand() * 1.2, 0, Math.PI * 2);
@@ -1014,9 +1044,10 @@ function neighborSpriteSize(neighbor) {
 
 function neighborSizeBoost(neighbor) {
   if (neighbor.id === "m31") return 3.05;
-  if (neighbor.id === "lmc") return 1.85;
-  if (neighbor.id === "smc") return 1.7;
-  return 1.2;
+  if (neighbor.id === "lmc") return 2.45;
+  if (neighbor.id === "smc") return 2.35;
+  if (neighbor.id === "m33") return 2.7;
+  return 1.85;
 }
 
 export function neighborApparentSize(neighbor) {
@@ -1032,10 +1063,10 @@ function quietAndromedaMap(THREE) {
   ctx.rotate(-0.38);
   ctx.scale(1, 0.42);
   const halo = ctx.createRadialGradient(0, 0, 4, 0, 0, 122);
-  halo.addColorStop(0, "rgba(255, 236, 200, 1)");
-  halo.addColorStop(0.12, "rgba(255, 196, 130, 0.92)");
-  halo.addColorStop(0.34, "rgba(190, 150, 210, 0.7)");
-  halo.addColorStop(0.62, "rgba(110, 130, 190, 0.38)");
+  halo.addColorStop(0, "rgba(255, 248, 220, 1)");
+  halo.addColorStop(0.12, "rgba(255, 220, 160, 1)");
+  halo.addColorStop(0.34, "rgba(220, 190, 255, 0.88)");
+  halo.addColorStop(0.62, "rgba(160, 190, 255, 0.62)");
   halo.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = halo;
   ctx.beginPath();
@@ -1066,9 +1097,10 @@ function createNeighbors(THREE, group, maps) {
       : maps[galaxyKind(neighbor.id)] ?? maps.spiral;
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map,
-      color: 0xffffff,
+      color: 0xfff4e8,
       depthTest: neighbor.id !== "m31",
       opacity: 1,
+      blending: THREE.AdditiveBlending,
     }));
     sprite.renderOrder = neighbor.id === "m31" ? 6 : 4;
     sprite.position.set(at.x, at.y, at.z);
@@ -1082,8 +1114,9 @@ function createNeighbors(THREE, group, maps) {
       new THREE.TextureLoader().load(SKY_ASSETS.andromeda, (loaded) => {
         loaded.colorSpace = THREE.SRGBColorSpace;
         loaded.anisotropy = 4;
-        sprite.material.map = loaded;
-        sprite.material.color.set(0xffffff);
+        sprite.material.map = brightenLoadedMap(THREE, loaded, 2.15);
+        sprite.material.color.set(0xfff4e8);
+        sprite.material.blending = THREE.AdditiveBlending;
         sprite.material.needsUpdate = true;
       });
     }
@@ -1098,8 +1131,8 @@ function createNeighbors(THREE, group, maps) {
 
 function memberSpriteSize(member) {
   const visual = visualNeighborhood(member.distanceKpc);
-  const size = (member.radiusKpc / member.distanceKpc) * visual * 3.4;
-  return Math.max(90, Math.min(220, size));
+  const size = (member.radiusKpc / member.distanceKpc) * visual * 5.2;
+  return Math.max(160, Math.min(480, size));
 }
 
 function createLocalGroupMembers(THREE, group, maps) {
@@ -1110,8 +1143,9 @@ function createLocalGroupMembers(THREE, group, maps) {
     const kind = galaxyKind(member.id);
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map: maps[kind] ?? maps.irregular,
-      color: 0xf2f4ff,
-      opacity: 0.9,
+      color: 0xfff4e8,
+      opacity: 1,
+      blending: THREE.AdditiveBlending,
     }));
     sprite.position.set(at.x, at.y, at.z);
     const size = memberSpriteSize(member);
@@ -1145,7 +1179,8 @@ function createLocalGroupFamily(THREE, group, maps) {
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map: item.map,
       color: item.color,
-      opacity: 0.92,
+      opacity: 1,
+      blending: THREE.AdditiveBlending,
     }));
     sprite.position.set(item.x, 0, item.z);
     sprite.scale.set(item.size, item.size * item.aspect, 1);
@@ -1514,65 +1549,104 @@ function createCmbShell(THREE, group) {
   group.add(shell);
 }
 
-function fillSpherePoints(count, radius, seed) {
-  const positions = new Float32Array(count * 3);
-  const colors = new Float32Array(count * 3);
-  const rand = seedRandom(seed);
-  for (let i = 0; i < count; i += 1) {
-    const theta = rand() * Math.PI * 2;
-    const phi = Math.acos(2 * rand() - 1);
-    const sinP = Math.sin(phi);
-    positions[i * 3] = radius * sinP * Math.cos(theta);
-    positions[i * 3 + 1] = radius * Math.cos(phi);
-    positions[i * 3 + 2] = radius * sinP * Math.sin(theta);
-    const warm = rand();
-    const shade = 0.42 + rand() * 0.58;
-    colors[i * 3] = ((150 + 95 * warm) / 255) * shade;
-    colors[i * 3 + 1] = ((165 + 55 * warm) / 255) * shade;
-    colors[i * 3 + 2] = ((215 - 40 * warm) / 255) * shade;
-  }
-  return { positions, colors };
-}
-
-/** Distant camera-attached field. Screen-fixed points, not a lit world-space ball. */
+/** Distant camera-attached galaxy images. Not a lit world-space ball or pole hole. */
 export function farGalaxySkyRadius() {
   return CONFIG.cameraFar * 0.42;
 }
 
-function createFarGalaxySky(THREE, group) {
+function createFarGalaxySky(THREE, group, maps) {
   const sky = new THREE.Group();
   sky.name = "far-galaxy-sky";
   const radius = farGalaxySkyRadius();
-  const field = fillSpherePoints(14000, radius, 4608);
-  const shell = addPoints(
-    THREE,
-    sky,
-    "far-galaxy-shell",
-    field.positions,
-    field.colors,
-    2.2,
-    0.92,
-    false,
-    THREE.AdditiveBlending,
-  );
-  const blobs = fillSpherePoints(280, radius, 9124);
-  const marks = addPoints(
-    THREE,
-    sky,
-    "far-galaxy-blobs",
-    blobs.positions,
-    blobs.colors,
-    5.4,
-    0.55,
-    false,
-    THREE.AdditiveBlending,
-  );
-  for (const pts of [shell, marks]) {
-    pts.material.depthTest = false;
-    pts.material.fog = false;
+  const rand = seedRandom(4608);
+  const kinds = ["spiral", "elliptical", "spiral", "irregular", "elliptical", "lmc"];
+  const templates = {
+    spiral: unlitSprite(THREE, {
+      map: maps.spiral,
+      color: 0xf4f7ff,
+      opacity: 0.9,
+      depthTest: false,
+      fog: false,
+      blending: THREE.AdditiveBlending,
+    }),
+    elliptical: unlitSprite(THREE, {
+      map: maps.elliptical,
+      color: 0xffe6c4,
+      opacity: 0.9,
+      depthTest: false,
+      fog: false,
+      blending: THREE.AdditiveBlending,
+    }),
+    irregular: unlitSprite(THREE, {
+      map: maps.irregular,
+      color: 0xfff0dc,
+      opacity: 0.88,
+      depthTest: false,
+      fog: false,
+      blending: THREE.AdditiveBlending,
+    }),
+    lmc: unlitSprite(THREE, {
+      map: maps.lmc,
+      color: 0xffe8c8,
+      opacity: 0.88,
+      depthTest: false,
+      fog: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  };
+  const count = 860;
+  for (let i = 0; i < count; i += 1) {
+    const theta = rand() * Math.PI * 2;
+    const phi = Math.acos(2 * rand() - 1);
+    const kind = kinds[Math.floor(rand() * kinds.length)];
+    const sprite = new THREE.Sprite(templates[kind].clone());
+    sprite.material.rotation = rand() * Math.PI;
+    sprite.material.opacity = 0.72 + rand() * 0.26;
+    sprite.position.set(
+      radius * Math.sin(phi) * Math.cos(theta),
+      radius * Math.cos(phi),
+      radius * Math.sin(phi) * Math.sin(theta),
+    );
+    const size = radius * (0.0032 + (rand() ** 1.45) * 0.02);
+    const aspect = kind === "elliptical" ? 0.78 : kind === "spiral" ? 0.42 : 0.58;
+    sprite.scale.set(size, size * aspect, 1);
+    sprite.frustumCulled = false;
+    sky.add(sprite);
   }
   sky.renderOrder = -80;
   group.add(sky);
+}
+
+function createDeepField(THREE, group, maps) {
+  const field = new THREE.Group();
+  field.name = "deep-field";
+  const radius = visualWeb(CONFIG.webRadiusMpc) * 0.32;
+  const rand = seedRandom(7711);
+  const kinds = ["spiral", "elliptical", "spiral", "irregular"];
+  const count = 520;
+  for (let i = 0; i < count; i += 1) {
+    const kind = kinds[Math.floor(rand() * kinds.length)];
+    const r = radius * (0.12 + 0.88 * (rand() ** 0.62));
+    const theta = rand() * Math.PI * 2;
+    const phi = Math.acos(2 * rand() - 1);
+    const sprite = new THREE.Sprite(unlitSprite(THREE, {
+      map: maps[kind],
+      color: kind === "elliptical" ? 0xffe6c4 : 0xf2f6ff,
+      opacity: 0.92,
+      rotation: rand() * Math.PI,
+      blending: THREE.AdditiveBlending,
+    }));
+    sprite.position.set(
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.cos(phi) * 0.86,
+      r * Math.sin(phi) * Math.sin(theta),
+    );
+    const size = 720 + rand() * 1680;
+    sprite.scale.set(size, size * (kind === "elliptical" ? 0.78 : 0.46), 1);
+    sprite.frustumCulled = false;
+    field.add(sprite);
+  }
+  group.add(field);
 }
 
 export function attachFarGalaxySky(group, camera) {
@@ -1590,7 +1664,7 @@ export function createGalaxyLayer(THREE) {
     irregular: galaxySprite(THREE, "irregular", 3),
     lmc: galaxySprite(THREE, "lmc", 4),
   };
-  createFarGalaxySky(THREE, group);
+  createFarGalaxySky(THREE, group, maps);
   const milkyway = new THREE.Group();
   milkyway.name = "milkyway";
   createDiskGlow(THREE, milkyway);
@@ -1604,6 +1678,7 @@ export function createGalaxyLayer(THREE) {
   createLocalGroupFamily(THREE, group, maps);
   createNearClusters(THREE, group, maps);
   createVirgoCluster(THREE, group, maps);
+  createDeepField(THREE, group, maps);
   createLocalWeb(THREE, group);
   createHomeMark(THREE, group);
   createUniverseWeb(THREE, group);
@@ -1650,6 +1725,7 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
   fadeNamedGroup(group, "local-group-family", opacity, virgoShown);
   fadeNamedGroup(group, "near-clusters", opacity, near);
   fadeNamedGroup(group, "virgo", opacity, virgoShown);
+  fadeNamedGroup(group, "deep-field", opacity, deepFieldOpacity(distance));
   fadeNamedGroup(group, "cosmic-web", opacity, web * (1 - universe));
   fadeNamedGroup(group, "home-mark", opacity, web * (1 - universe));
   fadeNamedGroup(group, "universe", opacity, universe);

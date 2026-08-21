@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.8.20s](https://img.shields.io/badge/version-v2026.8.20s-66f7ff)](VERSION.txt)
+[![Version v2026.8.20t](https://img.shields.io/badge/version-v2026.8.20t-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D orrery of the solar system.
@@ -13,9 +13,9 @@ An interactive 3D orrery of the solar system.
 
 ![Constellation names readable at overview, with Sagittarius and Scorpius labeled.](docs/assets/helios-constellations.webp)
 
-![Milky Way after extra zoom-out: a face-on disk on a far-galaxy field, with the Sun pin on an arm. No constellation lines.](docs/assets/helios-milky-way.webp)
+![Milky Way after extra zoom-out: the bright Orion-arm tail on a far-galaxy image field, with the Sun as a pin. No constellation lines.](docs/assets/helios-milky-way.webp)
 
-![Nearby galaxies on the second scale: Andromeda, Triangulum, and the Magellanic Clouds.](docs/assets/helios-neighborhood.webp)
+![Nearby galaxies on the second scale: bright Andromeda, Triangulum, and the Magellanic Clouds on a galaxy-image sky.](docs/assets/helios-neighborhood.webp)
 
 ![Local Group after a further zoom: M31, M33, the Magellanic Clouds, and a short set of other members.](docs/assets/helios-local-group.webp)
 
@@ -25,7 +25,7 @@ An interactive 3D orrery of the solar system.
 
 ![Observable universe: the CMB last-scattering sphere seen from outside, with the filled web inside.](docs/assets/helios-universe.webp)
 
-Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch-out zooms out; pinch-in zooms in. Play, pause, and change the speed of time from the bar at the bottom. Close the body card with the X or by tapping empty space. Zoom out past the solar overview and the orrery shrinks to a Sun pin. Constellation lines, names, and the Constellations control stay in the solar system. The first extra-zoom frame is already a far-galaxy field; the bright Milky Way tail and then the face-on disk sit on that field. Nearby galaxies including Andromeda stay against it through the Local Group and Virgo. Only after a long colored cosmic web does that sky turn microwave, then an observable-universe sphere you can leave and see from outside. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
+Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch-out zooms out; pinch-in zooms in. Play, pause, and change the speed of time from the bar at the bottom. Close the body card with the X or by tapping empty space. Zoom out past the solar overview and the orrery shrinks to a Sun pin. Constellation lines, names, and the Constellations control stay in the solar system. The first extra-zoom frame is already a far-galaxy image field; you are in the bright Milky Way tail, then more zoom shows the full disk. Nearby galaxies including Andromeda stay bright against that field through the Local Group and Virgo. After Virgo the field grows denser, then a long colored cosmic web, then that sky turns microwave and becomes an observable-universe sphere you can leave and see from outside. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
 
 Helios is a local page: no accounts, no telemetry, and no CDN.
 
@@ -34,7 +34,7 @@ Helios is a local page: no accounts, no telemetry, and no CDN.
 | Detail | Summary |
 | --- | --- |
 | Worlds | Sun, 8 planets, the Moon, Phobos, Deimos, Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, and Ceres |
-| Sky | Hipparcos bright stars, IAU constellation lines, a Milky Way band, and Andromeda at M31 inside the solar system. Extra zoom-out drops those figures at once and uses a far-galaxy field from the first tail through a luminous Milky Way disk, nearby galaxies, a short Local Group, and Virgo, then a large colored cosmic web and a later CMB sphere you can see from outside; that map is not the sky. |
+| Sky | Hipparcos bright stars, IAU constellation lines, a Milky Way band, and Andromeda at M31 inside the solar system. Extra zoom-out drops those figures at once and uses a far-galaxy image field from the first tail through a luminous Milky Way disk, nearby galaxies, a short Local Group, and Virgo, then a denser galaxy field, a large colored cosmic web, and a later CMB sphere you can see from outside; that map is not the sky. |
 | Belts | Asteroid field between Mars and Jupiter; Kuiper field from about 30–50 AU. Sparse points, not rock catalogs |
 | Time | Independent of the visual scale. Default and minimum are 1 simulated hour per real second |
 | Play with | Mouse, keyboard, or touch |
