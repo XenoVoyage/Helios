@@ -1389,14 +1389,10 @@ function createNearClusters(THREE, group, maps) {
   const mark = visualVirgo(CONFIG.virgoMarkRadiusMpc * 1000);
   const rand = seedRandom(16501);
   const hubs = [
-    { t: 1.22, lon: 0.62, lat: 0.42 },
-    { t: 1.38, lon: 2.35, lat: -0.28 },
-    { t: 1.55, lon: 3.9, lat: 0.55 },
-    { t: 1.72, lon: 5.15, lat: -0.4 },
-    { t: 1.9, lon: 1.15, lat: -0.72 },
-    { t: 2.08, lon: 4.55, lat: 0.18 },
-    { t: 2.25, lon: 0.28, lat: -0.15 },
-    { t: 2.42, lon: 2.95, lat: 0.78 },
+    { t: 1.45, lon: 0.55, lat: 0.2 },
+    { t: 1.85, lon: 2.4, lat: -0.45 },
+    { t: 2.25, lon: 4.1, lat: 0.55 },
+    { t: 2.7, lon: 5.4, lat: -0.15 },
   ];
   for (const item of hubs) {
     addClusterHub(
@@ -1406,7 +1402,7 @@ function createNearClusters(THREE, group, maps) {
       clusterHubAt(virgoLen, item.t, item.lon, item.lat),
       mark,
       rand,
-      16 + Math.floor(rand() * 12),
+      20 + Math.floor(rand() * 10),
     );
   }
   group.add(field);
@@ -1721,13 +1717,13 @@ function createFarGalaxySky(THREE, group, maps) {
   const radius = farGalaxySkyRadius();
   const rand = seedRandom(4608);
   const kinds = ["spiral", "elliptical", "spiral", "irregular"];
-  const count = 520;
+  const count = 800;
   for (let i = 0; i < count; i += 1) {
     const kind = kinds[Math.floor(rand() * kinds.length)];
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map: maps[kind],
       color: kind === "elliptical" ? 0xffe6c4 : 0xf2f6ff,
-      opacity: 0.78,
+      opacity: 0.62,
       rotation: rand() * Math.PI,
       blending: THREE.AdditiveBlending,
       depthTest: false,
@@ -1741,7 +1737,7 @@ function createFarGalaxySky(THREE, group, maps) {
       r * Math.cos(phi),
       r * Math.sin(phi) * Math.sin(theta),
     );
-    const size = 48000 + rand() * 90000;
+    const size = 22000 + rand() * 30000;
     sprite.scale.set(size, size * (kind === "elliptical" ? 0.78 : 0.48), 1);
     sprite.frustumCulled = false;
     sky.add(sprite);
@@ -1759,16 +1755,9 @@ function createDeepField(THREE, group, maps) {
   const mark = visualVirgo(CONFIG.virgoMarkRadiusMpc * 1000);
   const rand = seedRandom(7711);
   const hubs = [
-    { t: 2.7, lon: 0.85, lat: 0.22 },
-    { t: 3.0, lon: 2.15, lat: -0.58 },
-    { t: 3.25, lon: 3.55, lat: 0.48 },
-    { t: 3.5, lon: 5.05, lat: -0.2 },
-    { t: 3.75, lon: 1.45, lat: 0.7 },
-    { t: 4.0, lon: 4.2, lat: -0.65 },
-    { t: 4.3, lon: 0.15, lat: 0.05 },
-    { t: 4.55, lon: 2.75, lat: 0.38 },
-    { t: 4.8, lon: 3.95, lat: -0.78 },
-    { t: 5.1, lon: 5.4, lat: 0.32 },
+    { t: 3.3, lon: 1.2, lat: 0.62 },
+    { t: 4.1, lon: 3.3, lat: -0.5 },
+    { t: 4.9, lon: 5.0, lat: 0.12 },
   ];
   for (const item of hubs) {
     addClusterHub(
@@ -1778,7 +1767,7 @@ function createDeepField(THREE, group, maps) {
       clusterHubAt(virgoLen, item.t, item.lon, item.lat),
       mark * 1.15,
       rand,
-      14 + Math.floor(rand() * 10),
+      18 + Math.floor(rand() * 8),
     );
   }
   group.add(field);
