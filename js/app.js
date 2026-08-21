@@ -1,5 +1,5 @@
 import * as THREE from "../vendor/three.module.min.js";
-import { CONFIG, formatDaysPerSecond } from "./config.js";
+import { CONFIG, formatDaysPerSecond, pinchZoomDistance, wheelZoomMultiplier } from "./config.js";
 import {
   BODIES,
   describeBody,
@@ -14,7 +14,9 @@ import {
   attachSkyToCamera,
   createCelestialSphere,
   placeCameraForSkyLook,
+  setCelestialFade,
   setConstellationsVisible,
+  setSkyBandBrightness,
   wantsEarthSkyLook,
 } from "./sky.js";
 import {
@@ -23,18 +25,23 @@ import {
   setHelperVisibility,
 } from "./helpers.js";
 import {
+  attachFarGalaxySky,
+  celestialSkyOpacity,
   createGalaxyLayer,
   galaxyOpacity,
   localGroupCameraAim,
   milkyWayBelowCameraAim,
   milkyWayCameraAim,
   milkyWayEdgeCameraAim,
+  milkyWayInteriorCameraAim,
   neighborhoodCameraAim,
   orbitLineOpacity,
   orreryScale,
   requestedGalaxyLook,
   scaleLayer,
   setGalaxyLayerVisible,
+  skyBandBrightness,
+  skyStaysOn,
   solarOpacity,
   universeCameraAim,
   virgoCameraAim,
@@ -230,8 +237,8 @@ function boot() {
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
-    } else if (galaxyLook === "handoff") {
-      const aim = milkyWayCameraAim();
+    } else if (galaxyLook === "handoff" || galaxyLook === "mwinterior") {
+      const aim = milkyWayInteriorCameraAim();
       state.distance = CONFIG.handoffViewDistance;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
@@ -441,7 +448,7 @@ function bindInput() {
     paintSpeed();
   });
   ui.reset.addEventListener("click", resetView);
-  ui.cardClose.addEventListener("click", resetView);
+  ui.cardClose.addEventListener("click", clearSelection);
   ui.sky.addEventListener("click", toggleConstellations);
   ui.helperOrbit.addEventListener("click", () => toggleHelper("showOrbitHelper"));
   ui.helperAxis.addEventListener("click", () => toggleHelper("showAxisHelper"));
@@ -487,7 +494,7 @@ function onPointerMove(event) {
   if (state.pinching && pointerIds.size >= 2) {
     const gap = pointerGap();
     if (state.pinchStart > 0) {
-      zoomTo(state.pinchDistance * (gap / state.pinchStart));
+      zoomTo(pinchZoomDistance(state.pinchDistance, state.pinchStart, gap));
     }
     return;
   }
@@ -515,7 +522,11 @@ function onPointerUp(event) {
 
 function onWheel(event) {
   event.preventDefault();
-  zoomTo(state.distance * Math.exp(event.deltaY * 0.0016));
+  if (state.pinching) return;
+  const touchPinch = Boolean(event.ctrlKey)
+    || event.pointerType === "touch"
+    || Boolean(event.sourceCapabilities?.firesTouchEvents);
+  zoomTo(state.distance * wheelZoomMultiplier(event.deltaY, touchPinch));
 }
 
 function onKey(event) {
@@ -602,7 +613,7 @@ function resetView() {
 }
 
 function toggleConstellations() {
-  if (scaleLayer(state.distance) !== "solar") return;
+  if (!skyStaysOn(state.distance)) return;
   state.showConstellations = !state.showConstellations;
   paintConstellations();
   say(state.showConstellations ? "Constellations on" : "Constellations off");
@@ -666,16 +677,16 @@ function paintClock() {
 }
 
 function paintSkyButton() {
-  const solar = scaleLayer(state.distance) === "solar";
+  const inDisk = skyStaysOn(state.distance);
   ui.sky.textContent = "Constellations";
-  ui.sky.hidden = !solar;
+  ui.sky.hidden = !inDisk;
   ui.sky.setAttribute("aria-pressed", String(state.showConstellations));
 }
 
 function paintConstellations() {
-  const solar = scaleLayer(state.distance) === "solar";
+  const inDisk = skyStaysOn(state.distance);
   paintSkyButton();
-  if (celestial) setConstellationsVisible(celestial, solar && state.showConstellations);
+  if (celestial) setConstellationsVisible(celestial, inDisk && state.showConstellations);
 }
 
 function paintHelperButtons() {
@@ -783,6 +794,7 @@ function placeCamera(blend) {
   camera.far = CONFIG.cameraFar;
   camera.updateProjectionMatrix();
   attachSkyToCamera(celestial, camera);
+  attachFarGalaxySky(galaxy, camera);
 }
 
 function fadeRoot(root, factor) {
@@ -834,7 +846,8 @@ function paintScaleLayer() {
   fadeRoot(asteroidBelt, solar);
   fadeRoot(kuiperBelt, solar);
   fadeRoot(orbitLines, orbitLineOpacity(state.distance));
-  celestial.visible = solar > 0.12;
+  setCelestialFade(celestial, celestialSkyOpacity(state.distance));
+  setSkyBandBrightness(celestial, skyBandBrightness(state.distance));
   paintConstellations();
   setGalaxyLayerVisible(galaxy, galactic, state.distance);
   for (const node of nodes.values()) {

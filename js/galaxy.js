@@ -171,6 +171,49 @@ export function solarOpacity(distance) {
   return distance < CONFIG.handoffViewDistance ? 1 : 0;
 }
 
+/** Local sky / constellations stay while the camera is still in the disk. */
+export function skyStaysOn(distance) {
+  const layer = scaleLayer(distance);
+  return layer === "solar" || layer === "transition" || layer === "milkyway";
+}
+
+/**
+ * 3D disk waits until after the pin. First extra-zoom frame is the interior
+ * sky / Orion-arm crack, not a distant face-on plate.
+ */
+export function milkyWayDiskOpacity(distance) {
+  if (distance < CONFIG.handoffViewDistance) return 0;
+  if (distance >= CONFIG.mwViewDistance) return 1;
+  return smoothstep01(
+    (distance - CONFIG.handoffViewDistance)
+    / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance),
+  );
+}
+
+/** Gaia skybox stays through the disk, then yields to the far-galaxy field. */
+export function celestialSkyOpacity(distance) {
+  if (distance <= CONFIG.mwViewDistance) return 1;
+  if (distance >= CONFIG.neighborhoodViewDistance) return 0;
+  return 1 - smoothstep01(
+    (distance - CONFIG.mwViewDistance)
+    / (CONFIG.neighborhoodViewDistance - CONFIG.mwViewDistance),
+  );
+}
+
+/** Local MW band brightens on the interior ride, then hands off. */
+export function skyBandBrightness(distance) {
+  const solar = 0.82;
+  const interior = 2.15;
+  if (distance <= CONFIG.solarMaxDistance) return solar;
+  if (distance <= CONFIG.handoffViewDistance) {
+    const t = (distance - CONFIG.solarMaxDistance)
+      / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance);
+    return solar + (interior - solar) * smoothstep01(t);
+  }
+  if (distance <= CONFIG.mwViewDistance) return interior;
+  return interior * celestialSkyOpacity(distance);
+}
+
 /**
  * Extra-zoom only. In solar the orrery stays 1:1 with visualScale.
  * Past the solar cap it shrinks to a Sun pin before the MW disk dominates.
@@ -248,16 +291,21 @@ export function universeOpacity(distance) {
   return webOpacity(distance);
 }
 
-/** Far-galaxy sphere stays up through Virgo and the filled web; CMB replaces it later. */
+/** Far-galaxy skybox takes over after the disk; CMB replaces it later. */
 export function farGalaxySkyOpacity(distance) {
-  if (distance <= CONFIG.galaxyFadeStart) return 0;
+  if (distance <= CONFIG.mwViewDistance) return 0;
+  const ready = CONFIG.mwViewDistance
+    + (CONFIG.neighborhoodViewDistance - CONFIG.mwViewDistance) * 0.35;
   const fadeStart = CONFIG.webViewDistance
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.72;
-  if (distance <= fadeStart) return 1;
+  const shown = distance >= ready
+    ? 1
+    : smoothstep01((distance - CONFIG.mwViewDistance) / (ready - CONFIG.mwViewDistance));
+  if (distance <= fadeStart) return shown;
   if (distance >= CONFIG.universeViewDistance) return 0;
-  return 1 - smoothstep01(
+  return shown * (1 - smoothstep01(
     (distance - fadeStart) / (CONFIG.universeViewDistance - fadeStart),
-  );
+  ));
 }
 
 /** Microwave sky waits until after a long web, then becomes the outer shell. */
@@ -291,6 +339,7 @@ export function requestedGalaxyLook() {
     || look === "mwedge"
     || look === "mwbelow"
     || look === "handoff"
+    || look === "mwinterior"
     || look === "neighborhood"
     || look === "localgroup"
     || look === "virgo"
@@ -312,6 +361,14 @@ function aimAwayFrom(at) {
 /** High look so the spiral disk reads face-on, slightly tilted. */
 export function milkyWayCameraAim() {
   return { elevation: 1.08, azimuth: 0.28 };
+}
+
+/**
+ * First extra-zoom frame: inside the disk, looking along the Orion Arm
+ * (galactic +Y → scene −Z) so the ride is a crack / tail, not a plate.
+ */
+export function milkyWayInteriorCameraAim() {
+  return { elevation: 0.11, azimuth: Math.PI };
 }
 
 /** Near edge-on so disk thickness, bulge, and halo can be audited. */
@@ -641,7 +698,7 @@ function stampSoft(ctx, x, y, radius, color) {
 }
 
 function milkyWayDiskMap(THREE) {
-  const size = 1024;
+  const size = 2048;
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -672,7 +729,7 @@ function milkyWayDiskMap(THREE) {
     { beta: beta0 + Math.PI + 1.55, turns: 1.05, alpha: 0.5, width: 0.68 },
   ];
   for (const arm of arms) {
-    const stamps = Math.floor(280 * arm.alpha);
+    const stamps = Math.floor(520 * arm.alpha);
     for (let i = 0; i < stamps; i += 1) {
       const t = 0.04 + (i / stamps) * 0.94 + (rand() - 0.5) * 0.01;
       const theta = t * arm.turns * Math.PI * 2;
@@ -687,7 +744,7 @@ function milkyWayDiskMap(THREE) {
       stampSoft(ctx, x, y, 18 + t * 24, `rgba(170, 200, 255, ${0.52 * fade})`);
       stampSoft(ctx, x, y, 10 + t * 14, `rgba(255, 236, 210, ${0.66 * fade})`);
     }
-    const clumps = arm.alpha > 0.8 ? 70 : 32;
+    const clumps = arm.alpha > 0.8 ? 120 : 56;
     for (let i = 0; i < clumps; i += 1) {
       const t = 0.1 + rand() * 0.8;
       const theta = t * arm.turns * Math.PI * 2;
@@ -736,6 +793,7 @@ function unlitBasic(THREE, params) {
     depthWrite: false,
     transparent: true,
     toneMapped: false,
+    fog: false,
     ...params,
   });
 }
@@ -745,6 +803,7 @@ function unlitSprite(THREE, params) {
     transparent: true,
     depthWrite: false,
     toneMapped: false,
+    fog: false,
     ...params,
   });
 }
@@ -782,7 +841,7 @@ function visualDiskHalfHeight() {
 }
 
 function createSpiralStars(THREE, group) {
-  const count = 7800;
+  const count = 11000;
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
   const rand = seedRandom(20260820);
@@ -929,6 +988,8 @@ function createDiskGlow(THREE, group) {
 }
 
 function createSunPin(THREE, group) {
+  const mark = new THREE.Group();
+  mark.name = "sun-pin-mark";
   const pin = new THREE.Sprite(unlitSprite(THREE, {
     map: pinSprite(THREE),
     color: 0xffffff,
@@ -938,8 +999,9 @@ function createSunPin(THREE, group) {
   pin.name = "sun-pin";
   pin.position.set(0, 0, 0);
   pin.frustumCulled = false;
-  group.add(pin);
-  group.add(labelSprite(THREE, "Sun", { x: 0, y: visualDiskHalfHeight() + 160, z: 0 }, 1.55));
+  mark.add(pin);
+  mark.add(labelSprite(THREE, "Sun", { x: 0, y: visualDiskHalfHeight() + 160, z: 0 }, 1.55));
+  group.add(mark);
 }
 
 function neighborSpriteSize(neighbor) {
@@ -1495,27 +1557,33 @@ function farGalaxySkyMap(THREE) {
   return map;
 }
 
+export function farGalaxySkyRadius() {
+  return CONFIG.skyRadius * 1.18;
+}
+
 function createFarGalaxySky(THREE, group) {
   const sky = new THREE.Group();
   sky.name = "far-galaxy-sky";
-  const radius = visualUniverse(CMB_SHELL.comovingRadiusGpc);
+  const radius = farGalaxySkyRadius();
   const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(radius, 96, 64),
+    new THREE.SphereGeometry(radius, 64, 48),
     unlitBasic(THREE, {
       map: farGalaxySkyMap(THREE),
       opacity: 0.88,
       side: THREE.BackSide,
+      depthTest: false,
+      fog: false,
     }),
   );
   sphere.name = "far-galaxy-shell";
   sphere.frustumCulled = false;
   sky.add(sphere);
-  const count = 6200;
+  const count = 4200;
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
   const rand = seedRandom(31415);
   for (let i = 0; i < count; i += 1) {
-    const r = radius * (0.84 + rand() * 0.14);
+    const r = radius * 0.96;
     const theta = rand() * Math.PI * 2;
     const phi = Math.acos(2 * rand() - 1);
     positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
@@ -1526,9 +1594,13 @@ function createFarGalaxySky(THREE, group) {
     colors[i * 3 + 1] = 0.72 + 0.18 * warm;
     colors[i * 3 + 2] = 0.92 - 0.18 * warm;
   }
-  addPoints(THREE, sky, "far-galaxy-points", positions, colors, 4.2, 0.78, false, THREE.AdditiveBlending);
-  addPoints(THREE, sky, "far-galaxy-glow", positions, colors, 72, 0.32, true, THREE.AdditiveBlending);
+  addPoints(THREE, sky, "far-galaxy-points", positions, colors, 2.4, 0.7, false);
   group.add(sky);
+}
+
+export function attachFarGalaxySky(group, camera) {
+  const sky = group?.getObjectByName("far-galaxy-sky");
+  if (sky && camera) sky.position.copy(camera.position);
 }
 
 export function createGalaxyLayer(THREE) {
@@ -1548,8 +1620,8 @@ export function createGalaxyLayer(THREE) {
   createSpiralStars(THREE, milkyway);
   createHalo(THREE, milkyway);
   createBulge(THREE, milkyway);
-  createSunPin(THREE, milkyway);
   group.add(milkyway);
+  createSunPin(THREE, group);
   createNeighbors(THREE, group, maps);
   createLocalGroupMembers(THREE, group, maps);
   createLocalGroupFamily(THREE, group, maps);
@@ -1594,7 +1666,8 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
   const family = 1 - cluster * 0.92;
   const virgoShown = cluster * (1 - web);
   fadeNamedGroup(group, "far-galaxy-sky", opacity, farGalaxySkyOpacity(distance));
-  fadeNamedGroup(group, "milkyway", opacity, family);
+  fadeNamedGroup(group, "milkyway", opacity, milkyWayDiskOpacity(distance) * family);
+  fadeNamedGroup(group, "sun-pin-mark", opacity, family);
   fadeNamedGroup(group, "neighbors", opacity, neighborOpacity(distance) * family);
   fadeNamedGroup(group, "local-group", opacity, localGroupMemberOpacity(distance) * family);
   fadeNamedGroup(group, "local-group-family", opacity, virgoShown);
