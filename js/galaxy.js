@@ -435,12 +435,12 @@ function orionArmScenePoint(betaDeg, heightKpc) {
 
 /** Sit in the Orion-arm tail, just above the plane, near the Sun. */
 export function milkyWayTailSeat() {
-  return orionArmScenePoint(10, 0.07);
+  return orionArmScenePoint(9, 0.2);
 }
 
-/** Look along the arm, not down at the disk, so the first frame is a tail. */
+/** Look along the arm at the same height so the disk is a trail, not a floor. */
 export function milkyWayTailLookAt() {
-  return orionArmScenePoint(-8, 0.07);
+  return orionArmScenePoint(-11, 0.2);
 }
 
 /** Near edge-on so disk thickness, bulge, and halo can be audited. */
