@@ -1,6 +1,6 @@
 {
   "name": "helios",
-  "version": "2026.8.20-s",
+  "version": "2026.8.20-y",
   "private": true,
   "type": "module",
   "description": "Interactive 3D solar system.",

@@ -260,7 +260,9 @@ function createMilkyWay(THREE, radius) {
         float v = 0.5 + b / PI;
         vec4 color = texture2D(milkyWay, vec2(u, v));
         float luma = dot(color.rgb, vec3(0.30, 0.59, 0.11));
-        float a = clamp(luma * 1.35, 0.0, 0.92) * fade;
+        float solar = 0.82;
+        float gain = max(1.0, brightness / solar);
+        float a = clamp(luma * 1.35 * gain, 0.0, 0.96) * fade;
         gl_FragColor = vec4(color.rgb * brightness * fade, a);
       }
     `,
@@ -305,25 +307,31 @@ function createStars(THREE, radius) {
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
   const material = new THREE.ShaderMaterial({
-    uniforms: { starMap: { value: starSprite(THREE) } },
+    uniforms: {
+      starMap: { value: starSprite(THREE) },
+      brightness: { value: 1 },
+      fade: { value: 1 },
+    },
     vertexShader: `
       attribute float size;
       attribute vec3 color;
+      uniform float brightness;
       varying vec3 vColor;
       void main() {
-        vColor = color;
+        vColor = color * brightness;
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = size;
+        gl_PointSize = size * brightness * brightness;
         gl_Position = projectionMatrix * mv;
       }
     `,
     fragmentShader: `
       uniform sampler2D starMap;
+      uniform float fade;
       varying vec3 vColor;
       void main() {
         vec4 tex = texture2D(starMap, gl_PointCoord);
-        if (tex.a < 0.06) discard;
-        gl_FragColor = vec4(vColor, 1.0) * tex;
+        if (tex.a < 0.06 || fade < 0.04) discard;
+        gl_FragColor = vec4(vColor, 1.0) * tex * fade;
       }
     `,
     transparent: true,
@@ -470,12 +478,28 @@ export function setSkyBandBrightness(sky, brightness) {
   }
 }
 
+/** 1 keeps the solar Hipparcos look. Extra-zoom may raise this. */
+export function setStarBrightness(sky, brightness) {
+  const stars = sky?.getObjectByName("stars");
+  if (stars?.material?.uniforms?.brightness) {
+    stars.material.uniforms.brightness.value = brightness;
+  }
+}
+
 export function setCelestialFade(sky, fade) {
   if (!sky) return;
   const factor = Math.min(1, Math.max(0, fade));
   sky.visible = factor > 0.04;
   const band = sky.getObjectByName("milky-way");
   if (band?.material?.uniforms?.fade) band.material.uniforms.fade.value = factor;
+  const stars = sky.getObjectByName("stars");
+  if (stars?.material?.uniforms?.fade) stars.material.uniforms.fade.value = factor;
+  if (factor <= 0.04) {
+    const lines = sky.getObjectByName("constellation-lines");
+    const labels = sky.getObjectByName("constellation-labels");
+    if (lines) lines.visible = false;
+    if (labels) labels.visible = false;
+  }
   sky.traverse((child) => {
     if (child.name === "milky-way") return;
     const mat = child.material;

@@ -17,6 +17,7 @@ import {
   setCelestialFade,
   setConstellationsVisible,
   setSkyBandBrightness,
+  setStarBrightness,
   wantsEarthSkyLook,
 } from "./sky.js";
 import {
@@ -30,10 +31,16 @@ import {
   createGalaxyLayer,
   galaxyOpacity,
   localGroupCameraAim,
+  extraZoomCameraDistance,
+  extraZoomCameraNear,
+  extraZoomTailMix,
   milkyWayBelowCameraAim,
   milkyWayCameraAim,
   milkyWayEdgeCameraAim,
   milkyWayInteriorCameraAim,
+  milkyWayTailLookAt,
+  milkyWayTailSeat,
+  skyStarBrightness,
   neighborhoodCameraAim,
   orbitLineOpacity,
   orreryScale,
@@ -56,6 +63,8 @@ const world = new THREE.Vector3();
 const projected = new THREE.Vector3();
 const focusPoint = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
+const tailSeat = new THREE.Vector3();
+const tailLook = new THREE.Vector3();
 
 const state = {
   days: 0,
@@ -219,9 +228,34 @@ function boot() {
     paintCard();
   } else {
     const galaxyLook = requestedGalaxyLook();
-    if (galaxyLook === "milkyway") {
+    if (galaxyLook === "solarfar") {
+      state.distance = CONFIG.solarMaxDistance;
+      state.azimuth = CONFIG.cameraAzimuth;
+      state.elevation = CONFIG.cameraElevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "tailsky") {
+      const aim = milkyWayInteriorCameraAim();
+      state.distance = CONFIG.handoffViewDistance
+        + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.32;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "growing") {
+      const aim = milkyWayCameraAim();
+      state.distance = CONFIG.handoffViewDistance
+        + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.90;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "disk") {
       const aim = milkyWayCameraAim();
       state.distance = CONFIG.mwViewDistance;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "milkyway" || galaxyLook === "handoff" || galaxyLook === "mwinterior") {
+      const aim = milkyWayInteriorCameraAim();
+      state.distance = CONFIG.handoffViewDistance;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
@@ -234,12 +268,6 @@ function boot() {
     } else if (galaxyLook === "mwbelow") {
       const aim = milkyWayBelowCameraAim();
       state.distance = CONFIG.mwViewDistance;
-      state.azimuth = aim.azimuth;
-      state.elevation = aim.elevation;
-      state.focusedId = "sun";
-    } else if (galaxyLook === "handoff" || galaxyLook === "mwinterior") {
-      const aim = milkyWayInteriorCameraAim();
-      state.distance = CONFIG.handoffViewDistance;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
@@ -261,6 +289,13 @@ function boot() {
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
+    } else if (galaxyLook === "preweb") {
+      const aim = virgoCameraAim();
+      state.distance = CONFIG.virgoViewDistance
+        + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.55;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
     } else if (galaxyLook === "web") {
       const aim = webCameraAim();
       state.distance = CONFIG.webViewDistance;
@@ -277,6 +312,7 @@ function boot() {
   }
   updateBodies();
   placeCamera(1);
+  paintScaleLayer();
   lastStamp = performance.now();
   requestAnimationFrame(tick);
   say("Helios is ready. Drag to orbit, pinch or scroll to zoom, tap a world to focus.");
@@ -556,6 +592,11 @@ function zoomTo(distance) {
     state.selectedId = null;
     paintCard();
   }
+  if (state.distance < CONFIG.handoffViewDistance && next >= CONFIG.handoffViewDistance) {
+    const aim = milkyWayInteriorCameraAim();
+    state.azimuth = aim.azimuth;
+    state.elevation = aim.elevation;
+  }
   state.distance = next;
 }
 
@@ -783,14 +824,43 @@ function placeCamera(blend) {
     return;
   }
   focusPoint.lerp(desiredTarget, clamp(blend, 0, 1));
-  const cosE = Math.cos(state.elevation);
-  camera.position.set(
-    focusPoint.x + state.distance * cosE * Math.sin(state.azimuth),
-    focusPoint.y + state.distance * Math.sin(state.elevation),
-    focusPoint.z + state.distance * cosE * Math.cos(state.azimuth),
-  );
-  camera.lookAt(focusPoint);
-  camera.near = Math.max(0.05, state.distance / 2500);
+  const radius = extraZoomCameraDistance(state.distance);
+  const tailMix = extraZoomTailMix(state.distance);
+  if (tailMix >= 0.995) {
+    const seat = milkyWayTailSeat();
+    const along = milkyWayTailLookAt();
+    camera.position.set(
+      focusPoint.x + seat.x,
+      focusPoint.y + seat.y,
+      focusPoint.z + seat.z,
+    );
+    camera.lookAt(
+      focusPoint.x + along.x,
+      focusPoint.y + along.y,
+      focusPoint.z + along.z,
+    );
+  } else {
+    const cosE = Math.cos(state.elevation);
+    camera.position.set(
+      focusPoint.x + radius * cosE * Math.sin(state.azimuth),
+      focusPoint.y + radius * Math.sin(state.elevation),
+      focusPoint.z + radius * cosE * Math.cos(state.azimuth),
+    );
+    camera.lookAt(focusPoint);
+    if (tailMix > 0.01) {
+      const seat = milkyWayTailSeat();
+      const along = milkyWayTailLookAt();
+      tailSeat.set(focusPoint.x + seat.x, focusPoint.y + seat.y, focusPoint.z + seat.z);
+      camera.position.lerp(tailSeat, tailMix);
+      tailLook.set(
+        focusPoint.x + along.x * tailMix,
+        focusPoint.y + along.y * tailMix,
+        focusPoint.z + along.z * tailMix,
+      );
+      camera.lookAt(tailLook);
+    }
+  }
+  camera.near = extraZoomCameraNear(state.distance);
   camera.far = CONFIG.cameraFar;
   camera.updateProjectionMatrix();
   attachSkyToCamera(celestial, camera);
@@ -848,6 +918,7 @@ function paintScaleLayer() {
   fadeRoot(orbitLines, orbitLineOpacity(state.distance));
   setCelestialFade(celestial, celestialSkyOpacity(state.distance));
   setSkyBandBrightness(celestial, skyBandBrightness(state.distance));
+  setStarBrightness(celestial, skyStarBrightness(state.distance));
   paintConstellations();
   setGalaxyLayerVisible(galaxy, galactic, state.distance);
   for (const node of nodes.values()) {
@@ -868,6 +939,7 @@ function paintScaleLayer() {
     else if (layer === "universe") say("Observable universe. The CMB sphere is the last outside layer.");
     else if (layer === "solar") say("Solar system.");
   }
+  document.documentElement.dataset.heliosReady = "1";
 }
 
 function updateLabels() {
