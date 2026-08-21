@@ -14,7 +14,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20t",
+  VERSION: "v2026.8.20u",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -62,8 +62,8 @@ export const CONFIG = Object.freeze({
   // Orrery is already a Sun pin; MW then appears at full brightness.
   // Close enough that the first extra-zoom sits in the disk tail, not above it.
   handoffViewDistance: 2800,
-  // Extra-zoom camera near range: first frames sit in the Orion Arm, not a postcard.
-  mwTailNearDistance: 168,
+  // Extra-zoom near range: first frames sit among Orion-arm stars, not a postcard.
+  mwTailNearDistance: 36,
   // kpc → scene for the Milky Way disk. Not the AU orbit curve.
   mwScale: 82,
   mwPower: 0.95,

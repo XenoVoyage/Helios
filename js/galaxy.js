@@ -26,6 +26,7 @@ import {
   OBSERVABLE_UNIVERSE,
   SUN_GALACTIC,
   VIRGO_CLUSTER,
+  findSpiralArm,
 } from "./galaxy-catalog.js";
 
 const DEG = Math.PI / 180;
@@ -179,16 +180,16 @@ export function skyStaysOn(distance) {
 }
 
 /**
- * Full 3D disk waits until after the tail. First extra-zoom frames are
- * the bright solar MW trails, not a distant face-on plate.
+ * Local disk / arm glow is on from the first extra-zoom frame. The
+ * camera sits in that trail; the face-on postcard is a later pull-back.
  */
 export function milkyWayDiskOpacity(distance) {
-  if (distance < CONFIG.handoffViewDistance) return 0;
-  if (distance >= CONFIG.mwViewDistance) return 1;
-  return smoothstep01(
-    (distance - CONFIG.handoffViewDistance)
-    / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance),
-  );
+  return distance >= CONFIG.handoffViewDistance ? 1 : 0;
+}
+
+/** Cyan Sun pin waits until the camera leaves the arm. */
+export function sunPinOpacity(distance) {
+  return 1 - extraZoomTailMix(distance);
 }
 
 /** Gaia / Hipparcos / IAU stay through the tail and disk, then yield. */
@@ -201,17 +202,23 @@ export function celestialSkyOpacity(distance) {
   );
 }
 
-/** Solar band is 0.82. Trails strengthen on the way out; they do not dim. */
+/** Solar band is 0.82. Trails strengthen as soon as the orrery is left. */
 export function skyBandBrightness(distance) {
   const solar = 0.82;
-  const tail = 1.72;
+  const handoff = 2.2;
+  const disk = 2.6;
   if (distance <= CONFIG.solarMaxDistance) return solar;
-  if (distance <= CONFIG.mwViewDistance) {
+  if (distance <= CONFIG.handoffViewDistance) {
     const t = (distance - CONFIG.solarMaxDistance)
-      / (CONFIG.mwViewDistance - CONFIG.solarMaxDistance);
-    return solar + (tail - solar) * smoothstep01(t);
+      / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance);
+    return solar + (handoff - solar) * smoothstep01(t);
   }
-  return tail * celestialSkyOpacity(distance);
+  if (distance <= CONFIG.mwViewDistance) {
+    const t = (distance - CONFIG.handoffViewDistance)
+      / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance);
+    return handoff + (disk - handoff) * smoothstep01(t);
+  }
+  return disk * celestialSkyOpacity(distance);
 }
 
 /** Hipparcos size/gain. 1 in solar so the in-system sky is unchanged. */
@@ -397,7 +404,7 @@ export function extraZoomTailMix(distance) {
   if (distance < CONFIG.handoffViewDistance) return 0;
   if (distance >= CONFIG.mwViewDistance) return 0;
   const hold = CONFIG.handoffViewDistance
-    + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.42;
+    + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.52;
   if (distance <= hold) return 1;
   return 1 - smoothstep01(
     (distance - hold) / (CONFIG.mwViewDistance - hold),
@@ -416,19 +423,30 @@ export function extraZoomCameraDistance(distance) {
   if (distance < CONFIG.handoffViewDistance) return near;
   const t = (distance - CONFIG.handoffViewDistance)
     / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance);
-  return near + (CONFIG.mwViewDistance - near) * (t ** 1.45);
+  return near + (CONFIG.mwViewDistance - near) * (t ** 1.55);
 }
 
-/** Sit in the Orion-arm tail near the Sun. Extra-zoom only. */
+/** Near clip so nearby arm stars are not sliced off. Extra-zoom only. */
+export function extraZoomCameraNear(distance) {
+  if (extraZoomTailMix(distance) > 0.12) return 0.035;
+  return Math.max(0.05, extraZoomCameraDistance(distance) / 160);
+}
+
+function orionArmScenePoint(betaDeg, heightKpc) {
+  const arm = findSpiralArm("orion");
+  const radius = spiralRadiusKpc(arm, betaDeg);
+  const at = armPointKpc(radius, betaDeg, heightKpc);
+  return milkyWayToScene(at.x, at.y, at.z);
+}
+
+/** Sit in the Orion-arm tail, just above the plane, near the Sun. */
 export function milkyWayTailSeat() {
-  const s = milkyWayUnitsPerKpc();
-  return { x: 0.18 * s, y: 0.16 * s, z: -1.15 * s };
+  return orionArmScenePoint(6.5, 0.38);
 }
 
-/** Look further along the arm so the bright tail fills the frame. */
+/** Look further along the arm so the bright trail fills the frame. */
 export function milkyWayTailLookAt() {
-  const s = milkyWayUnitsPerKpc();
-  return { x: 0.55 * s, y: 0, z: -5.4 * s };
+  return orionArmScenePoint(22, 0.04);
 }
 
 /** Near edge-on so disk thickness, bulge, and halo can be audited. */
@@ -960,6 +978,44 @@ function createSpiralStars(THREE, group) {
     n += 1;
   }
   addPoints(THREE, group, "mw-disk", positions.slice(0, n * 3), colors.slice(0, n * 3), 3.1, 0.82, true, THREE.AdditiveBlending);
+}
+
+/** Dense local Orion-arm stars so the first extra-zoom frames are in the trail. */
+function createLocalArmTrail(THREE, group) {
+  const arm = findSpiralArm("orion");
+  const count = 8200;
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const rand = seedRandom(31415);
+  let n = 0;
+  for (let i = 0; i < count * 4 && n < count; i += 1) {
+    const beta = -8 + rand() * 36;
+    const radius = spiralRadiusKpc(arm, beta) + (rand() - 0.5) * arm.widthKpc * 3.6;
+    const height = (rand() + rand() - 1) * 0.28;
+    const at = armPointKpc(radius, beta, height);
+    if (Math.hypot(at.x, at.y, at.z) > 4.2) continue;
+    const scene = milkyWayToScene(at.x, at.y, at.z);
+    const o = n * 3;
+    positions[o] = scene.x;
+    positions[o + 1] = scene.y;
+    positions[o + 2] = scene.z;
+    const warm = rand();
+    colors[o] = 0.78 + 0.22 * warm;
+    colors[o + 1] = 0.82 + 0.14 * warm;
+    colors[o + 2] = 0.96 - 0.18 * warm;
+    n += 1;
+  }
+  addPoints(
+    THREE,
+    group,
+    "mw-arm-trail",
+    positions.slice(0, n * 3),
+    colors.slice(0, n * 3),
+    4.8,
+    0.94,
+    true,
+    THREE.AdditiveBlending,
+  );
 }
 
 function createHalo(THREE, group) {
@@ -1743,6 +1799,7 @@ export function createGalaxyLayer(THREE) {
   milkyway.name = "milkyway";
   createDiskGlow(THREE, milkyway);
   createSpiralStars(THREE, milkyway);
+  createLocalArmTrail(THREE, milkyway);
   createHalo(THREE, milkyway);
   createBulge(THREE, milkyway);
   group.add(milkyway);
@@ -1793,7 +1850,7 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
   const virgoShown = cluster * (1 - web);
   fadeNamedGroup(group, "far-galaxy-sky", opacity, farGalaxySkyOpacity(distance));
   fadeNamedGroup(group, "milkyway", opacity, milkyWayDiskOpacity(distance) * family);
-  fadeNamedGroup(group, "sun-pin-mark", opacity, family);
+  fadeNamedGroup(group, "sun-pin-mark", opacity, sunPinOpacity(distance) * family);
   fadeNamedGroup(group, "neighbors", opacity, neighborOpacity(distance) * family);
   fadeNamedGroup(group, "local-group", opacity, localGroupMemberOpacity(distance) * family);
   fadeNamedGroup(group, "local-group-family", opacity, virgoShown);

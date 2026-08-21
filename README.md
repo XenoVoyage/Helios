@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.8.20t](https://img.shields.io/badge/version-v2026.8.20t-66f7ff)](VERSION.txt)
+[![Version v2026.8.20u](https://img.shields.io/badge/version-v2026.8.20u-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D orrery of the solar system.
@@ -13,7 +13,7 @@ An interactive 3D orrery of the solar system.
 
 ![Constellation names readable at overview, with Sagittarius and Scorpius labeled.](docs/assets/helios-constellations.webp)
 
-![Milky Way after extra zoom-out: already in the bright Orion-arm tail, with the solar skybox stronger, before the full disk.](docs/assets/helios-milky-way.webp)
+![Milky Way after extra zoom-out: already inside the bright Orion-arm trail, solar sky stronger, before the full disk.](docs/assets/helios-milky-way.webp)
 
 ![Nearby galaxies on the second scale: bright Andromeda, Triangulum, and the Magellanic Clouds on a galaxy-image sky.](docs/assets/helios-neighborhood.webp)
 

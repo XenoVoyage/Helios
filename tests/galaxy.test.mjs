@@ -31,6 +31,7 @@ import {
   galacticCenterScenePosition,
   celestialSkyOpacity,
   extraZoomCameraDistance,
+  extraZoomCameraNear,
   extraZoomTailMix,
   farGalaxySkyRadius,
   galaxyOpacity,
@@ -62,6 +63,7 @@ import {
   skyStaysOn,
   solarOpacity,
   spiralRadiusKpc,
+  sunPinOpacity,
   sunScenePosition,
   universeOpacity,
   virgoOpacity,
@@ -385,42 +387,47 @@ test("solar skybox stays through the tail and the camera sits in the arm", () =>
   assert.equal(celestialSkyOpacity(CONFIG.handoffViewDistance), 1);
   assert.equal(celestialSkyOpacity(CONFIG.mwViewDistance), 1);
   assert.equal(celestialSkyOpacity(CONFIG.neighborhoodViewDistance), 0);
-  assert.equal(milkyWayDiskOpacity(CONFIG.handoffViewDistance), 0);
-  assert.ok(
-    milkyWayDiskOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) > 0.2,
-    "disk grows in after the tail",
-  );
-  assert.ok(
-    milkyWayDiskOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) < 0.9,
-    "full disk is later than the first extra-zoom frame",
+  assert.equal(milkyWayDiskOpacity(CONFIG.handoffViewDistance - 1), 0);
+  assert.equal(
+    milkyWayDiskOpacity(CONFIG.handoffViewDistance),
+    1,
+    "first extra-zoom is already inside the local arm / disk trail",
   );
   assert.equal(milkyWayDiskOpacity(CONFIG.mwViewDistance), 1);
+  assert.equal(sunPinOpacity(CONFIG.handoffViewDistance), 0);
+  assert.equal(sunPinOpacity(CONFIG.mwViewDistance), 1);
   assert.equal(farGalaxySkyOpacity(CONFIG.handoffViewDistance), 0);
   assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 0);
   assert.equal(skyBandBrightness(CONFIG.cameraDistance), 0.82);
-  assert.ok(skyBandBrightness(CONFIG.handoffViewDistance) > 0.82);
+  assert.ok(
+    skyBandBrightness(CONFIG.handoffViewDistance) > 2,
+    "Gaia trails are already strong at the first extra-zoom frame",
+  );
   assert.ok(skyBandBrightness(CONFIG.mwViewDistance) > skyBandBrightness(CONFIG.handoffViewDistance));
   assert.equal(skyStarBrightness(CONFIG.cameraDistance), 1);
-  assert.ok(skyStarBrightness(CONFIG.handoffViewDistance) > 1);
+  assert.ok(skyStarBrightness(CONFIG.handoffViewDistance) > 2);
   const interior = milkyWayInteriorCameraAim();
   assert.ok(interior.elevation < 0.12, "first extra-zoom look stays in the disk tail");
   assert.ok(interior.elevation > 0, "interior look is not from under the plane");
   assert.equal(extraZoomCameraDistance(CONFIG.cameraDistance), CONFIG.cameraDistance);
   assert.equal(extraZoomCameraDistance(CONFIG.handoffViewDistance), CONFIG.mwTailNearDistance);
   assert.ok(
-    extraZoomCameraDistance(CONFIG.handoffViewDistance) < milkyWayDiskDiameter() * 0.12,
+    extraZoomCameraDistance(CONFIG.handoffViewDistance) < milkyWayDiskDiameter() * 0.03,
     "first extra-zoom camera sits in the arm, not a postcard of the disk",
   );
+  assert.ok(extraZoomCameraNear(CONFIG.handoffViewDistance) <= 0.04);
+  assert.ok(extraZoomCameraNear(CONFIG.cameraDistance) > extraZoomCameraNear(CONFIG.handoffViewDistance));
   assert.equal(extraZoomCameraDistance(CONFIG.mwViewDistance), CONFIG.mwViewDistance);
   assert.equal(extraZoomTailMix(CONFIG.handoffViewDistance), 1);
   assert.equal(extraZoomTailMix(CONFIG.mwViewDistance), 0);
   assert.equal(
-    extraZoomTailMix(CONFIG.handoffViewDistance + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.3),
+    extraZoomTailMix(CONFIG.handoffViewDistance + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.4),
     1,
   );
   const seat = milkyWayTailSeat();
   const along = milkyWayTailLookAt();
-  assert.ok(Math.hypot(seat.x, seat.y, seat.z) < milkyWayDiskDiameter() * 0.2, "tail seat stays inside the disk");
+  assert.ok(Math.hypot(seat.x, seat.y, seat.z) < milkyWayDiskDiameter() * 0.12, "tail seat stays inside the disk");
+  assert.ok(Math.abs(seat.y) < milkyWayDiskDiameter() * 0.03, "tail seat stays in the arm, not above the plate");
   assert.ok(Math.abs(seat.z) > Math.abs(seat.x), "tail seat looks along the arm");
   assert.ok(along.z < seat.z, "tail look continues along the arm");
   assert.ok(
@@ -571,6 +578,9 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /farGalaxySkyOpacity/);
   assert.match(galaxySource, /cmbSkyOpacity/);
   assert.match(galaxySource, /milkyWayDiskOpacity/);
+  assert.match(galaxySource, /sunPinOpacity/);
+  assert.match(galaxySource, /mw-arm-trail/);
+  assert.match(galaxySource, /extraZoomCameraNear/);
   assert.match(galaxySource, /skyStaysOn/);
   assert.match(galaxySource, /attachFarGalaxySky/);
   assert.match(galaxySource, /sun-pin-mark/);

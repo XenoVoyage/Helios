@@ -260,7 +260,9 @@ function createMilkyWay(THREE, radius) {
         float v = 0.5 + b / PI;
         vec4 color = texture2D(milkyWay, vec2(u, v));
         float luma = dot(color.rgb, vec3(0.30, 0.59, 0.11));
-        float a = clamp(luma * 1.35, 0.0, 0.92) * fade;
+        float solar = 0.82;
+        float gain = max(1.0, brightness / solar);
+        float a = clamp(luma * 1.35 * gain, 0.0, 0.96) * fade;
         gl_FragColor = vec4(color.rgb * brightness * fade, a);
       }
     `,

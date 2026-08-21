@@ -32,6 +32,7 @@ import {
   galaxyOpacity,
   localGroupCameraAim,
   extraZoomCameraDistance,
+  extraZoomCameraNear,
   extraZoomTailMix,
   milkyWayBelowCameraAim,
   milkyWayEdgeCameraAim,
@@ -797,27 +798,42 @@ function placeCamera(blend) {
   }
   focusPoint.lerp(desiredTarget, clamp(blend, 0, 1));
   const radius = extraZoomCameraDistance(state.distance);
-  const cosE = Math.cos(state.elevation);
-  camera.position.set(
-    focusPoint.x + radius * cosE * Math.sin(state.azimuth),
-    focusPoint.y + radius * Math.sin(state.elevation),
-    focusPoint.z + radius * cosE * Math.cos(state.azimuth),
-  );
-  camera.lookAt(focusPoint);
   const tailMix = extraZoomTailMix(state.distance);
-  if (tailMix > 0.01) {
+  if (tailMix >= 0.995) {
     const seat = milkyWayTailSeat();
     const along = milkyWayTailLookAt();
-    tailSeat.set(focusPoint.x + seat.x, focusPoint.y + seat.y, focusPoint.z + seat.z);
-    camera.position.lerp(tailSeat, tailMix);
-    tailLook.set(
-      focusPoint.x + along.x * tailMix,
-      focusPoint.y + along.y * tailMix,
-      focusPoint.z + along.z * tailMix,
+    camera.position.set(
+      focusPoint.x + seat.x,
+      focusPoint.y + seat.y,
+      focusPoint.z + seat.z,
     );
-    camera.lookAt(tailLook);
+    camera.lookAt(
+      focusPoint.x + along.x,
+      focusPoint.y + along.y,
+      focusPoint.z + along.z,
+    );
+  } else {
+    const cosE = Math.cos(state.elevation);
+    camera.position.set(
+      focusPoint.x + radius * cosE * Math.sin(state.azimuth),
+      focusPoint.y + radius * Math.sin(state.elevation),
+      focusPoint.z + radius * cosE * Math.cos(state.azimuth),
+    );
+    camera.lookAt(focusPoint);
+    if (tailMix > 0.01) {
+      const seat = milkyWayTailSeat();
+      const along = milkyWayTailLookAt();
+      tailSeat.set(focusPoint.x + seat.x, focusPoint.y + seat.y, focusPoint.z + seat.z);
+      camera.position.lerp(tailSeat, tailMix);
+      tailLook.set(
+        focusPoint.x + along.x * tailMix,
+        focusPoint.y + along.y * tailMix,
+        focusPoint.z + along.z * tailMix,
+      );
+      camera.lookAt(tailLook);
+    }
   }
-  camera.near = Math.max(0.05, radius / 140);
+  camera.near = extraZoomCameraNear(state.distance);
   camera.far = CONFIG.cameraFar;
   camera.updateProjectionMatrix();
   attachSkyToCamera(celestial, camera);
