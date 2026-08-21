@@ -209,17 +209,32 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.ok(CONFIG.mwHaloRadiusKpc >= MILKY_WAY.haloRadiusKpc);
   assert.equal(scaleLayer(CONFIG.cameraDistance), "solar");
   assert.equal(scaleLayer(CONFIG.solarMaxDistance), "solar");
-  assert.equal(scaleLayer((CONFIG.galaxyFadeStart + CONFIG.galaxyFadeEnd) / 2), "transition");
+  assert.equal(
+    scaleLayer((CONFIG.solarMaxDistance + CONFIG.handoffViewDistance) / 2),
+    "transition",
+  );
   assert.ok(CONFIG.handoffViewDistance > CONFIG.solarMaxDistance);
   assert.ok(CONFIG.handoffViewDistance < CONFIG.galaxyFadeEnd);
-  assert.equal(scaleLayer(CONFIG.handoffViewDistance), "transition");
-  assert.ok(
-    solarOpacity(CONFIG.handoffViewDistance) > 0.35,
-    "handoff still shows the solar field / Kuiper",
+  assert.equal(scaleLayer(CONFIG.handoffViewDistance), "milkyway");
+  assert.equal(
+    galaxyOpacity(CONFIG.handoffViewDistance - 1),
+    0,
+    "MW stays off while the orrery shrinks to a pin",
   );
-  assert.ok(
-    galaxyOpacity(CONFIG.handoffViewDistance) > 0.35,
-    "handoff already shows the Milky Way disk",
+  assert.equal(
+    solarOpacity(CONFIG.handoffViewDistance - 1),
+    1,
+    "solar stays up until the pin handoff",
+  );
+  assert.equal(
+    galaxyOpacity(CONFIG.handoffViewDistance),
+    1,
+    "MW is full brightness as soon as it is the subject",
+  );
+  assert.equal(
+    solarOpacity(CONFIG.handoffViewDistance),
+    0,
+    "solar does not blend with the MW disk",
   );
   assert.equal(scaleLayer(CONFIG.mwViewDistance), "milkyway");
   assert.equal(scaleLayer(CONFIG.neighborhoodViewDistance), "neighborhood");
@@ -247,11 +262,15 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     "Virgo lingers before the web takes over",
   );
   assert.equal(webOpacity(CONFIG.webViewDistance), 1);
-  assert.equal(universeOpacity(CONFIG.webViewDistance), 0);
+  assert.equal(
+    universeOpacity(CONFIG.webViewDistance),
+    1,
+    "web look uses the volume-filling web, not the local home-hub ball",
+  );
   assert.equal(
     universeOpacity(CONFIG.webViewDistance + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.2),
-    0,
-    "the filled web reads before the larger universe web",
+    1,
+    "the filled web stays up until the last outside sphere",
   );
   assert.equal(universeOpacity(CONFIG.universeViewDistance), 1);
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
@@ -288,6 +307,10 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     farGalaxySkyOpacity(CONFIG.universeViewDistance),
     0,
     "far-galaxy sky yields to the CMB sphere outside",
+  );
+  assert.ok(
+    CONFIG.webViewDistance < farthestUniverseDistance() * 0.92,
+    "web look sits inside the volume-filling web, not outside a ball",
   );
   assert.ok(
     farthestUniverseDistance() > CONFIG.webViewDistance,
@@ -446,6 +469,11 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /side:\s*THREE\.BackSide/);
   assert.match(galaxySource, /name = "cmb-sphere"/);
   assert.match(galaxySource, /side:\s*THREE\.DoubleSide/);
+  assert.match(galaxySource, /return distance >= CONFIG\.handoffViewDistance \? 1 : 0/);
+  assert.match(
+    galaxySource,
+    /export function universeOpacity\(distance\) \{\s*return webOpacity\(distance\);/,
+  );
   assert.doesNotMatch(galaxySource, /Math\.max\(web, universe/);
   const m31 = findNeighbor("m31");
   assert.ok(
@@ -457,8 +485,8 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
     "Andromeda sits at a neighbor distance, not stacked on the disk",
   );
   assert.ok(
-    farthestWebDistance() > CONFIG.webViewDistance * 0.55,
-    "the filled web is large in the web camera frame",
+    farthestUniverseDistance() * 0.92 > CONFIG.webViewDistance,
+    "the filled web surrounds the web camera",
   );
   assert.doesNotMatch(galaxySource, /BoxGeometry/);
   assert.equal(visualWeb(CONFIG.webRadiusMpc), CONFIG.webScale * CONFIG.webRadiusMpc ** CONFIG.webPower);

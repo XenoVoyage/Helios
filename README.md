@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.8.20p](https://img.shields.io/badge/version-v2026.8.20p-66f7ff)](VERSION.txt)
+[![Version v2026.8.20q](https://img.shields.io/badge/version-v2026.8.20q-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D orrery of the solar system.
@@ -21,11 +21,11 @@ An interactive 3D orrery of the solar system.
 
 ![Virgo Cluster with the Local Group nearby and more clusters appearing around them.](docs/assets/helios-virgo.webp)
 
-![Local cosmic web: filaments and cluster hubs, with the Milky Way as the home hub.](docs/assets/helios-web.webp)
+![Volume-filling cosmic web: neuron / SDSS filaments through the local volume.](docs/assets/helios-web.webp)
 
 ![Observable universe: the CMB last-scattering sphere seen from outside, with the filled web inside.](docs/assets/helios-universe.webp)
 
-Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch or scroll to zoom. Play, pause, and change the speed of time from the bar at the bottom. Click empty space to close the body card. Zoom out past the solar overview and the orrery shrinks to a Sun pin in the Orion Arm on a luminous Milky Way disk. Nearby galaxies including Andromeda sit against a far-galaxy sky that stays up through the Local Group and Virgo. Only after a long colored cosmic web does that sky turn microwave, then an observable-universe sphere you can leave and see from outside. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
+Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch or scroll to zoom. Play, pause, and change the speed of time from the bar at the bottom. Click empty space to close the body card. Zoom out past the solar overview and the orrery shrinks to a Sun pin; then a luminous Milky Way arm and disk take over at full brightness. The Sun pin sits on the Orion Arm. Nearby galaxies including Andromeda sit against a far-galaxy sky that stays up through the Local Group and Virgo. Only after a long colored cosmic web does that sky turn microwave, then an observable-universe sphere you can leave and see from outside. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
 
 Helios is a local page: no accounts, no telemetry, and no CDN.
 

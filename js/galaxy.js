@@ -2,8 +2,9 @@
  * Extra-zoom map: a luminous 3D Milky Way, nearby galaxies against a
  * far-galaxy sky that stays up through Virgo and the filled web, a short
  * Local Group, Virgo with more clusters around it, a colored cosmic web
- * that stays volume-filling at larger scale, and a CMB / observable-universe
- * sphere you leave and can see from outside.
+ * that stays volume-filling from inside, and a CMB / observable-universe
+ * sphere you leave and can see from outside. The web look is that filled
+ * volume. The last universe look is the outside sphere. They do not mix.
  *
  * Catalog kpc / Mpc / Gpc stay in js/galaxy-catalog.js. Visual compression
  * lives here and in CONFIG. This map is a different representation from
@@ -163,14 +164,11 @@ export function armPointKpc(radiusKpc, betaDeg, zKpc = 0) {
 }
 
 export function galaxyOpacity(distance) {
-  if (distance <= CONFIG.galaxyFadeStart) return 0;
-  if (distance >= CONFIG.galaxyFadeEnd) return 1;
-  const t = (distance - CONFIG.galaxyFadeStart) / (CONFIG.galaxyFadeEnd - CONFIG.galaxyFadeStart);
-  return t * t * (3 - 2 * t);
+  return distance >= CONFIG.handoffViewDistance ? 1 : 0;
 }
 
 export function solarOpacity(distance) {
-  return 1 - galaxyOpacity(distance);
+  return distance < CONFIG.handoffViewDistance ? 1 : 0;
 }
 
 /**
@@ -197,7 +195,7 @@ export function orbitLineOpacity(distance) {
 
 export function scaleLayer(distance) {
   if (distance <= CONFIG.solarMaxDistance) return "solar";
-  if (distance < CONFIG.galaxyFadeEnd) return "transition";
+  if (distance < CONFIG.handoffViewDistance) return "transition";
   if (distance < CONFIG.neighborhoodViewDistance) return "milkyway";
   if (distance < CONFIG.localGroupViewDistance) return "neighborhood";
   if (distance < CONFIG.virgoViewDistance) return "localgroup";
@@ -245,12 +243,9 @@ export function webOpacity(distance) {
   return smoothstep01((distance - start) / (CONFIG.webViewDistance - start));
 }
 
+/** Volume-filling web is the web subject. CMB stays a later outside shell. */
 export function universeOpacity(distance) {
-  const start = CONFIG.webViewDistance
-    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.22;
-  if (distance < start) return 0;
-  if (distance >= CONFIG.universeViewDistance) return 1;
-  return smoothstep01((distance - start) / (CONFIG.universeViewDistance - start));
+  return webOpacity(distance);
 }
 
 /** Far-galaxy sphere stays up through Virgo and the filled web; CMB replaces it later. */
@@ -378,7 +373,7 @@ export function virgoCameraAim() {
   };
 }
 
-/** Oblique enough to read the web as a 3D volume, not a flat graph. */
+/** Inside the filled web so filaments read as a volume, not an outside ball. */
 export function webCameraAim() {
   return { elevation: 0.38, azimuth: 1.05 };
 }
