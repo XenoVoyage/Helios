@@ -88,6 +88,8 @@ assert.match(app, /warmExtraZoom/);
 assert.match(app, /paintConstellations/);
 assert.match(app, /ui\.sky\.hidden/);
 assert.match(app, /skyStaysOn/);
+assert.match(app, /const inSolar = skyStaysOn\(state\.distance\)/);
+assert.match(app, /setConstellationsVisible\(celestial, inSolar && state\.showConstellations\)/);
 assert.match(app, /setCelestialFade/);
 assert.match(app, /setSkyBandBrightness/);
 assert.match(app, /attachFarGalaxySky/);
@@ -102,6 +104,10 @@ assert.match(css, /#card-close/);
 assert.match(configSource, /pinchZoomDistance/);
 assert.match(galaxy, /milkyWayInteriorCameraAim/);
 assert.match(galaxy, /skyStaysOn/);
+assert.match(
+  galaxy,
+  /export function skyStaysOn\(distance\) \{\s*return scaleLayer\(distance\) === "solar";/,
+);
 assert.match(sky, /setSkyBandBrightness/);
 assert.match(sky, /toneMapped:\s*false/);
 assert.match(css, /\.labels[\s\S]*z-index:\s*1/);

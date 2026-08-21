@@ -280,14 +280,13 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   assert.equal(universeOpacity(CONFIG.universeViewDistance), 1);
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
-  assert.equal(
-    farGalaxySkyOpacity(CONFIG.handoffViewDistance),
-    0,
-    "first extra-zoom frame is still the local Orion-arm sky",
+  assert.ok(
+    farGalaxySkyOpacity(CONFIG.handoffViewDistance) > 0.45,
+    "far-galaxy field is already up at the first extra-zoom tail",
   );
   assert.ok(
-    farGalaxySkyOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) > 0.15,
-    "far-galaxy field starts while the tail becomes the disk",
+    farGalaxySkyOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) > 0.6,
+    "far-galaxy field stays up while the tail becomes the disk",
   );
   assert.ok(
     farGalaxySkyOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2)
@@ -371,15 +370,17 @@ test("extra-zoom shrinks the orrery to a Sun pin before the MW disk", () => {
   assert.equal(orbitLineOpacity(CONFIG.mwViewDistance), 0);
 });
 
-test("solar to MW ride stays inside the disk before the face-on plate", () => {
+test("constellations are solar-only and the far-galaxy field is up at the tail", () => {
   assert.equal(skyStaysOn(CONFIG.cameraDistance), true);
   assert.equal(skyStaysOn(CONFIG.solarMaxDistance), true);
-  assert.equal(skyStaysOn((CONFIG.solarMaxDistance + CONFIG.handoffViewDistance) / 2), true);
-  assert.equal(skyStaysOn(CONFIG.handoffViewDistance), true);
-  assert.equal(skyStaysOn(CONFIG.mwViewDistance), true);
+  assert.equal(skyStaysOn(CONFIG.solarMaxDistance + 1), false);
+  assert.equal(skyStaysOn((CONFIG.solarMaxDistance + CONFIG.handoffViewDistance) / 2), false);
+  assert.equal(skyStaysOn(CONFIG.handoffViewDistance), false);
+  assert.equal(skyStaysOn(CONFIG.mwViewDistance), false);
   assert.equal(skyStaysOn(CONFIG.neighborhoodViewDistance), false);
-  assert.equal(celestialSkyOpacity(CONFIG.handoffViewDistance), 1);
-  assert.equal(celestialSkyOpacity(CONFIG.mwViewDistance), 1);
+  assert.equal(celestialSkyOpacity(CONFIG.solarMaxDistance), 1);
+  assert.equal(celestialSkyOpacity(CONFIG.handoffViewDistance), 0);
+  assert.equal(celestialSkyOpacity(CONFIG.mwViewDistance), 0);
   assert.equal(celestialSkyOpacity(CONFIG.neighborhoodViewDistance), 0);
   assert.equal(milkyWayDiskOpacity(CONFIG.handoffViewDistance), 0);
   assert.ok(
@@ -391,16 +392,23 @@ test("solar to MW ride stays inside the disk before the face-on plate", () => {
     "disk is not a full plate at mid-ride",
   );
   assert.equal(milkyWayDiskOpacity(CONFIG.mwViewDistance), 1);
-  assert.equal(farGalaxySkyOpacity(CONFIG.handoffViewDistance), 0);
+  assert.ok(
+    farGalaxySkyOpacity(CONFIG.handoffViewDistance) > 0.45,
+    "far-galaxy field is already up at handoff",
+  );
   assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 1);
-  assert.ok(skyBandBrightness(CONFIG.handoffViewDistance) > skyBandBrightness(CONFIG.cameraDistance));
-  assert.ok(skyBandBrightness(CONFIG.mwViewDistance) > skyBandBrightness(CONFIG.solarMaxDistance));
+  assert.equal(skyBandBrightness(CONFIG.cameraDistance), 0.82);
+  assert.equal(skyBandBrightness(CONFIG.handoffViewDistance), 0.82);
+  assert.equal(skyBandBrightness(CONFIG.mwViewDistance), 0.82);
   const interior = milkyWayInteriorCameraAim();
   assert.ok(interior.elevation < 0.25, "first extra-zoom look stays in the disk");
   assert.ok(interior.elevation > 0, "interior look is not from under the plane");
-  assert.ok(farGalaxySkyRadius() < CONFIG.skyRadius * 1.4);
-  assert.ok(farGalaxySkyRadius() > CONFIG.skyRadius);
-  assert.ok(farGalaxySkyRadius() * 8 < farthestUniverseDistance());
+  assert.ok(
+    farGalaxySkyRadius() > CONFIG.neighborhoodViewDistance * 8,
+    "far-galaxy shell is far past the neighborhood camera",
+  );
+  assert.ok(farGalaxySkyRadius() > CONFIG.webViewDistance);
+  assert.ok(farGalaxySkyRadius() < CONFIG.cameraFar);
 });
 
 test("pinch-out zooms out and mouse wheel stays as it is", () => {
@@ -519,13 +527,16 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /mw-disk-edge/);
   assert.match(galaxySource, /mw-halo/);
   assert.match(galaxySource, /Large Magellanic Cloud|neighbor\.name/);
-  assert.match(galaxySource, /farGalaxySkyMap/);
+  assert.match(galaxySource, /fillSpherePoints/);
+  assert.match(galaxySource, /far-galaxy-blobs/);
   assert.match(galaxySource, /CanvasTexture/);
   assert.match(galaxySource, /toneMapped:\s*false/);
   assert.match(galaxySource, /AdditiveBlending/);
   assert.match(galaxySource, /SKY_ASSETS\.andromeda/);
   assert.match(galaxySource, /quietAndromedaMap|andromeda\.png/);
-  assert.match(galaxySource, /if \(pole < 0\.28\) continue/);
+  assert.doesNotMatch(galaxySource, /if \(pole < 0\.28\) continue/);
+  assert.match(galaxySource, /cameraFar \* 0\.42/);
+  assert.match(galaxySource, /false,\s*THREE\.AdditiveBlending/);
   assert.doesNotMatch(galaxySource, /kind === "andromeda"/);
   assert.doesNotMatch(galaxySource, /lineWidth = 13/);
   assert.doesNotMatch(galaxySource, /smc: galaxySprite/);
@@ -541,7 +552,8 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /unlitSprite|toneMapped:\s*false/);
   assert.doesNotMatch(galaxySource, /hubCount:\s*20\b/);
   assert.match(galaxySource, /includeHome:\s*false/);
-  assert.match(galaxySource, /side:\s*THREE\.BackSide/);
+  assert.match(galaxySource, /material\.depthTest = false/);
+  assert.match(galaxySource, /material\.fog = false/);
   assert.match(galaxySource, /name = "cmb-sphere"/);
   assert.match(galaxySource, /side:\s*THREE\.DoubleSide/);
   assert.match(galaxySource, /return distance >= CONFIG\.handoffViewDistance \? 1 : 0/);

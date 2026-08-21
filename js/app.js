@@ -677,16 +677,16 @@ function paintClock() {
 }
 
 function paintSkyButton() {
-  const inDisk = skyStaysOn(state.distance);
+  const inSolar = skyStaysOn(state.distance);
   ui.sky.textContent = "Constellations";
-  ui.sky.hidden = !inDisk;
+  ui.sky.hidden = !inSolar;
   ui.sky.setAttribute("aria-pressed", String(state.showConstellations));
 }
 
 function paintConstellations() {
-  const inDisk = skyStaysOn(state.distance);
+  const inSolar = skyStaysOn(state.distance);
   paintSkyButton();
-  if (celestial) setConstellationsVisible(celestial, inDisk && state.showConstellations);
+  if (celestial) setConstellationsVisible(celestial, inSolar && state.showConstellations);
 }
 
 function paintHelperButtons() {
