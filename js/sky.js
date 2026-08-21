@@ -214,6 +214,7 @@ function createMilkyWay(THREE, radius) {
     uniforms: {
       milkyWay: { value: texture },
       brightness: { value: 0.82 },
+      fade: { value: 1 },
     },
     vertexShader: `
       varying vec3 vDir;
@@ -225,6 +226,7 @@ function createMilkyWay(THREE, radius) {
     fragmentShader: `
       uniform sampler2D milkyWay;
       uniform float brightness;
+      uniform float fade;
       varying vec3 vDir;
       const float PI = 3.141592653589793;
       const float TAU = 6.283185307179586;
@@ -258,13 +260,16 @@ function createMilkyWay(THREE, radius) {
         float v = 0.5 + b / PI;
         vec4 color = texture2D(milkyWay, vec2(u, v));
         float luma = dot(color.rgb, vec3(0.30, 0.59, 0.11));
-        gl_FragColor = vec4(color.rgb * brightness, clamp(luma * 1.35, 0.0, 0.92));
+        float a = clamp(luma * 1.35, 0.0, 0.92) * fade;
+        gl_FragColor = vec4(color.rgb * brightness * fade, a);
       }
     `,
     side: THREE.BackSide,
     transparent: true,
     depthWrite: false,
-    toneMapped: true,
+    toneMapped: false,
+    lights: false,
+    fog: false,
   });
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 64, 48), material);
   mesh.name = "milky-way";
@@ -456,6 +461,29 @@ export function setConstellationsVisible(sky, visible) {
   const labels = sky.getObjectByName("constellation-labels");
   if (lines) lines.visible = visible;
   if (labels) labels.visible = visible;
+}
+
+export function setSkyBandBrightness(sky, brightness) {
+  const band = sky?.getObjectByName("milky-way");
+  if (band?.material?.uniforms?.brightness) {
+    band.material.uniforms.brightness.value = brightness;
+  }
+}
+
+export function setCelestialFade(sky, fade) {
+  if (!sky) return;
+  const factor = Math.min(1, Math.max(0, fade));
+  sky.visible = factor > 0.04;
+  const band = sky.getObjectByName("milky-way");
+  if (band?.material?.uniforms?.fade) band.material.uniforms.fade.value = factor;
+  sky.traverse((child) => {
+    if (child.name === "milky-way") return;
+    const mat = child.material;
+    if (!mat || mat.opacity == null) return;
+    if (mat.userData.baseOpacity == null) mat.userData.baseOpacity = mat.opacity;
+    mat.transparent = true;
+    mat.opacity = mat.userData.baseOpacity * factor;
+  });
 }
 
 export function createCelestialSphere(THREE, radius = CONFIG.skyRadius) {

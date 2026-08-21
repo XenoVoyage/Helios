@@ -23,6 +23,7 @@ body {
   background: var(--void);
   color: var(--ink);
   overflow: hidden;
+  touch-action: none;
 }
 
 body {
@@ -147,11 +148,20 @@ h2 {
   right: max(12px, env(safe-area-inset-right));
   display: flex;
   gap: 16px;
-  align-items: end;
+  align-items: start;
   max-width: min(360px, calc(100vw - 24px));
   padding: 14px 16px;
   border-radius: 16px;
   border-color: rgba(102, 247, 255, 0.32);
+}
+
+#card-close {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  flex-shrink: 0;
+  font-size: 28px;
+  line-height: 1;
 }
 
 .card[hidden] {
@@ -308,10 +318,11 @@ input[type="range"] {
 
   .card {
     top: auto;
-    right: auto;
-    left: 50%;
-    bottom: calc(108px + env(safe-area-inset-bottom));
-    transform: translateX(-50%);
+    right: max(8px, env(safe-area-inset-right));
+    left: max(8px, env(safe-area-inset-left));
+    bottom: calc(168px + env(safe-area-inset-bottom));
+    max-width: none;
+    transform: none;
   }
 
   .version {

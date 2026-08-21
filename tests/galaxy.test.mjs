@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONFIG } from "../js/config.js";
+import { CONFIG, pinchZoomDistance, wheelZoomMultiplier } from "../js/config.js";
 import { visualOrbit } from "../js/bodies.js";
 import { equatorialToGalactic } from "../js/sky.js";
 import {
@@ -29,13 +29,17 @@ import {
   farthestVirgoDistance,
   farthestWebDistance,
   galacticCenterScenePosition,
+  celestialSkyOpacity,
+  farGalaxySkyRadius,
   galaxyOpacity,
   heliocentricGalactic,
   localGroupCameraAim,
   localGroupMemberOpacity,
   milkyWayBelowCameraAim,
+  milkyWayInteriorCameraAim,
   lookAngleTo,
   milkyWayDiskDiameter,
+  milkyWayDiskOpacity,
   milkyWayToScene,
   milkyWayUnitsPerKpc,
   cmbSkyOpacity,
@@ -48,6 +52,8 @@ import {
   orbitLineOpacity,
   orreryScale,
   scaleLayer,
+  skyBandBrightness,
+  skyStaysOn,
   solarOpacity,
   spiralRadiusKpc,
   sunScenePosition,
@@ -274,6 +280,29 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   assert.equal(universeOpacity(CONFIG.universeViewDistance), 1);
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
+  assert.equal(
+    farGalaxySkyOpacity(CONFIG.handoffViewDistance),
+    0,
+    "first extra-zoom frame is still the local Orion-arm sky",
+  );
+  assert.ok(
+    farGalaxySkyOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) > 0.15,
+    "far-galaxy field starts while the tail becomes the disk",
+  );
+  assert.ok(
+    farGalaxySkyOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2)
+      < farGalaxySkyOpacity(CONFIG.mwViewDistance),
+    "far-galaxy field is stronger at the full disk than mid-ride",
+  );
+  assert.equal(
+    farGalaxySkyOpacity(CONFIG.mwViewDistance),
+    1,
+    "full-disk look already sits on the far-galaxy field",
+  );
+  assert.ok(
+    farGalaxySkyOpacity(CONFIG.neighborhoodViewDistance) > 0.9,
+    "far-galaxy sky stays up through the neighborhood",
+  );
   assert.ok(
     farGalaxySkyOpacity(CONFIG.virgoViewDistance) > 0.9,
     "far-galaxy sky stays up at Virgo",
@@ -340,6 +369,48 @@ test("extra-zoom shrinks the orrery to a Sun pin before the MW disk", () => {
   assert.equal(orbitLineOpacity(CONFIG.solarMaxDistance + 1), 0);
   assert.equal(orbitLineOpacity(CONFIG.handoffViewDistance), 0);
   assert.equal(orbitLineOpacity(CONFIG.mwViewDistance), 0);
+});
+
+test("solar to MW ride stays inside the disk before the face-on plate", () => {
+  assert.equal(skyStaysOn(CONFIG.cameraDistance), true);
+  assert.equal(skyStaysOn(CONFIG.solarMaxDistance), true);
+  assert.equal(skyStaysOn((CONFIG.solarMaxDistance + CONFIG.handoffViewDistance) / 2), true);
+  assert.equal(skyStaysOn(CONFIG.handoffViewDistance), true);
+  assert.equal(skyStaysOn(CONFIG.mwViewDistance), true);
+  assert.equal(skyStaysOn(CONFIG.neighborhoodViewDistance), false);
+  assert.equal(celestialSkyOpacity(CONFIG.handoffViewDistance), 1);
+  assert.equal(celestialSkyOpacity(CONFIG.mwViewDistance), 1);
+  assert.equal(celestialSkyOpacity(CONFIG.neighborhoodViewDistance), 0);
+  assert.equal(milkyWayDiskOpacity(CONFIG.handoffViewDistance), 0);
+  assert.ok(
+    milkyWayDiskOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) > 0.2,
+    "disk grows in after the interior crack",
+  );
+  assert.ok(
+    milkyWayDiskOpacity((CONFIG.handoffViewDistance + CONFIG.mwViewDistance) / 2) < 0.9,
+    "disk is not a full plate at mid-ride",
+  );
+  assert.equal(milkyWayDiskOpacity(CONFIG.mwViewDistance), 1);
+  assert.equal(farGalaxySkyOpacity(CONFIG.handoffViewDistance), 0);
+  assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 1);
+  assert.ok(skyBandBrightness(CONFIG.handoffViewDistance) > skyBandBrightness(CONFIG.cameraDistance));
+  assert.ok(skyBandBrightness(CONFIG.mwViewDistance) > skyBandBrightness(CONFIG.solarMaxDistance));
+  const interior = milkyWayInteriorCameraAim();
+  assert.ok(interior.elevation < 0.25, "first extra-zoom look stays in the disk");
+  assert.ok(interior.elevation > 0, "interior look is not from under the plane");
+  assert.ok(farGalaxySkyRadius() < CONFIG.skyRadius * 1.4);
+  assert.ok(farGalaxySkyRadius() > CONFIG.skyRadius);
+  assert.ok(farGalaxySkyRadius() * 8 < farthestUniverseDistance());
+});
+
+test("pinch-out zooms out and mouse wheel stays as it is", () => {
+  assert.ok(pinchZoomDistance(1000, 40, 80) > 1000, "pinch-out increases camera distance");
+  assert.ok(pinchZoomDistance(1000, 40, 20) < 1000, "pinch-in decreases camera distance");
+  assert.equal(pinchZoomDistance(1000, 40, 80), 2000);
+  assert.equal(pinchZoomDistance(1000, 40, 20), 500);
+  assert.ok(wheelZoomMultiplier(100, false) > 1, "positive mouse wheel zooms out");
+  assert.ok(wheelZoomMultiplier(100, true) < 1, "touch pinch-out wheel is inverted to zoom out");
+  assert.ok(wheelZoomMultiplier(-100, true) > 1, "iOS pinch-out (negative delta) zooms out");
 });
 
 test("camera far plane clears the neighborhood and spiral math stays Reid-like", () => {
@@ -462,6 +533,10 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.doesNotMatch(galaxySource, /export \{\s*CMB_SHELL/);
   assert.match(galaxySource, /farGalaxySkyOpacity/);
   assert.match(galaxySource, /cmbSkyOpacity/);
+  assert.match(galaxySource, /milkyWayDiskOpacity/);
+  assert.match(galaxySource, /skyStaysOn/);
+  assert.match(galaxySource, /attachFarGalaxySky/);
+  assert.match(galaxySource, /sun-pin-mark/);
   assert.match(galaxySource, /toneMapped:\s*false/);
   assert.match(galaxySource, /unlitSprite|toneMapped:\s*false/);
   assert.doesNotMatch(galaxySource, /hubCount:\s*20\b/);
@@ -470,6 +545,7 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /name = "cmb-sphere"/);
   assert.match(galaxySource, /side:\s*THREE\.DoubleSide/);
   assert.match(galaxySource, /return distance >= CONFIG\.handoffViewDistance \? 1 : 0/);
+  assert.doesNotMatch(galaxySource, /far-galaxy-glow/);
   assert.match(
     galaxySource,
     /export function universeOpacity\(distance\) \{\s*return webOpacity\(distance\);/,

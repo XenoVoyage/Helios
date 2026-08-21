@@ -14,7 +14,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.20q",
+  VERSION: "v2026.8.20r",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -93,6 +93,24 @@ export const CONFIG = Object.freeze({
   tapMovePx: 12,
   focusLerp: 6,
 });
+
+/**
+ * Pinch-out (larger gap) moves the camera farther: zoom out.
+ * Pinch-in (smaller gap) moves closer: zoom in. Touch only uses this path.
+ */
+export function pinchZoomDistance(startDistance, startGap, gap) {
+  if (!(startGap > 0) || !(gap > 0)) return startDistance;
+  return startDistance * (gap / startGap);
+}
+
+/**
+ * Mouse wheel keeps Helios' existing feel. Browser / iOS pinch is delivered
+ * as a wheel (often with ctrlKey) and that delta is inverted so pinch-out
+ * zooms out, matching the pointer-pinch path.
+ */
+export function wheelZoomMultiplier(deltaY, invert = false) {
+  return Math.exp((invert ? -deltaY : deltaY) * 0.0016);
+}
 
 /** Honest clock-rate label. Hours below 1 day/sec; days, months, years above. */
 export function formatDaysPerSecond(daysPerSecond) {
