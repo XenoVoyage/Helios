@@ -243,7 +243,7 @@ function boot() {
     } else if (galaxyLook === "growing") {
       const aim = milkyWayCameraAim();
       state.distance = CONFIG.handoffViewDistance
-        + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.68;
+        + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.90;
       state.azimuth = aim.azimuth;
       state.elevation = aim.elevation;
       state.focusedId = "sun";
@@ -312,6 +312,7 @@ function boot() {
   }
   updateBodies();
   placeCamera(1);
+  paintScaleLayer();
   lastStamp = performance.now();
   requestAnimationFrame(tick);
   say("Helios is ready. Drag to orbit, pinch or scroll to zoom, tap a world to focus.");
@@ -938,6 +939,7 @@ function paintScaleLayer() {
     else if (layer === "universe") say("Observable universe. The CMB sphere is the last outside layer.");
     else if (layer === "solar") say("Solar system.");
   }
+  document.documentElement.dataset.heliosReady = "1";
 }
 
 function updateLabels() {

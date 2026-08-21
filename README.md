@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.8.20u](https://img.shields.io/badge/version-v2026.8.20u-66f7ff)](VERSION.txt)
+[![Version v2026.8.20v](https://img.shields.io/badge/version-v2026.8.20v-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D orrery of the solar system.
@@ -19,23 +19,23 @@ An interactive 3D orrery of the solar system.
 
 ![Same tail, with the unlit galaxy-image sky already starting behind the arm.](docs/assets/helios-tail-sky.webp)
 
-![The full Milky Way disk growing out of that tail.](docs/assets/helios-growing.webp)
+![Leaving the tail: the Milky Way disk growing on the galaxy-image sky. No Hipparcos, constellation lines, or Gaia band.](docs/assets/helios-growing.webp)
 
-![Full Milky Way disk after leaving the tail, with the galaxy-image sky up.](docs/assets/helios-disk.webp)
+![Full Milky Way disk with catalog neighbors — not a scatter of random galaxy sprites.](docs/assets/helios-disk.webp)
 
-![Nearby galaxies on the second scale: bright Andromeda, Triangulum, and the Magellanic Clouds on a galaxy-image sky.](docs/assets/helios-neighborhood.webp)
+![Nearby galaxies: Andromeda, Triangulum, and the Magellanic Clouds beside the disk.](docs/assets/helios-neighborhood.webp)
 
 ![Local Group after a further zoom: M31, M33, the Magellanic Clouds, and a short set of other members.](docs/assets/helios-local-group.webp)
 
-![Virgo Cluster with the Local Group nearby and more clusters appearing around them.](docs/assets/helios-virgo.webp)
+![Virgo Cluster with the Local Group nearby. Other clusters have not arrived yet.](docs/assets/helios-virgo.webp)
 
-![After Virgo: a denser field of galaxy images before the cosmic web.](docs/assets/helios-preweb.webp)
+![After Virgo: other clusters and superclusters approach, then become the cosmic web.](docs/assets/helios-preweb.webp)
 
 ![Volume-filling cosmic web: neuron / SDSS filaments through the local volume.](docs/assets/helios-web.webp)
 
 ![Observable universe: the CMB last-scattering sphere seen from outside, with the filled web inside.](docs/assets/helios-universe.webp)
 
-Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch-out zooms out; pinch-in zooms in. Play, pause, and change the speed of time from the bar at the bottom. Close the body card with the X or by tapping empty space. Zoom out past the solar overview and the orrery shrinks to a Sun among the stars. The Hipparcos sky, IAU figures, and Gaia band stay up and grow brighter on the way out, so the first extra-zoom frame is already inside the Milky Way tail. More zoom shows the full disk. A far-galaxy image sky starts in that tail and then stays through the Local Group and Virgo. After Virgo the field grows denser, then a long colored cosmic web, then that sky turns microwave and becomes an observable-universe sphere you can leave and see from outside. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
+Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch-out zooms out; pinch-in zooms in. Play, pause, and change the speed of time from the bar at the bottom. Close the body card with the X or by tapping empty space. Zoom out past the solar overview and the orrery shrinks to a Sun among the stars. The Hipparcos sky, IAU figures, and Gaia band stay up and grow brighter on the way out to the solar cap, so the first extra-zoom frame is already inside the Milky Way tail. The moment the camera leaves that tail, that solar sky and the Constellations control go off. Extra-zoom sky is the galaxy-image field only while the disk is still growing. The full disk, neighborhood, Local Group, and Virgo are the catalog neighbors, not a scatter of junk sprites. After Virgo other clusters approach the same way, then become bright dots that form the volume-filling cosmic web, then the CMB sky and an observable-universe sphere you can leave and see from outside. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
 
 Helios is a local page: no accounts, no telemetry, and no CDN.
 
@@ -44,7 +44,7 @@ Helios is a local page: no accounts, no telemetry, and no CDN.
 | Detail | Summary |
 | --- | --- |
 | Worlds | Sun, 8 planets, the Moon, Phobos, Deimos, Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, and Ceres |
-| Sky | Hipparcos bright stars, IAU constellation lines, a Milky Way band, and Andromeda at M31 inside the solar system. Extra zoom-out brightens that sky through the Milky Way tail and disk, then a far-galaxy image field through nearby galaxies, a short Local Group, and Virgo, then a denser galaxy field, a large colored cosmic web, and a later CMB sphere you can see from outside; that map is not the sky. |
+| Sky | Hipparcos bright stars, IAU constellation lines, a Milky Way band, and Andromeda at M31 inside the solar system. Extra zoom-out brightens that sky through the solar cap and into the Milky Way tail, then turns it off. After the tail the background is a galaxy-image field only while the disk grows; the full disk through Virgo shows catalog neighbors; after Virgo other clusters become the cosmic web, then a CMB sphere you can see from outside; that map is not the solar sky. |
 | Belts | Asteroid field between Mars and Jupiter; Kuiper field from about 30–50 AU. Sparse points, not rock catalogs |
 | Time | Independent of the visual scale. Default and minimum are 1 simulated hour per real second |
 | Play with | Mouse, keyboard, or touch |

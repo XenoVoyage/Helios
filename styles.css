@@ -192,7 +192,8 @@ h2 {
   background: rgba(255, 87, 216, 0.12);
 }
 
-.helper-toggles button[hidden] {
+.helper-toggles button[hidden],
+#sky-button[hidden] {
   display: none;
 }
 

@@ -307,7 +307,11 @@ function createStars(THREE, radius) {
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
   const material = new THREE.ShaderMaterial({
-    uniforms: { starMap: { value: starSprite(THREE) }, brightness: { value: 1 } },
+    uniforms: {
+      starMap: { value: starSprite(THREE) },
+      brightness: { value: 1 },
+      fade: { value: 1 },
+    },
     vertexShader: `
       attribute float size;
       attribute vec3 color;
@@ -322,11 +326,12 @@ function createStars(THREE, radius) {
     `,
     fragmentShader: `
       uniform sampler2D starMap;
+      uniform float fade;
       varying vec3 vColor;
       void main() {
         vec4 tex = texture2D(starMap, gl_PointCoord);
-        if (tex.a < 0.06) discard;
-        gl_FragColor = vec4(vColor, 1.0) * tex;
+        if (tex.a < 0.06 || fade < 0.04) discard;
+        gl_FragColor = vec4(vColor, 1.0) * tex * fade;
       }
     `,
     transparent: true,
@@ -487,6 +492,14 @@ export function setCelestialFade(sky, fade) {
   sky.visible = factor > 0.04;
   const band = sky.getObjectByName("milky-way");
   if (band?.material?.uniforms?.fade) band.material.uniforms.fade.value = factor;
+  const stars = sky.getObjectByName("stars");
+  if (stars?.material?.uniforms?.fade) stars.material.uniforms.fade.value = factor;
+  if (factor <= 0.04) {
+    const lines = sky.getObjectByName("constellation-lines");
+    const labels = sky.getObjectByName("constellation-labels");
+    if (lines) lines.visible = false;
+    if (labels) labels.visible = false;
+  }
   sky.traverse((child) => {
     if (child.name === "milky-way") return;
     const mat = child.material;

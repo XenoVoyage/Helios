@@ -1,9 +1,9 @@
 /**
- * Extra-zoom map: a luminous 3D Milky Way, nearby galaxies against a
- * far-galaxy image sky that stays up through Virgo and the filled web, a
- * short Local Group, Virgo, then a denser galaxy field before a colored
- * cosmic web that stays volume-filling from inside, and a CMB /
- * observable-universe sphere you leave and can see from outside. The web
+ * Extra-zoom map: a luminous 3D Milky Way, then catalog neighbors
+ * (Andromeda, Local Group, Virgo). A far-galaxy image sky is only the
+ * extra-zoom background in the tail and while the disk is growing. After
+ * Virgo, other clusters approach, then become the volume-filling cosmic
+ * web already here, then the CMB / observable-universe sphere. The web
  * look is that filled volume. The last universe look is the outside
  * sphere. They do not mix.
  *
@@ -212,12 +212,13 @@ export function skyBandBrightness(distance) {
       / (CONFIG.solarMaxDistance - CONFIG.cameraDistance);
     return solar + (cap - solar) * smoothstep01(t);
   }
-  if (distance <= CONFIG.mwViewDistance) return cap;
-  return cap * celestialSkyOpacity(distance);
+  if (distance < CONFIG.handoffViewDistance) return cap;
+  return 0;
 }
 
 /** Hipparcos size/gain. 1 in solar so the in-system sky is unchanged. */
 export function skyStarBrightness(distance) {
+  if (distance >= CONFIG.handoffViewDistance) return 0;
   return skyBandBrightness(distance) / 0.82;
 }
 
@@ -260,11 +261,11 @@ function smoothstep01(t) {
 }
 
 export function neighborOpacity(distance) {
-  if (distance < CONFIG.mwViewDistance) return 0;
-  const ready = CONFIG.mwViewDistance
-    + (CONFIG.neighborhoodViewDistance - CONFIG.mwViewDistance) * 0.55;
-  if (distance >= ready) return 1;
-  return smoothstep01((distance - CONFIG.mwViewDistance) / (ready - CONFIG.mwViewDistance));
+  const start = CONFIG.handoffViewDistance
+    + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.88;
+  if (distance < start) return 0;
+  if (distance >= CONFIG.mwViewDistance) return 1;
+  return smoothstep01((distance - start) / (CONFIG.mwViewDistance - start));
 }
 
 export function localGroupMemberOpacity(distance) {
@@ -310,19 +311,19 @@ export function universeOpacity(distance) {
 }
 
 /**
- * Galaxy-image sky starts in the tail while the disk is still growing,
- * then stays through Local Group and Virgo. CMB replaces it last.
+ * Galaxy-image sky is the extra-zoom background in the tail and while
+ * the disk is growing. Off on the full-disk frame so Andromeda / Local
+ * Group / Virgo are catalog neighbors, not a scatter of junk sprites.
  */
 export function farGalaxySkyOpacity(distance) {
   if (distance < CONFIG.handoffViewDistance) return 0;
-  const fadeStart = CONFIG.webViewDistance
-    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.72;
-  const growing = 1;
-  if (distance <= fadeStart) return growing;
-  if (distance >= CONFIG.universeViewDistance) return 0;
-  return growing * (1 - smoothstep01(
-    (distance - fadeStart) / (CONFIG.universeViewDistance - fadeStart),
-  ));
+  const growEnd = CONFIG.handoffViewDistance
+    + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.90;
+  if (distance <= growEnd) return 1;
+  if (distance >= CONFIG.mwViewDistance) return 0;
+  return 1 - smoothstep01(
+    (distance - growEnd) / (CONFIG.mwViewDistance - growEnd),
+  );
 }
 
 /** Microwave sky waits until after a long web, then becomes the outer shell. */
@@ -337,14 +338,13 @@ export function cmbSkyOpacity(distance) {
 }
 
 export function nearClusterOpacity(distance) {
-  if (distance < CONFIG.localGroupViewDistance) return 0;
-  if (distance >= CONFIG.virgoViewDistance) {
-    return 1 - webOpacity(distance);
+  if (distance < CONFIG.virgoViewDistance) return 0;
+  const span = CONFIG.webViewDistance - CONFIG.virgoViewDistance;
+  const ready = CONFIG.virgoViewDistance + span * 0.42;
+  if (distance < ready) {
+    return smoothstep01((distance - CONFIG.virgoViewDistance) / (ready - CONFIG.virgoViewDistance));
   }
-  return smoothstep01(
-    (distance - CONFIG.localGroupViewDistance)
-    / (CONFIG.virgoViewDistance - CONFIG.localGroupViewDistance),
-  );
+  return 1 - webOpacity(distance);
 }
 
 export function requestedGalaxyLook() {
