@@ -1721,66 +1721,37 @@ export function farGalaxySkyRadius() {
   return CONFIG.cameraFar * 0.42;
 }
 
-function farGalaxySkyMap(THREE) {
-  const width = 2048;
-  const height = 1024;
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  const rand = seedRandom(4608);
-  const stamp = (x, y, radius, color) => {
-    for (const ox of [0, -width, width]) stampSoft(ctx, x + ox, y, radius, color);
-  };
-  for (let i = 0; i < 9000; i += 1) {
-    const theta = rand() * Math.PI * 2;
-    const phi = Math.acos(2 * rand() - 1);
-    const x = (theta / (Math.PI * 2)) * width;
-    const y = (phi / Math.PI) * height;
-    const warm = rand();
-    stamp(
-      x,
-      y,
-      0.9 + rand() * 2.4,
-      `rgba(${Math.floor(170 + 80 * warm)}, ${Math.floor(180 + 50 * warm)}, ${Math.floor(220 - 30 * warm)}, ${0.35 + rand() * 0.5})`,
-    );
-  }
-  for (let i = 0; i < 720; i += 1) {
-    const theta = rand() * Math.PI * 2;
-    const phi = Math.acos(2 * rand() - 1);
-    const x = (theta / (Math.PI * 2)) * width;
-    const y = (phi / Math.PI) * height;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(rand() * Math.PI);
-    ctx.scale(1, 0.28 + rand() * 0.34);
-    stampSoft(ctx, 0, 0, 5 + rand() * 9, "rgba(230, 210, 175, 0.55)");
-    ctx.restore();
-  }
-  const map = new THREE.CanvasTexture(canvas);
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.wrapS = THREE.RepeatWrapping;
-  map.anisotropy = 4;
-  return map;
-}
-
-function createFarGalaxySky(THREE, group) {
+function createFarGalaxySky(THREE, group, maps) {
   const sky = new THREE.Group();
   sky.name = "far-galaxy-sky";
-  const radius = farGalaxySkyRadius();
-  const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(radius, 64, 48),
-    unlitBasic(THREE, {
-      map: farGalaxySkyMap(THREE),
-      opacity: 0.92,
-      side: THREE.BackSide,
+  const radius = farGalaxySkyRadius() * 0.045;
+  const rand = seedRandom(4608);
+  const kinds = ["spiral", "elliptical", "spiral", "irregular"];
+  const count = 460;
+  for (let i = 0; i < count; i += 1) {
+    const kind = kinds[Math.floor(rand() * kinds.length)];
+    const sprite = new THREE.Sprite(unlitSprite(THREE, {
+      map: maps[kind],
+      color: kind === "elliptical" ? 0xffe6c4 : 0xf2f6ff,
+      opacity: 0.9,
+      rotation: rand() * Math.PI,
+      blending: THREE.AdditiveBlending,
       depthTest: false,
       fog: false,
-    }),
-  );
-  sphere.name = "far-galaxy-shell";
-  sphere.frustumCulled = false;
-  sky.add(sphere);
+    }));
+    const theta = rand() * Math.PI * 2;
+    const phi = Math.acos(2 * rand() - 1);
+    const r = radius * (0.7 + 0.3 * rand());
+    sprite.position.set(
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.cos(phi),
+      r * Math.sin(phi) * Math.sin(theta),
+    );
+    const size = 18000 + rand() * 42000;
+    sprite.scale.set(size, size * (kind === "elliptical" ? 0.78 : 0.48), 1);
+    sprite.frustumCulled = false;
+    sky.add(sprite);
+  }
   sky.renderOrder = -80;
   group.add(sky);
 }
@@ -1832,7 +1803,7 @@ export function createGalaxyLayer(THREE) {
     irregular: galaxySprite(THREE, "irregular", 3),
     lmc: galaxySprite(THREE, "lmc", 4),
   };
-  createFarGalaxySky(THREE, group);
+  createFarGalaxySky(THREE, group, maps);
   const milkyway = new THREE.Group();
   milkyway.name = "milkyway";
   createDiskGlow(THREE, milkyway);
