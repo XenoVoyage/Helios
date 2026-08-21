@@ -35,6 +35,7 @@ import {
   extraZoomCameraNear,
   extraZoomTailMix,
   milkyWayBelowCameraAim,
+  milkyWayCameraAim,
   milkyWayEdgeCameraAim,
   milkyWayInteriorCameraAim,
   milkyWayTailLookAt,
@@ -227,7 +228,18 @@ function boot() {
     paintCard();
   } else {
     const galaxyLook = requestedGalaxyLook();
-    if (galaxyLook === "milkyway" || galaxyLook === "handoff" || galaxyLook === "mwinterior") {
+    if (galaxyLook === "solarfar") {
+      state.distance = CONFIG.solarMaxDistance;
+      state.azimuth = CONFIG.cameraAzimuth;
+      state.elevation = CONFIG.cameraElevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "disk") {
+      const aim = milkyWayCameraAim();
+      state.distance = CONFIG.mwViewDistance;
+      state.azimuth = aim.azimuth;
+      state.elevation = aim.elevation;
+      state.focusedId = "sun";
+    } else if (galaxyLook === "milkyway" || galaxyLook === "handoff" || galaxyLook === "mwinterior") {
       const aim = milkyWayInteriorCameraAim();
       state.distance = CONFIG.handoffViewDistance;
       state.azimuth = aim.azimuth;

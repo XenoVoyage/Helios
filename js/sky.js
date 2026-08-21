@@ -316,7 +316,7 @@ function createStars(THREE, radius) {
       void main() {
         vColor = color * brightness;
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = size * (0.82 + 0.18 * brightness);
+        gl_PointSize = size * brightness;
         gl_Position = projectionMatrix * mv;
       }
     `,

@@ -205,7 +205,7 @@ export function celestialSkyOpacity(distance) {
 /** Default solar look is 0.82. Zoom-out toward the cap, then extra-zoom, brightens. */
 export function skyBandBrightness(distance) {
   const solar = 0.82;
-  const cap = 1.48;
+  const cap = 2.05;
   const handoff = 2.2;
   const disk = 2.6;
   if (distance <= CONFIG.cameraDistance) return solar;
@@ -368,7 +368,9 @@ export function requestedGalaxyLook() {
   const look = new URLSearchParams(location.search).get("look");
   if (look === "cmb") return "universe";
   if (
-    look === "milkyway"
+    look === "solarfar"
+    || look === "disk"
+    || look === "milkyway"
     || look === "mwedge"
     || look === "mwbelow"
     || look === "handoff"
