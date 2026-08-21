@@ -237,8 +237,8 @@ export function farGalaxySkyOpacity(distance) {
   const fadeStart = CONFIG.webViewDistance
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.72;
   if (distance <= fadeStart) return 1;
-  if (distance >= CONFIG.universeViewDistance) return 0.06;
-  return 1 - 0.94 * smoothstep01(
+  if (distance >= CONFIG.universeViewDistance) return 0.38;
+  return 1 - 0.62 * smoothstep01(
     (distance - fadeStart) / (CONFIG.universeViewDistance - fadeStart),
   );
 }
@@ -1402,7 +1402,7 @@ function createCmbShell(THREE, group) {
     new THREE.SphereGeometry(radius, 96, 64),
     unlitBasic(THREE, {
       map: loadMap(THREE, CMB_SHELL.map),
-      opacity: 0.58,
+      opacity: 0.26,
       side: THREE.BackSide,
     }),
   );
