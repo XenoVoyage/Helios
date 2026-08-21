@@ -319,23 +319,23 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.mwViewDistance),
-    0,
-    "full-disk frame is catalog neighbors, not junk galaxy sprites",
+    1,
+    "distant galaxy-image sky stays up on the full-disk frame",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.neighborhoodViewDistance),
-    0,
-    "neighborhood is catalog neighbors, not a far-galaxy scatter",
+    1,
+    "distant galaxy-image sky stays up through the neighborhood",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.virgoViewDistance),
-    0,
-    "Virgo is the cluster, not a far-galaxy scatter",
+    1,
+    "distant galaxy-image sky stays up at Virgo",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.localGroupViewDistance),
-    0,
-    "Local Group is catalog members, not a far-galaxy scatter",
+    1,
+    "distant galaxy-image sky stays up at Local Group",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.webViewDistance),
@@ -418,7 +418,7 @@ test("solar skybox stays through the tail and the camera sits in the arm", () =>
   assert.equal(sunPinOpacity(CONFIG.handoffViewDistance), 0);
   assert.equal(sunPinOpacity(CONFIG.mwViewDistance), 1);
   assert.equal(farGalaxySkyOpacity(CONFIG.handoffViewDistance), 1);
-  assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 0);
+  assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 1);
   assert.equal(skyBandBrightness(CONFIG.cameraDistance), 0.82);
   assert.ok(
     skyBandBrightness(CONFIG.solarMaxDistance) > skyBandBrightness(CONFIG.cameraDistance),
@@ -613,6 +613,8 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.doesNotMatch(galaxySource, /if \(pole < 0\.28\) continue/);
   assert.match(galaxySource, /cameraFar \* 0\.42/);
   assert.doesNotMatch(galaxySource, /function farGalaxySkyMap/);
+  assert.doesNotMatch(galaxySource, /farGalaxySkyRadius\(\) \* 0\.045/);
+  assert.doesNotMatch(galaxySource, /t: 0\.16/);
   assert.match(galaxySource, /createFarGalaxySky\(THREE, group, maps\)/);
   assert.doesNotMatch(galaxySource, /far-galaxy-shell/);
   assert.doesNotMatch(galaxySource, /fillSpherePoints/);

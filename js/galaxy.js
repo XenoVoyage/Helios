@@ -1,11 +1,11 @@
 /**
  * Extra-zoom map: a luminous 3D Milky Way, then catalog neighbors
- * (Andromeda, Local Group, Virgo). A far-galaxy image sky is only the
- * extra-zoom background in the tail and while the disk is growing. After
- * Virgo, other clusters approach, then become the volume-filling cosmic
- * web already here, then the CMB / observable-universe sphere. The web
- * look is that filled volume. The last universe look is the outside
- * sphere. They do not mix.
+ * (Andromeda, Local Group, Virgo) against a distant galaxy-image sky.
+ * That sky starts in the tail and stays through Virgo. After Virgo,
+ * other clusters approach at cluster distances, then become the
+ * volume-filling cosmic web already here, then the CMB /
+ * observable-universe sphere. The web look is that filled volume. The
+ * last universe look is the outside sphere. They do not mix.
  *
  * Catalog kpc / Mpc / Gpc stay in js/galaxy-catalog.js. Visual compression
  * lives here and in CONFIG. This map is a different representation from
@@ -311,19 +311,13 @@ export function universeOpacity(distance) {
 }
 
 /**
- * Galaxy-image sky is the extra-zoom background in the tail and while
- * the disk is growing. Off on the full-disk frame so Andromeda / Local
- * Group / Virgo are catalog neighbors, not a scatter of junk sprites.
+ * Distant galaxy-image sky starts in the tail and stays through Virgo.
+ * It is a far field, not nearby junk. The existing web replaces it.
  */
 export function farGalaxySkyOpacity(distance) {
   if (distance < CONFIG.handoffViewDistance) return 0;
-  const growEnd = CONFIG.handoffViewDistance
-    + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.90;
-  if (distance <= growEnd) return 1;
-  if (distance >= CONFIG.mwViewDistance) return 0;
-  return 1 - smoothstep01(
-    (distance - growEnd) / (CONFIG.mwViewDistance - growEnd),
-  );
+  if (webOpacity(distance) > 0.04) return 0;
+  return 1;
 }
 
 /** Microwave sky waits until after a long web, then becomes the outer shell. */
@@ -1354,63 +1348,67 @@ function createLocalGroupFamily(THREE, group, maps) {
   group.add(family);
 }
 
+function clusterHubAt(virgoLen, distanceScale, lon, lat) {
+  const cosL = Math.cos(lat);
+  return {
+    x: virgoLen * distanceScale * cosL * Math.cos(lon),
+    y: virgoLen * distanceScale * Math.sin(lat),
+    z: virgoLen * distanceScale * cosL * Math.sin(lon),
+  };
+}
+
+function addClusterHub(THREE, field, maps, hub, mark, rand, members) {
+  const kinds = ["elliptical", "spiral", "spiral", "irregular"];
+  const spread = mark * (0.28 + rand() * 0.14);
+  for (let i = 0; i < members; i += 1) {
+    const kind = kinds[Math.floor(rand() * kinds.length)];
+    const size = 360 + rand() * 620;
+    const sprite = new THREE.Sprite(unlitSprite(THREE, {
+      map: maps[kind],
+      color: kind === "elliptical" ? 0xffe6c4 : 0xe8f0ff,
+      opacity: 0.86,
+      rotation: rand() * Math.PI,
+    }));
+    sprite.position.set(
+      hub.x + (rand() - 0.5) * spread,
+      hub.y + (rand() - 0.5) * spread * 0.55,
+      hub.z + (rand() - 0.5) * spread,
+    );
+    sprite.scale.set(size, size * (kind === "elliptical" ? 0.78 : 0.48), 1);
+    sprite.frustumCulled = false;
+    field.add(sprite);
+  }
+}
+
+/** Other clusters sit at Virgo-like distances, not on the MW / Local Group. */
 function createNearClusters(THREE, group, maps) {
   const field = new THREE.Group();
   field.name = "near-clusters";
   const virgo = virgoScenePosition();
+  const virgoLen = Math.hypot(virgo.x, virgo.y, virgo.z);
   const mark = visualVirgo(CONFIG.virgoMarkRadiusMpc * 1000);
   const rand = seedRandom(16501);
-  const hubs = [{ x: 0, y: 0, z: 0, home: true }, { ...virgo, home: false }];
-  const extras = [
-    { t: 0.16, ox: 0.04, oy: -0.03, oz: 0.05 },
-    { t: 0.24, ox: -0.06, oy: 0.05, oz: -0.04 },
-    { t: 0.32, ox: 0.07, oy: 0.04, oz: 0.06 },
-    { t: 0.4, ox: -0.05, oy: -0.06, oz: 0.03 },
-    { t: 0.48, ox: 0.08, oy: 0.03, oz: -0.07 },
-    { t: 0.56, ox: -0.07, oy: 0.06, oz: 0.04 },
-    { t: 0.64, ox: 0.05, oy: -0.05, oz: -0.05 },
-    { t: 0.72, ox: -0.08, oy: 0.04, oz: 0.06 },
-    { t: 0.8, ox: 0.06, oy: -0.04, oz: -0.04 },
-    { t: 0.88, ox: -0.04, oy: 0.05, oz: 0.03 },
-    { t: 0.36, ox: 0.16, oy: -0.08, oz: 0.12 },
-    { t: 0.52, ox: -0.15, oy: 0.1, oz: -0.11 },
-    { t: 0.68, ox: 0.14, oy: 0.09, oz: 0.1 },
-    { t: 1.08, ox: 0.1, oy: 0.06, oz: -0.12 },
+  const hubs = [
+    { t: 1.22, lon: 0.62, lat: 0.42 },
+    { t: 1.38, lon: 2.35, lat: -0.28 },
+    { t: 1.55, lon: 3.9, lat: 0.55 },
+    { t: 1.72, lon: 5.15, lat: -0.4 },
+    { t: 1.9, lon: 1.15, lat: -0.72 },
+    { t: 2.08, lon: 4.55, lat: 0.18 },
+    { t: 2.25, lon: 0.28, lat: -0.15 },
+    { t: 2.42, lon: 2.95, lat: 0.78 },
   ];
-  for (const extra of extras) {
-    hubs.push({
-      x: virgo.x * extra.t + extra.ox * mark * 0.7,
-      y: virgo.y * extra.t + extra.oy * mark * 0.7,
-      z: virgo.z * extra.t + extra.oz * mark * 0.7,
-      home: false,
-    });
+  for (const item of hubs) {
+    addClusterHub(
+      THREE,
+      field,
+      maps,
+      clusterHubAt(virgoLen, item.t, item.lon, item.lat),
+      mark,
+      rand,
+      16 + Math.floor(rand() * 12),
+    );
   }
-
-  const kinds = ["elliptical", "spiral", "spiral", "irregular"];
-  for (let h = 2; h < hubs.length; h += 1) {
-    const hub = hubs[h];
-    const members = 18 + Math.floor(rand() * 16);
-    const spread = mark * (0.1 + rand() * 0.08);
-    for (let i = 0; i < members; i += 1) {
-      const kind = kinds[Math.floor(rand() * kinds.length)];
-      const size = 560 + rand() * 820;
-      const sprite = new THREE.Sprite(unlitSprite(THREE, {
-        map: maps[kind],
-        color: kind === "elliptical" ? 0xffe6c4 : 0xe8f0ff,
-        opacity: 0.86,
-        rotation: rand() * Math.PI,
-      }));
-      sprite.position.set(
-        hub.x + (rand() - 0.5) * spread,
-        hub.y + (rand() - 0.5) * spread * 0.55,
-        hub.z + (rand() - 0.5) * spread,
-      );
-      sprite.scale.set(size, size * (kind === "elliptical" ? 0.78 : 0.48), 1);
-      sprite.frustumCulled = false;
-      field.add(sprite);
-    }
-  }
-
   group.add(field);
 }
 
@@ -1720,16 +1718,16 @@ export function farGalaxySkyRadius() {
 function createFarGalaxySky(THREE, group, maps) {
   const sky = new THREE.Group();
   sky.name = "far-galaxy-sky";
-  const radius = farGalaxySkyRadius() * 0.045;
+  const radius = farGalaxySkyRadius();
   const rand = seedRandom(4608);
   const kinds = ["spiral", "elliptical", "spiral", "irregular"];
-  const count = 300;
+  const count = 520;
   for (let i = 0; i < count; i += 1) {
     const kind = kinds[Math.floor(rand() * kinds.length)];
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map: maps[kind],
       color: kind === "elliptical" ? 0xffe6c4 : 0xf2f6ff,
-      opacity: 0.9,
+      opacity: 0.78,
       rotation: rand() * Math.PI,
       blending: THREE.AdditiveBlending,
       depthTest: false,
@@ -1737,13 +1735,13 @@ function createFarGalaxySky(THREE, group, maps) {
     }));
     const theta = rand() * Math.PI * 2;
     const phi = Math.acos(2 * rand() - 1);
-    const r = radius * (0.7 + 0.3 * rand());
+    const r = radius * (0.88 + 0.12 * rand());
     sprite.position.set(
       r * Math.sin(phi) * Math.cos(theta),
       r * Math.cos(phi),
       r * Math.sin(phi) * Math.sin(theta),
     );
-    const size = 11000 + rand() * 24000;
+    const size = 48000 + rand() * 90000;
     sprite.scale.set(size, size * (kind === "elliptical" ? 0.78 : 0.48), 1);
     sprite.frustumCulled = false;
     sky.add(sprite);
@@ -1752,34 +1750,36 @@ function createFarGalaxySky(THREE, group, maps) {
   group.add(sky);
 }
 
+/** Farther clusters after Virgo. Not a packed ball at the origin. */
 function createDeepField(THREE, group, maps) {
   const field = new THREE.Group();
   field.name = "deep-field";
-  const radius = visualWeb(CONFIG.webRadiusMpc) * 0.32;
+  const virgo = virgoScenePosition();
+  const virgoLen = Math.hypot(virgo.x, virgo.y, virgo.z);
+  const mark = visualVirgo(CONFIG.virgoMarkRadiusMpc * 1000);
   const rand = seedRandom(7711);
-  const kinds = ["spiral", "elliptical", "spiral", "irregular"];
-  const count = 820;
-  for (let i = 0; i < count; i += 1) {
-    const kind = kinds[Math.floor(rand() * kinds.length)];
-    const r = radius * (0.12 + 0.88 * (rand() ** 0.62));
-    const theta = rand() * Math.PI * 2;
-    const phi = Math.acos(2 * rand() - 1);
-    const sprite = new THREE.Sprite(unlitSprite(THREE, {
-      map: maps[kind],
-      color: kind === "elliptical" ? 0xffe6c4 : 0xf2f6ff,
-      opacity: 0.92,
-      rotation: rand() * Math.PI,
-      blending: THREE.AdditiveBlending,
-    }));
-    sprite.position.set(
-      r * Math.sin(phi) * Math.cos(theta),
-      r * Math.cos(phi) * 0.86,
-      r * Math.sin(phi) * Math.sin(theta),
+  const hubs = [
+    { t: 2.7, lon: 0.85, lat: 0.22 },
+    { t: 3.0, lon: 2.15, lat: -0.58 },
+    { t: 3.25, lon: 3.55, lat: 0.48 },
+    { t: 3.5, lon: 5.05, lat: -0.2 },
+    { t: 3.75, lon: 1.45, lat: 0.7 },
+    { t: 4.0, lon: 4.2, lat: -0.65 },
+    { t: 4.3, lon: 0.15, lat: 0.05 },
+    { t: 4.55, lon: 2.75, lat: 0.38 },
+    { t: 4.8, lon: 3.95, lat: -0.78 },
+    { t: 5.1, lon: 5.4, lat: 0.32 },
+  ];
+  for (const item of hubs) {
+    addClusterHub(
+      THREE,
+      field,
+      maps,
+      clusterHubAt(virgoLen, item.t, item.lon, item.lat),
+      mark * 1.15,
+      rand,
+      14 + Math.floor(rand() * 10),
     );
-    const size = 5200 + rand() * 14000;
-    sprite.scale.set(size, size * (kind === "elliptical" ? 0.78 : 0.46), 1);
-    sprite.frustumCulled = false;
-    field.add(sprite);
   }
   group.add(field);
 }
