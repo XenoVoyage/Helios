@@ -1727,7 +1727,7 @@ function createFarGalaxySky(THREE, group, maps) {
   const radius = farGalaxySkyRadius() * 0.045;
   const rand = seedRandom(4608);
   const kinds = ["spiral", "elliptical", "spiral", "irregular"];
-  const count = 460;
+  const count = 300;
   for (let i = 0; i < count; i += 1) {
     const kind = kinds[Math.floor(rand() * kinds.length)];
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
@@ -1747,7 +1747,7 @@ function createFarGalaxySky(THREE, group, maps) {
       r * Math.cos(phi),
       r * Math.sin(phi) * Math.sin(theta),
     );
-    const size = 18000 + rand() * 42000;
+    const size = 11000 + rand() * 24000;
     sprite.scale.set(size, size * (kind === "elliptical" ? 0.78 : 0.48), 1);
     sprite.frustumCulled = false;
     sky.add(sprite);
