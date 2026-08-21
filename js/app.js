@@ -183,9 +183,10 @@ function boot() {
   scene.add(orbitLines);
   helpers = createFocusHelpers(THREE);
   scene.add(helpers.group);
-  // Faint fill so the night side is readable. Day, night, and terminator
-  // come from the Sun point light, not from this ambient.
-  scene.add(new THREE.AmbientLight(0x1a2436, 0.025));
+  // Faint fill so night sides stay readable instead of vanishing black on
+  // black (Earth's Moon and the Mars moons in sunward seats). Day, night,
+  // and the terminator still come from the Sun point light.
+  scene.add(new THREE.AmbientLight(0x24334a, 0.21));
   const sunLight = new THREE.PointLight(0xfff1d4, 14, 0, 0);
   sunLight.position.set(0, 0, 0);
   scene.add(sunLight);

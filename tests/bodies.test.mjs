@@ -221,6 +221,18 @@ test("sibling moon visual orbits keep a readable gap and do not clip", () => {
   const phobosOrbit = visualMoonDistance(phobos, mars);
   const deimosOrbit = visualMoonDistance(deimos, mars);
   assert.ok(phobosOrbit < deimosOrbit);
+  // Regression (vanishing Mars moons): the raw size curve maps Phobos /
+  // Deimos to a sub-pixel globe; the display floor keeps them a visible
+  // dot while the published radiusKm stays 1:1 in the catalog.
+  assert.ok(visualRadius(phobos.radiusKm) < CONFIG.moonMinRadius);
+  assert.ok(visualRadius(deimos.radiusKm) < CONFIG.moonMinRadius);
+  assert.equal(visualBodyRadius(phobos), CONFIG.moonMinRadius);
+  assert.equal(visualBodyRadius(deimos), CONFIG.moonMinRadius);
+  assert.ok(
+    visualBodyRadius(findBody("moon")) > CONFIG.moonMinRadius,
+    "Earth's Moon stays on the shared size curve, above the floor",
+  );
+  assert.ok(visualBodyRadius(phobos) < visualBodyRadius(findBody("moon")));
   assert.ok(visualRadius(phobos.radiusKm) < visualRadius(mars.radiusKm) * 0.12);
   assert.ok(visualRadius(deimos.radiusKm) < visualRadius(mars.radiusKm) * 0.1);
   for (const id of ["io", "europa", "ganymede", "callisto"]) {

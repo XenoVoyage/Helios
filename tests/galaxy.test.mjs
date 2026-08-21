@@ -37,7 +37,10 @@ import {
   heliocentricGalactic,
   localGroupCameraAim,
   localGroupMemberOpacity,
+  magellanicOpacity,
   milkyWayBelowCameraAim,
+  milkyWayNameOpacity,
+  sunBadgeOpacity,
   milkyWayInteriorCameraAim,
   lookAngleTo,
   milkyWayDiskDiameter,
@@ -292,6 +295,26 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     0,
     "catalog neighbors wait until the disk is leaving the tail",
   );
+  // Regression (LMC / SMC pop-in): the Magellanic Clouds ride with the
+  // disk from the first trail frame; only their labels wait for the
+  // neighbor-label fade.
+  assert.equal(magellanicOpacity(blendStart - 1), 0);
+  assert.ok(magellanicOpacity(midBlend) > 0 || galaxyOpacity(midBlend) > 0);
+  assert.equal(
+    magellanicOpacity(CONFIG.handoffViewDistance),
+    1,
+    "LMC / SMC already exist while the camera is on the MW trail",
+  );
+  assert.equal(magellanicOpacity(CONFIG.mwViewDistance), 1);
+  assert.equal(magellanicOpacity(CONFIG.neighborhoodViewDistance), 1);
+  // Trail badge: Sun badge rides the trail, then yields to the Milky Way
+  // name, which appears the same way the other named objects do.
+  assert.equal(sunBadgeOpacity(blendStart - 1), 0);
+  assert.equal(sunBadgeOpacity(CONFIG.handoffViewDistance), 1, "Sun badge is up on the trail");
+  assert.equal(sunBadgeOpacity(CONFIG.mwViewDistance), 0, "Sun badge yields at the full disk");
+  assert.equal(milkyWayNameOpacity(CONFIG.handoffViewDistance), 0);
+  assert.equal(milkyWayNameOpacity(CONFIG.mwViewDistance), 1);
+  assert.equal(milkyWayNameOpacity(CONFIG.mwViewDistance), neighborOpacity(CONFIG.mwViewDistance));
   assert.equal(localGroupMemberOpacity(CONFIG.neighborhoodViewDistance), 0);
   assert.equal(localGroupMemberOpacity(CONFIG.localGroupViewDistance), 1);
   assert.equal(virgoOpacity(CONFIG.localGroupViewDistance), 0);
@@ -473,11 +496,41 @@ test("solar skybox stays at constant brightness and crossfades into the MW", () 
   assert.ok(interior.elevation < 0.12, "first extra-zoom look stays in the disk tail");
   assert.ok(interior.elevation > 0, "interior look is not from under the plane");
   assert.equal(extraZoomCameraDistance(CONFIG.cameraDistance), CONFIG.cameraDistance);
-  assert.equal(
-    extraZoomCameraDistance(blendStart - 1),
-    CONFIG.solarMaxDistance,
-    "transition stays on the solar-cap field until the crossfade",
+  // Regression (zoom invert / bounce): the camera dive down to the arm
+  // seat finishes before the crossfade begins, while the MW is still off
+  // and only the camera-attached sky and the Sun pin are visible.
+  assert.ok(
+    Math.abs(extraZoomCameraDistance(blendStart) - CONFIG.mwTailNearDistance) < 1e-6,
+    "camera is already parked in the arm when the crossfade starts",
   );
+  for (let d = CONFIG.solarMaxDistance + 1; d < blendStart; d += 7) {
+    assert.equal(galaxyOpacity(d), 0, `MW stays off during the dive at ${d}`);
+  }
+  // Regression (zoom invert): while anything world-anchored is visible
+  // (crossfade onward), camera radius must never decrease as the slider
+  // zooms out.
+  let previousRadius = extraZoomCameraDistance(blendStart);
+  for (let d = blendStart; d <= CONFIG.maxDistance; d += 199) {
+    const radius = extraZoomCameraDistance(d);
+    assert.ok(
+      radius >= previousRadius - 1e-9,
+      `camera radius keeps going out past the crossfade (${d})`,
+    );
+    previousRadius = radius;
+  }
+  // Regression (zoom invert): during the dive the Sun pin's apparent size
+  // (scale over camera radius) must never grow, so nothing reads as
+  // approaching while the user zooms out.
+  let previousApparent = orreryScale(CONFIG.solarMaxDistance)
+    / extraZoomCameraDistance(CONFIG.solarMaxDistance);
+  for (let d = CONFIG.solarMaxDistance + 1; d <= CONFIG.handoffViewDistance; d += 3) {
+    const apparent = orreryScale(d) / extraZoomCameraDistance(d);
+    assert.ok(
+      apparent <= previousApparent + 1e-12,
+      `Sun pin apparent size never grows through the handoff (${d})`,
+    );
+    previousApparent = apparent;
+  }
   assert.equal(extraZoomCameraDistance(CONFIG.handoffViewDistance), CONFIG.mwTailNearDistance);
   assert.ok(
     Math.abs(extraZoomCameraDistance(CONFIG.handoffViewDistance - 1) - CONFIG.mwTailNearDistance) < 1,

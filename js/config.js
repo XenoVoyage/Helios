@@ -14,7 +14,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.21b",
+  VERSION: "v2026.8.21c",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -31,6 +31,10 @@ export const CONFIG = Object.freeze({
   moonRingGap: 0.25,
   // 1 = no extra moon shrink; Phobos/Deimos stay tiny from sizePower alone.
   moonSizeScale: 1,
+  // Visual floor so Phobos / Deimos never fall below a visible dot. The
+  // published radiusKm stays 1:1 in the catalog; only the display size
+  // is floored, like every other visual-scale knob.
+  moonMinRadius: 0.05,
   defaultDaysPerSecond: 1 / 24,
   minDaysPerSecond: 1 / 24,
   maxDaysPerSecond: 400,
@@ -89,6 +93,10 @@ export const CONFIG = Object.freeze({
   // Fifth compressed scale for the observable universe. Input is catalog Gpc.
   universeScale: 200000,
   universePower: 0.48,
+  // Faint seeded backdrop stars so the solar sky reads as a full universe.
+  // Hipparcos / IAU stay the catalog sky; these are dim dressing only and
+  // never brighten with zoom.
+  skyFaintStarCount: 9200,
   // Celestial sphere sits around the camera; far plane must clear the universe layer.
   skyRadius: 2000,
   cameraFar: 7000000,

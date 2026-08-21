@@ -234,17 +234,23 @@ export function skyStarBrightness(distance) {
 /**
  * Extra-zoom only. In solar the orrery stays 1:1 with visualScale.
  * Past the solar cap it shrinks to a Sun pin before the MW disk dominates.
+ * The shrink shares extraZoomCameraDistance's curve and finishes with it at
+ * the crossfade start, and the pin stays at or under mwTailNearDistance /
+ * solarMaxDistance, so the Sun dot's apparent size never grows while the
+ * camera glides down to the arm: zoom-out always reads as zoom-out.
  */
 export function orreryScale(distance) {
   if (distance <= CONFIG.solarMaxDistance) return 1;
-  const pin = 0.045;
+  const pin = 0.018;
+  const start = handoffBlendStart();
   if (distance >= CONFIG.handoffViewDistance) {
     const t = (distance - CONFIG.handoffViewDistance)
       / Math.max(1, CONFIG.galaxyFadeEnd - CONFIG.handoffViewDistance);
     return Math.max(0.01, pin * (1 - smoothstep01(t)));
   }
+  if (distance >= start) return pin;
   const t = (distance - CONFIG.solarMaxDistance)
-    / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance);
+    / (start - CONFIG.solarMaxDistance);
   return 1 - (1 - pin) * smoothstep01(t ** 0.75);
 }
 
@@ -275,6 +281,29 @@ export function neighborOpacity(distance) {
   if (distance < start) return 0;
   if (distance >= CONFIG.mwViewDistance) return 1;
   return smoothstep01((distance - start) / (CONFIG.mwViewDistance - start));
+}
+
+/**
+ * LMC / SMC are real companions of the disk: they ride with the MW from
+ * the first trail frame instead of popping in at the neighborhood fade.
+ * Their labels keep the neighbor-label timing.
+ */
+export function magellanicOpacity(distance) {
+  return milkyWayDiskOpacity(distance);
+}
+
+/**
+ * Small screen-fixed Sun badge on the MW trail. It rides the same
+ * crossfade as the disk and yields once the Milky Way name and the
+ * neighbor labels take over at the full-disk view.
+ */
+export function sunBadgeOpacity(distance) {
+  return milkyWayDiskOpacity(distance) * (1 - neighborOpacity(distance));
+}
+
+/** The Milky Way name appears the same way the other named objects do. */
+export function milkyWayNameOpacity(distance) {
+  return neighborOpacity(distance);
 }
 
 export function localGroupMemberOpacity(distance) {
@@ -398,21 +427,25 @@ export function milkyWayInteriorCameraAim() {
 
 /**
  * Extra-zoom near range. Slider distance still picks the layer; the
- * camera glides continuously from the solar cap into the arm across
- * the handoff crossfade, then pulls back to the full disk. No jump.
+ * camera dives from the solar cap down to the arm seat while the MW is
+ * still off and the only visible things are the camera-attached sky and
+ * the shrinking Sun pin, so nothing on screen ever moves inward. The 1:1
+ * sky ↔ MW crossfade then happens parked among the arm stars, and past
+ * the handoff the pull-back to the full disk is strictly outward. This is
+ * what keeps zoom monotonic: no invert, no bounce, in either direction.
  */
 export function extraZoomCameraDistance(distance) {
   const near = CONFIG.mwTailNearDistance;
   if (distance <= CONFIG.solarMaxDistance) return distance;
   if (distance >= CONFIG.mwViewDistance) return distance;
   const start = handoffBlendStart();
-  if (distance < start) return CONFIG.solarMaxDistance;
-  if (distance < CONFIG.handoffViewDistance) {
-    const t = smoothstep01(
-      (distance - start) / (CONFIG.handoffViewDistance - start),
-    );
-    return CONFIG.solarMaxDistance + (near - CONFIG.solarMaxDistance) * t;
+  if (distance < start) {
+    const t = (distance - CONFIG.solarMaxDistance)
+      / (start - CONFIG.solarMaxDistance);
+    const s = smoothstep01(t ** 0.75);
+    return CONFIG.solarMaxDistance + (near - CONFIG.solarMaxDistance) * s;
   }
+  if (distance < CONFIG.handoffViewDistance) return near;
   const t = (distance - CONFIG.handoffViewDistance)
     / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance);
   return near + (CONFIG.mwViewDistance - near) * (t ** 1.55);
@@ -585,15 +618,25 @@ function makeLabelMap(THREE, text) {
   return map;
 }
 
-function labelSprite(THREE, text, position, scale = 1) {
+/**
+ * One label system for the extra-zoom map. screenFixed keeps the badge a
+ * constant on-screen size (the trail spans a 300× camera-radius range, so
+ * a world-sized sprite cannot read across it); the scale is then a
+ * viewport fraction instead of world units.
+ */
+function labelSprite(THREE, text, position, scale = 1, screenFixed = false) {
   const sprite = new THREE.Sprite(unlitSprite(THREE, {
     map: makeLabelMap(THREE, text),
     opacity: 1,
     depthTest: false,
-    sizeAttenuation: true,
+    sizeAttenuation: !screenFixed,
   }));
   sprite.position.set(position.x, position.y, position.z);
-  sprite.scale.set(LABEL.scaleX * scale, LABEL.scaleY * scale, 1);
+  if (screenFixed) {
+    sprite.scale.set(0.00056 * LABEL.scaleX * scale, 0.00056 * LABEL.scaleY * scale, 1);
+  } else {
+    sprite.scale.set(LABEL.scaleX * scale, LABEL.scaleY * scale, 1);
+  }
   sprite.renderOrder = 20;
   sprite.frustumCulled = false;
   return sprite;
@@ -1116,7 +1159,13 @@ function quietAndromedaMap(THREE) {
 function createNeighbors(THREE, group, maps) {
   const cluster = new THREE.Group();
   cluster.name = "neighbors";
+  // LMC / SMC bodies live in their own group so they can ride with the
+  // disk from the first trail frame (magellanicOpacity) instead of
+  // popping in with the M31 / M33 fade. Labels stay on the neighbor fade.
+  const magellanic = new THREE.Group();
+  magellanic.name = "magellanic";
   for (const neighbor of NEIGHBORS) {
+    const home = neighbor.id === "lmc" || neighbor.id === "smc" ? magellanic : cluster;
     const at = neighborScenePosition(neighbor);
     const map = neighbor.id === "m31"
       ? quietAndromedaMap(THREE)
@@ -1134,7 +1183,7 @@ function createNeighbors(THREE, group, maps) {
     glow.scale.set(size * 1.7, size * aspect * 1.7, 1);
     glow.renderOrder = 3;
     glow.frustumCulled = false;
-    cluster.add(glow);
+    home.add(glow);
     const sprite = new THREE.Sprite(unlitSprite(THREE, {
       map,
       color: 0xfff8ee,
@@ -1147,7 +1196,7 @@ function createNeighbors(THREE, group, maps) {
     sprite.scale.set(size, size * aspect, 1);
     sprite.name = neighbor.id;
     sprite.frustumCulled = false;
-    cluster.add(sprite);
+    home.add(sprite);
     if (neighbor.id === "m31") {
       new THREE.TextureLoader().load(SKY_ASSETS.andromeda, (loaded) => {
         loaded.colorSpace = THREE.SRGBColorSpace;
@@ -1165,6 +1214,30 @@ function createNeighbors(THREE, group, maps) {
     cluster.add(labelSprite(THREE, label, { x: at.x + side, y: at.y + lift, z: at.z }, labelScale));
   }
   group.add(cluster);
+  group.add(magellanic);
+}
+
+/**
+ * Trail badge for the Sun's seat plus the Milky Way's own name. Both use
+ * the existing labelSprite system, not a new labeling path. The badge is
+ * screen-fixed because the trail camera radius spans 36 → 11000; the MW
+ * name is a normal world label above the disk, timed like the neighbors.
+ */
+function createMilkyWayMarks(THREE, group) {
+  const badge = new THREE.Group();
+  badge.name = "sun-badge";
+  const sun = labelSprite(THREE, "Sun", sunScenePosition(), 0.9, true);
+  // Anchor below center so the pill floats above the Sun's spot.
+  sun.center.set(0.5, -0.6);
+  badge.add(sun);
+  group.add(badge);
+
+  const name = new THREE.Group();
+  name.name = "mw-name";
+  const gc = galacticCenterScenePosition();
+  const lift = MILKY_WAY.diskRadiusKpc * milkyWayUnitsPerKpc() * 0.5;
+  name.add(labelSprite(THREE, "Milky Way", { x: gc.x, y: gc.y + lift, z: gc.z }, 9));
+  group.add(name);
 }
 
 function memberSpriteSize(member) {
@@ -1721,6 +1794,7 @@ export function createGalaxyLayer(THREE) {
   createHalo(THREE, milkyway);
   createBulge(THREE, milkyway);
   group.add(milkyway);
+  createMilkyWayMarks(THREE, group);
   createNeighbors(THREE, group, maps);
   createLocalGroupMembers(THREE, group, maps);
   createNearClusters(THREE, group, maps);
@@ -1768,6 +1842,9 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
   const virgoShown = cluster * (1 - web);
   fadeNamedGroup(group, "far-galaxy-sky", opacity, farGalaxySkyOpacity(distance));
   fadeNamedGroup(group, "milkyway", opacity, milkyWayDiskOpacity(distance) * family);
+  fadeNamedGroup(group, "sun-badge", opacity, sunBadgeOpacity(distance) * family);
+  fadeNamedGroup(group, "mw-name", opacity, milkyWayNameOpacity(distance) * family);
+  fadeNamedGroup(group, "magellanic", opacity, magellanicOpacity(distance) * family);
   fadeNamedGroup(group, "neighbors", opacity, neighborOpacity(distance) * family);
   fadeNamedGroup(group, "local-group", opacity, localGroupMemberOpacity(distance) * family);
   fadeNamedGroup(group, "near-clusters", opacity, near);
