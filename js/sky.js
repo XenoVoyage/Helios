@@ -50,6 +50,18 @@ for (const row of STARS) {
   if (star.name) starsByName.set(star.name.toLowerCase(), star);
 }
 
+const constellationHips = new Set();
+for (const constellation of CONSTELLATION_LINES) {
+  for (const path of constellation.paths) {
+    for (const hip of path) constellationHips.add(hip);
+  }
+}
+
+/** True when the star is a member of a drawn IAU stick figure. */
+export function isConstellationLineStar(hip) {
+  return constellationHips.has(hip);
+}
+
 export function findStarByName(name) {
   return starsByName.get(String(name).toLowerCase()) ?? null;
 }
@@ -153,8 +165,15 @@ export function colorFromBV(bv) {
 }
 
 export function sizeFromMag(mag) {
-  return clamp(6.4 * 10 ** (-0.13 * mag), 1.15, 14);
+  return clamp(7.2 * 10 ** (-0.13 * mag), 1.7, 14);
 }
+
+/**
+ * Fixed boost for stars that belong to a drawn constellation figure, so
+ * the stick figures read like real sky against the field stars. Static
+ * values, not a zoom ramp: brightness stays constant at every distance.
+ */
+export const CONSTELLATION_STAR_BOOST = Object.freeze({ size: 1.3, shade: 1.24 });
 
 function scaleDir(dir, radius) {
   return { x: dir.x * radius, y: dir.y * radius, z: dir.z * radius };
@@ -296,6 +315,7 @@ function createStars(THREE, radius) {
   const sizes = new Float32Array(count);
   for (let i = 0; i < count; i += 1) {
     const star = {
+      hip: STARS[i][0],
       raDeg: STARS[i][1],
       decDeg: STARS[i][2],
       mag: STARS[i][3],
@@ -305,12 +325,14 @@ function createStars(THREE, radius) {
     positions[i * 3] = at.x;
     positions[i * 3 + 1] = at.y;
     positions[i * 3 + 2] = at.z;
+    const figure = isConstellationLineStar(star.hip);
     const tint = colorFromBV(star.bv);
-    const shade = clamp(1.18 - star.mag * 0.08, 0.35, 1.25);
+    const shade = clamp(1.3 - star.mag * 0.08, 0.5, 1.34)
+      * (figure ? CONSTELLATION_STAR_BOOST.shade : 1);
     colors[i * 3] = tint.r * shade;
     colors[i * 3 + 1] = tint.g * shade;
     colors[i * 3 + 2] = tint.b * shade;
-    sizes[i] = sizeFromMag(star.mag);
+    sizes[i] = sizeFromMag(star.mag) * (figure ? CONSTELLATION_STAR_BOOST.size : 1);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
@@ -359,7 +381,7 @@ function createStars(THREE, radius) {
  * Faint seeded backdrop stars behind the Hipparcos catalog, denser toward
  * the galactic plane, so the solar sky reads as a full universe inside the
  * MW. Dressing only: constant brightness at every zoom, no catalog claims,
- * and always dimmer / smaller than the catalog stars.
+ * and always quieter than the bright catalog stars.
  */
 function createFaintStars(THREE, radius, { count, size, seed, opacity, name }) {
   const positions = new Float32Array(count * 3);
@@ -381,7 +403,7 @@ function createFaintStars(THREE, radius, { count, size, seed, opacity, name }) {
     positions[o + 1] = at.y;
     positions[o + 2] = at.z;
     const tint = colorFromBV(-0.2 + rand() * 1.5);
-    const shade = 0.4 + rand() * 0.45;
+    const shade = 0.7 + rand() * 0.42;
     colors[o] = tint.r * shade;
     colors[o + 1] = tint.g * shade;
     colors[o + 2] = tint.b * shade;
@@ -580,16 +602,16 @@ export function createCelestialSphere(THREE, radius = CONFIG.skyRadius) {
   group.add(createMilkyWay(THREE, radius));
   group.add(createFaintStars(THREE, radius * 0.992, {
     count: Math.round(CONFIG.skyFaintStarCount * 0.82),
-    size: 1.8,
+    size: 3.1,
     seed: 20260821,
-    opacity: 0.85,
+    opacity: 1,
     name: "faint-stars",
   }));
   group.add(createFaintStars(THREE, radius * 0.99, {
     count: Math.round(CONFIG.skyFaintStarCount * 0.18),
-    size: 2.5,
+    size: 4,
     seed: 47251,
-    opacity: 0.7,
+    opacity: 0.95,
     name: "faint-stars-bright",
   }));
   group.add(createStars(THREE, radius * 0.985));

@@ -275,6 +275,7 @@ function smoothstep01(t) {
   return u * u * (3 - 2 * u);
 }
 
+/** Neighbor labels and the MW name arrive as the full disk takes over. */
 export function neighborOpacity(distance) {
   const start = CONFIG.handoffViewDistance
     + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.88;
@@ -284,21 +285,29 @@ export function neighborOpacity(distance) {
 }
 
 /**
- * LMC / SMC are real companions of the disk: they ride with the MW from
- * the first trail frame instead of popping in at the neighborhood fade.
- * Their labels keep the neighbor-label timing.
+ * Catalog neighbor bodies (LMC / SMC / M31 / M33) are real objects that
+ * exist around the disk: all four ride with the MW from the first trail
+ * frame instead of popping in at the neighborhood fade. Distance keeps
+ * the far ones faint; only their labels keep the neighbor-label timing.
  */
-export function magellanicOpacity(distance) {
+export function neighborBodyOpacity(distance) {
   return milkyWayDiskOpacity(distance);
 }
 
 /**
- * Small screen-fixed Sun badge on the MW trail. It rides the same
- * crossfade as the disk and yields once the Milky Way name and the
- * neighbor labels take over at the full-disk view.
+ * Screen-fixed "Solar System" badge over the Sun's seat particle on the
+ * MW trail. It rides the same crossfade as the disk, then dies early on
+ * the way out — well before the Milky Way name and the neighbor labels
+ * arrive — so no badge ever floats over the disk pointing at nothing.
  */
-export function sunBadgeOpacity(distance) {
-  return milkyWayDiskOpacity(distance) * (1 - neighborOpacity(distance));
+export function solarBadgeOpacity(distance) {
+  const shown = milkyWayDiskOpacity(distance);
+  if (shown <= 0) return 0;
+  const start = CONFIG.handoffViewDistance;
+  const end = start + (CONFIG.mwViewDistance - start) * 0.45;
+  if (distance <= start) return shown;
+  if (distance >= end) return 0;
+  return shown * (1 - smoothstep01((distance - start) / (end - start)));
 }
 
 /** The Milky Way name appears the same way the other named objects do. */
@@ -306,19 +315,29 @@ export function milkyWayNameOpacity(distance) {
   return neighborOpacity(distance);
 }
 
+/**
+ * Local Group extras and Virgo are already-there catalog objects: faintly
+ * present from the first trail frame (no spawning from nothing), then
+ * brightening to full at their existing view distances. Fade is fine;
+ * pop-in is not.
+ */
+const PRESENT_FLOOR = 0.25;
+
 export function localGroupMemberOpacity(distance) {
-  if (distance < CONFIG.neighborhoodViewDistance) return 0;
+  if (milkyWayDiskOpacity(distance) <= 0) return 0;
   if (distance >= CONFIG.localGroupViewDistance) return 1;
-  return smoothstep01(
+  if (distance <= CONFIG.neighborhoodViewDistance) return PRESENT_FLOOR;
+  return PRESENT_FLOOR + (1 - PRESENT_FLOOR) * smoothstep01(
     (distance - CONFIG.neighborhoodViewDistance)
     / (CONFIG.localGroupViewDistance - CONFIG.neighborhoodViewDistance),
   );
 }
 
 export function virgoOpacity(distance) {
-  if (distance < CONFIG.localGroupViewDistance) return 0;
+  if (milkyWayDiskOpacity(distance) <= 0) return 0;
   if (distance >= CONFIG.virgoViewDistance) return 1;
-  return smoothstep01(
+  if (distance <= CONFIG.localGroupViewDistance) return PRESENT_FLOOR;
+  return PRESENT_FLOOR + (1 - PRESENT_FLOOR) * smoothstep01(
     (distance - CONFIG.localGroupViewDistance)
     / (CONFIG.virgoViewDistance - CONFIG.localGroupViewDistance),
   );
@@ -1159,13 +1178,12 @@ function quietAndromedaMap(THREE) {
 function createNeighbors(THREE, group, maps) {
   const cluster = new THREE.Group();
   cluster.name = "neighbors";
-  // LMC / SMC bodies live in their own group so they can ride with the
-  // disk from the first trail frame (magellanicOpacity) instead of
-  // popping in with the M31 / M33 fade. Labels stay on the neighbor fade.
-  const magellanic = new THREE.Group();
-  magellanic.name = "magellanic";
+  // All four catalog neighbor bodies live in their own group so they ride
+  // with the disk from the first trail frame (neighborBodyOpacity) instead
+  // of popping in later. Labels stay on the neighbor-label fade.
+  const home = new THREE.Group();
+  home.name = "neighbor-bodies";
   for (const neighbor of NEIGHBORS) {
-    const home = neighbor.id === "lmc" || neighbor.id === "smc" ? magellanic : cluster;
     const at = neighborScenePosition(neighbor);
     const map = neighbor.id === "m31"
       ? quietAndromedaMap(THREE)
@@ -1214,22 +1232,42 @@ function createNeighbors(THREE, group, maps) {
     cluster.add(labelSprite(THREE, label, { x: at.x + side, y: at.y + lift, z: at.z }, labelScale));
   }
   group.add(cluster);
-  group.add(magellanic);
+  group.add(home);
 }
 
 /**
- * Trail badge for the Sun's seat plus the Milky Way's own name. Both use
- * the existing labelSprite system, not a new labeling path. The badge is
- * screen-fixed because the trail camera radius spans 36 → 11000; the MW
- * name is a normal world label above the disk, timed like the neighbors.
+ * Trail marks for the Sun's seat plus the Milky Way's own name. The seat
+ * is one white particle from the same soft-point family as the disk
+ * stars — not a ring, not a glow halo — so the spot the orrery shrank
+ * into stays a real star among the arm. The screen-fixed badge names it
+ * "Solar System" (the trail camera radius spans 36 → 11000, so a
+ * world-sized sprite cannot read across it) and dies early
+ * (solarBadgeOpacity); the MW name is a normal world label above the
+ * disk, timed like the neighbors.
  */
 function createMilkyWayMarks(THREE, group) {
+  const sun = sunScenePosition();
+  const seat = new THREE.Group();
+  seat.name = "solar-seat";
+  addPoints(
+    THREE,
+    seat,
+    "solar-seat-star",
+    new Float32Array([sun.x, sun.y, sun.z]),
+    new Float32Array([1, 1, 1]),
+    3.2,
+    0.95,
+    true,
+    THREE.AdditiveBlending,
+  );
+  group.add(seat);
+
   const badge = new THREE.Group();
-  badge.name = "sun-badge";
-  const sun = labelSprite(THREE, "Sun", sunScenePosition(), 0.9, true);
-  // Anchor below center so the pill floats above the Sun's spot.
-  sun.center.set(0.5, -0.6);
-  badge.add(sun);
+  badge.name = "solar-badge";
+  const pill = labelSprite(THREE, "Solar System", sun, 0.9, true);
+  // Anchor below center so the pill floats above the seat particle.
+  pill.center.set(0.5, -0.6);
+  badge.add(pill);
   group.add(badge);
 
   const name = new THREE.Group();
@@ -1842,9 +1880,10 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
   const virgoShown = cluster * (1 - web);
   fadeNamedGroup(group, "far-galaxy-sky", opacity, farGalaxySkyOpacity(distance));
   fadeNamedGroup(group, "milkyway", opacity, milkyWayDiskOpacity(distance) * family);
-  fadeNamedGroup(group, "sun-badge", opacity, sunBadgeOpacity(distance) * family);
+  fadeNamedGroup(group, "solar-seat", opacity, milkyWayDiskOpacity(distance) * family);
+  fadeNamedGroup(group, "solar-badge", opacity, solarBadgeOpacity(distance) * family);
   fadeNamedGroup(group, "mw-name", opacity, milkyWayNameOpacity(distance) * family);
-  fadeNamedGroup(group, "magellanic", opacity, magellanicOpacity(distance) * family);
+  fadeNamedGroup(group, "neighbor-bodies", opacity, neighborBodyOpacity(distance) * family);
   fadeNamedGroup(group, "neighbors", opacity, neighborOpacity(distance) * family);
   fadeNamedGroup(group, "local-group", opacity, localGroupMemberOpacity(distance) * family);
   fadeNamedGroup(group, "near-clusters", opacity, near);

@@ -10,6 +10,7 @@ import {
   STARS,
 } from "../js/sky-catalog.js";
 import {
+  CONSTELLATION_STAR_BOOST,
   constellationHasStar,
   constellationLabelPixelHeight,
   equatorialToGalactic,
@@ -18,6 +19,8 @@ import {
   findStarByHip,
   findStarByName,
   galacticToUv,
+  isConstellationLineStar,
+  sizeFromMag,
 } from "../js/sky.js";
 
 test("named stars have sane J2000 RA/Dec and magnitudes", () => {
@@ -108,7 +111,7 @@ test("catalog is a few thousand brightest Hipparcos stars and the far plane clea
   assert.ok(STARS.length > 3000 && STARS.length < 8000);
   assert.ok(STARS.every((row) => row[0] > 0 && Number.isFinite(row[1]) && Number.isFinite(row[2])));
   assert.ok(CONFIG.cameraFar > CONFIG.skyRadius);
-  assert.equal(CONFIG.VERSION, "v2026.8.21c");
+  assert.equal(CONFIG.VERSION, "v2026.8.21d");
 });
 
 test("constellation names stay readable at overview", () => {
@@ -135,4 +138,29 @@ test("faint backdrop stars densify the solar sky without touching the catalog", 
   // The catalog stars stay the only Hipparcos claim; the backdrop layer
   // carries no hip ids and never touches the star shader's brightness.
   assert.match(source, /dressing only/i);
+});
+
+test("constellation-figure stars outshine the field and nothing ramps with zoom", async () => {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const source = await readFile(path.join(root, "js/sky.js"), "utf8");
+  assert.ok(isConstellationLineStar(findStarByName("Betelgeuse").hip));
+  assert.ok(isConstellationLineStar(findStarByName("Rigel").hip));
+  assert.ok(isConstellationLineStar(findStarByName("Alpheratz").hip));
+  const members = new Set(CONSTELLATION_LINES.flatMap((item) => item.paths.flat()));
+  const field = STARS.find((row) => !members.has(row[0]));
+  assert.ok(field, "the catalog keeps field stars outside the stick figures");
+  assert.equal(isConstellationLineStar(field[0]), false);
+  assert.ok(CONSTELLATION_STAR_BOOST.size > 1, "figure stars are larger than the field");
+  assert.ok(CONSTELLATION_STAR_BOOST.shade > 1, "figure stars are brighter than the field");
+  // Same magnitude, figure membership wins: the drawn sky reads.
+  assert.ok(sizeFromMag(2) * CONSTELLATION_STAR_BOOST.size > sizeFromMag(2));
+  // Regression: the solar-sky raise is static values only. No star size,
+  // shade, or faint-layer opacity may depend on camera distance; the old
+  // zoom-out brighten ramp stays dead.
+  assert.match(source, /isConstellationLineStar/);
+  assert.doesNotMatch(source, /shade[^\n]*distance/);
+  assert.doesNotMatch(source, /opacity[^\n]*distance/);
+  assert.doesNotMatch(source, /size[^\n]*distance/);
+  // The band keeps the constant solar look: brightness 0.82 at every zoom.
+  assert.match(source, /brightness: \{ value: 0\.82 \}/);
 });
