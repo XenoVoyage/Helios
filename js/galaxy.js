@@ -173,10 +173,10 @@ export function solarOpacity(distance) {
   return distance < CONFIG.handoffViewDistance ? 1 : 0;
 }
 
-/** Solar skybox (Hipparcos, IAU, Gaia band) stays through the MW tail / disk. */
+/** Hipparcos / IAU stay through the solar cap. Extra-zoom uses the galaxy-image sky. */
 export function skyStaysOn(distance) {
   const layer = scaleLayer(distance);
-  return layer === "solar" || layer === "transition" || layer === "milkyway";
+  return layer === "solar" || layer === "transition";
 }
 
 /**
@@ -192,13 +192,13 @@ export function sunPinOpacity(distance) {
   return 1 - extraZoomTailMix(distance);
 }
 
-/** Gaia / Hipparcos / IAU stay through the tail and disk, then yield. */
+/** Hipparcos / IAU yield at extra-zoom so that sky is galaxy images, not dots. */
 export function celestialSkyOpacity(distance) {
-  if (distance <= CONFIG.mwViewDistance) return 1;
-  if (distance >= CONFIG.neighborhoodViewDistance) return 0;
+  if (distance <= CONFIG.solarMaxDistance) return 1;
+  if (distance >= CONFIG.handoffViewDistance) return 0;
   return 1 - smoothstep01(
-    (distance - CONFIG.mwViewDistance)
-    / (CONFIG.neighborhoodViewDistance - CONFIG.mwViewDistance),
+    (distance - CONFIG.solarMaxDistance)
+    / (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance),
   );
 }
 
@@ -317,12 +317,7 @@ export function farGalaxySkyOpacity(distance) {
   if (distance < CONFIG.handoffViewDistance) return 0;
   const fadeStart = CONFIG.webViewDistance
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.72;
-  const growing = distance >= CONFIG.mwViewDistance
-    ? 1
-    : 0.52 + 0.48 * smoothstep01(
-      (distance - CONFIG.handoffViewDistance)
-      / (CONFIG.mwViewDistance - CONFIG.handoffViewDistance),
-    );
+  const growing = 1;
   if (distance <= fadeStart) return growing;
   if (distance >= CONFIG.universeViewDistance) return 0;
   return growing * (1 - smoothstep01(
@@ -440,12 +435,12 @@ function orionArmScenePoint(betaDeg, heightKpc) {
 
 /** Sit in the Orion-arm tail, just above the plane, near the Sun. */
 export function milkyWayTailSeat() {
-  return orionArmScenePoint(14, 0.3);
+  return orionArmScenePoint(10, 0.07);
 }
 
-/** Look past the Sun along the arm so it is one nearby dot in the stream. */
+/** Look along the arm, not down at the disk, so the first frame is a tail. */
 export function milkyWayTailLookAt() {
-  return orionArmScenePoint(-5, 0.03);
+  return orionArmScenePoint(-8, 0.07);
 }
 
 /** Near edge-on so disk thickness, bulge, and halo can be audited. */
@@ -1198,6 +1193,7 @@ export function neighborApparentSize(neighbor) {
   return neighborSpriteSize(neighbor) * neighborSizeBoost(neighbor);
 }
 
+// Later issue: M31 still reads as a dwarf beside its label. Do not invent a model here.
 function quietAndromedaMap(THREE) {
   const canvas = document.createElement("canvas");
   canvas.width = 256;

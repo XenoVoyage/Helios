@@ -294,18 +294,15 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   assert.equal(universeOpacity(CONFIG.universeViewDistance), 1);
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
-  assert.ok(
-    farGalaxySkyOpacity(CONFIG.handoffViewDistance) > 0.3,
-    "galaxy-image sky starts in the tail",
-  );
-  assert.ok(
-    farGalaxySkyOpacity(CONFIG.handoffViewDistance) < 0.7,
-    "galaxy-image sky does not replace the tail",
+  assert.equal(
+    farGalaxySkyOpacity(CONFIG.handoffViewDistance),
+    1,
+    "galaxy-image sky is already up in the tail",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.mwViewDistance),
     1,
-    "galaxy-image sky is full once the disk has grown",
+    "galaxy-image sky stays up through the disk",
   );
   assert.ok(
     farGalaxySkyOpacity(CONFIG.neighborhoodViewDistance) > 0.9,
@@ -383,12 +380,12 @@ test("solar skybox stays through the tail and the camera sits in the arm", () =>
   assert.equal(skyStaysOn(CONFIG.cameraDistance), true);
   assert.equal(skyStaysOn(CONFIG.solarMaxDistance), true);
   assert.equal(skyStaysOn(CONFIG.solarMaxDistance + 1), true);
-  assert.equal(skyStaysOn(CONFIG.handoffViewDistance), true);
-  assert.equal(skyStaysOn(CONFIG.mwViewDistance), true);
+  assert.equal(skyStaysOn(CONFIG.handoffViewDistance), false);
+  assert.equal(skyStaysOn(CONFIG.mwViewDistance), false);
   assert.equal(skyStaysOn(CONFIG.neighborhoodViewDistance), false);
   assert.equal(celestialSkyOpacity(CONFIG.solarMaxDistance), 1);
-  assert.equal(celestialSkyOpacity(CONFIG.handoffViewDistance), 1);
-  assert.equal(celestialSkyOpacity(CONFIG.mwViewDistance), 1);
+  assert.equal(celestialSkyOpacity(CONFIG.handoffViewDistance), 0);
+  assert.equal(celestialSkyOpacity(CONFIG.mwViewDistance), 0);
   assert.equal(celestialSkyOpacity(CONFIG.neighborhoodViewDistance), 0);
   assert.equal(milkyWayDiskOpacity(CONFIG.handoffViewDistance - 1), 0);
   assert.equal(
@@ -399,7 +396,7 @@ test("solar skybox stays through the tail and the camera sits in the arm", () =>
   assert.equal(milkyWayDiskOpacity(CONFIG.mwViewDistance), 1);
   assert.equal(sunPinOpacity(CONFIG.handoffViewDistance), 0);
   assert.equal(sunPinOpacity(CONFIG.mwViewDistance), 1);
-  assert.ok(farGalaxySkyOpacity(CONFIG.handoffViewDistance) > 0.3);
+  assert.equal(farGalaxySkyOpacity(CONFIG.handoffViewDistance), 1);
   assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 1);
   assert.equal(skyBandBrightness(CONFIG.cameraDistance), 0.82);
   assert.ok(
