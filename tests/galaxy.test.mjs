@@ -294,15 +294,18 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   assert.equal(universeOpacity(CONFIG.universeViewDistance), 1);
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
-  assert.equal(
-    farGalaxySkyOpacity(CONFIG.handoffViewDistance),
-    0,
-    "galaxy-image sky waits until after the tail",
+  assert.ok(
+    farGalaxySkyOpacity(CONFIG.handoffViewDistance) > 0.3,
+    "galaxy-image sky starts in the tail",
+  );
+  assert.ok(
+    farGalaxySkyOpacity(CONFIG.handoffViewDistance) < 0.7,
+    "galaxy-image sky does not replace the tail",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.mwViewDistance),
-    0,
-    "galaxy-image sky waits until after the disk",
+    1,
+    "galaxy-image sky is full once the disk has grown",
   );
   assert.ok(
     farGalaxySkyOpacity(CONFIG.neighborhoodViewDistance) > 0.9,
@@ -396,9 +399,13 @@ test("solar skybox stays through the tail and the camera sits in the arm", () =>
   assert.equal(milkyWayDiskOpacity(CONFIG.mwViewDistance), 1);
   assert.equal(sunPinOpacity(CONFIG.handoffViewDistance), 0);
   assert.equal(sunPinOpacity(CONFIG.mwViewDistance), 1);
-  assert.equal(farGalaxySkyOpacity(CONFIG.handoffViewDistance), 0);
-  assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 0);
+  assert.ok(farGalaxySkyOpacity(CONFIG.handoffViewDistance) > 0.3);
+  assert.equal(farGalaxySkyOpacity(CONFIG.mwViewDistance), 1);
   assert.equal(skyBandBrightness(CONFIG.cameraDistance), 0.82);
+  assert.ok(
+    skyBandBrightness(CONFIG.solarMaxDistance) > skyBandBrightness(CONFIG.cameraDistance),
+    "solar sky brightens on the way out to the cap",
+  );
   assert.ok(
     skyBandBrightness(CONFIG.handoffViewDistance) > 2,
     "Gaia trails are already strong at the first extra-zoom frame",
@@ -429,7 +436,7 @@ test("solar skybox stays through the tail and the camera sits in the arm", () =>
   assert.ok(Math.hypot(seat.x, seat.y, seat.z) < milkyWayDiskDiameter() * 0.12, "tail seat stays inside the disk");
   assert.ok(Math.abs(seat.y) < milkyWayDiskDiameter() * 0.03, "tail seat stays in the arm, not above the plate");
   assert.ok(Math.abs(seat.z) > Math.abs(seat.x), "tail seat looks along the arm");
-  assert.ok(along.z < seat.z, "tail look continues along the arm");
+  assert.ok(seat.z * along.z < 0, "tail look goes past the Sun along the arm");
   assert.ok(
     farGalaxySkyRadius() > CONFIG.neighborhoodViewDistance * 8,
     "far-galaxy shell is far past the neighborhood camera",
@@ -584,6 +591,7 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /skyStaysOn/);
   assert.match(galaxySource, /attachFarGalaxySky/);
   assert.match(galaxySource, /sun-pin-mark/);
+  assert.match(galaxySource, /sun-nearby-mark/);
   assert.match(galaxySource, /toneMapped:\s*false/);
   assert.match(galaxySource, /unlitSprite|toneMapped:\s*false/);
   assert.doesNotMatch(galaxySource, /hubCount:\s*20\b/);
