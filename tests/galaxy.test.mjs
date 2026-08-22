@@ -426,6 +426,17 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     1,
     "distant galaxy-image sky stays up at Virgo",
   );
+  const clusterHandoff = CONFIG.virgoViewDistance
+    + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.28;
+  assert.equal(
+    farGalaxySkyOpacity(clusterHandoff),
+    0,
+    "single-galaxy sky yields before the measured cluster-to-web view",
+  );
+  assert.ok(
+    webOpacity(clusterHandoff) > 0.15,
+    "measured 2MRS points are already present when that illustrative sky leaves",
+  );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.localGroupViewDistance),
     1,

@@ -6,6 +6,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { bodyOrientationBasis, findBody } from "../js/bodies.js";
+import { CONFIG } from "../js/config.js";
+import { equatorialVectorToScene } from "../js/sky.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.BROWSER_SMOKE_PORT || 4175);
@@ -237,7 +240,51 @@ async function captureTriton(page) {
   await saveTritonScreenshot(page, "triton-rotation-b");
 }
 
-async function captureEarthSolstice(context, name, targetDate, lookSouth = false) {
+async function orientEarthPole(page, southPole) {
+  const basis = bodyOrientationBasis(findBody("earth"));
+  const north = equatorialVectorToScene(basis.zAxis);
+  const direction = southPole ? -1 : 1;
+  const pole = {
+    x: north.x * direction,
+    y: north.y * direction,
+    z: north.z * direction,
+  };
+  const targetAzimuth = Math.atan2(pole.x, pole.z);
+  const targetElevation = Math.asin(pole.y);
+  const delta = {
+    x: (CONFIG.cameraAzimuth - targetAzimuth) / 0.005,
+    y: (targetElevation - CONFIG.cameraElevation) / 0.004,
+  };
+  const start = await page.evaluate(({ x, y }) => {
+    const viewport = document.querySelector("#viewport");
+    const box = viewport.getBoundingClientRect();
+    const base = {
+      x: box.left + box.width / 2 - x / 2,
+      y: box.top + box.height / 2 - y / 2,
+    };
+    for (const [ox, oy] of [[0, 0], [-120, 0], [120, 0], [0, -90], [0, 90]]) {
+      const sx = base.x + ox;
+      const sy = base.y + oy;
+      const ex = sx + x;
+      const ey = sy + y;
+      const inside = sx > box.left + 20 && sx < box.right - 20
+        && sy > box.top + 20 && sy < box.bottom - 20
+        && ex > box.left + 20 && ex < box.right - 20
+        && ey > box.top + 20 && ey < box.bottom - 20;
+      if (inside && document.elementFromPoint(sx, sy) === viewport) return { x: sx, y: sy };
+    }
+    return null;
+  }, delta);
+  assert.ok(start, "Earth pole audit starts on unobstructed canvas");
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + delta.x, start.y + delta.y, { steps: 12 });
+  await page.mouse.up();
+  await page.mouse.wheel(0, -500);
+  await page.waitForTimeout(500);
+}
+
+async function captureEarthSolstice(context, name, targetDate, southPole = false) {
   if (!screenshotDir) return;
   const page = await context.newPage();
   const errors = captureErrors(page);
@@ -255,7 +302,7 @@ async function captureEarthSolstice(context, name, targetDate, lookSouth = false
     slider.dispatchEvent(new Event("input", { bubbles: true }));
   }, target);
   const approachDate = new Date(
-    Date.parse(`${targetDate}T00:00:00Z`) - 30 * 86_400_000,
+    Date.parse(`${targetDate}T00:00:00Z`) - 75 * 86_400_000,
   ).toISOString().slice(0, 10);
   const pauseAtDate = (date, timeout) => page.waitForFunction((target) => {
     if (document.querySelector("#clock").textContent < target) return false;
@@ -263,12 +310,12 @@ async function captureEarthSolstice(context, name, targetDate, lookSouth = false
     if (play.getAttribute("aria-pressed") === "true") play.click();
     return true;
   }, date, { timeout });
-  await setSpeed(80);
+  await setSpeed(10);
   await page.locator("#play-button").click();
-  await pauseAtDate(approachDate, 10_000);
-  await setSpeed(2);
+  await pauseAtDate(approachDate, 60_000);
+  await setSpeed(1);
   await page.locator("#play-button").click();
-  await pauseAtDate(targetDate, 25_000);
+  await pauseAtDate(targetDate, 90_000);
   await page.waitForTimeout(350);
 
   const observedDate = await page.locator("#clock").textContent();
@@ -279,19 +326,7 @@ async function captureEarthSolstice(context, name, targetDate, lookSouth = false
     `${name} captured ${observedDate}, near ${targetDate}`,
   );
 
-  if (lookSouth) {
-    const bounds = await page.locator("#viewport").boundingBox();
-    assert.ok(bounds);
-    await page.mouse.move(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.65);
-    await page.mouse.down();
-    await page.mouse.move(
-      bounds.x + bounds.width * 0.5,
-      bounds.y + bounds.height * 0.4,
-      { steps: 8 },
-    );
-    await page.mouse.up();
-    await page.waitForTimeout(350);
-  }
+  await orientEarthPole(page, southPole);
   await saveScreenshot(page, name);
   assert.deepEqual(errors, []);
   await page.close();

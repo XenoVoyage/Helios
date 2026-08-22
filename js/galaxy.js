@@ -398,7 +398,7 @@ export function virgoOpacity(distance) {
 
 export function webOpacity(distance) {
   const span = CONFIG.webViewDistance - CONFIG.virgoViewDistance;
-  const start = CONFIG.virgoViewDistance + span * 0.18;
+  const start = CONFIG.virgoViewDistance + span * 0.04;
   const ready = CONFIG.virgoViewDistance + span * 0.82;
   if (distance <= start) return 0;
   if (distance >= ready) return 1;
@@ -437,7 +437,10 @@ export function universeOpacity(distance) {
  */
 export function farGalaxySkyOpacity(distance) {
   if (galaxyOpacity(distance) <= 0) return 0;
-  return 1 - webOpacity(distance);
+  if (distance <= CONFIG.virgoViewDistance) return 1;
+  const span = CONFIG.webViewDistance - CONFIG.virgoViewDistance;
+  const progress = (distance - CONFIG.virgoViewDistance) / span;
+  return 1 - smoothstep01(progress / 0.28);
 }
 
 /** Microwave sky waits until after a long web, then becomes the outer shell. */
@@ -1405,7 +1408,7 @@ function createPostVirgoClusters(THREE, group) {
       THREE,
       cluster.name,
       { x: at.x, y: at.y + 1800 + (i % 3) * 700, z: at.z },
-      3.2,
+      0.58,
       true,
     );
     label.name = `${cluster.id}-label`;
@@ -1504,8 +1507,8 @@ function createMeasuredWeb(THREE, group) {
     "2mrs-galaxies",
     samples.positions,
     samples.colors,
-    520,
-    0.82,
+    700,
+    0.9,
     true,
     THREE.AdditiveBlending,
   );
