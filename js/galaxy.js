@@ -159,6 +159,10 @@ export function neighborScenePosition(neighbor) {
   return mapToScene(neighborMapPosition(neighbor));
 }
 
+export function neighborLabelScenePosition(neighbor) {
+  return mapToScene(neighborLabelMapPosition(neighbor));
+}
+
 export function virgoScenePosition(cluster = VIRGO_CLUSTER) {
   return mapToScene(virgoMapPosition(cluster));
 }
@@ -169,6 +173,18 @@ export function webHubScenePosition(item) {
 
 function neighborMapPosition(neighbor) {
   return scaledGalacticMapPosition(neighbor, visualNeighborhood(neighbor.distanceKpc));
+}
+
+function neighborLabelMapPosition(neighbor) {
+  const at = neighborMapPosition(neighbor);
+  const size = neighborApparentSize(neighbor);
+  const aspect = neighbor.id === "m31" ? 0.4 : neighbor.id === "m33" ? 0.46 : 0.68;
+  const lift = size * aspect * 0.72 + 80;
+  // The two long Cloud names otherwise collide in the face-on disk look
+  // after the J2000 frame rotation. Keep their factual positions untouched;
+  // move only the SMC annotation farther along the map's local X axis.
+  const side = neighbor.id === "smc" ? 1200 : neighbor.id === "lmc" ? -80 : neighbor.id === "m31" ? 340 : 0;
+  return { x: at.x + side, y: at.y + lift, z: at.z };
 }
 
 function virgoMapPosition(cluster = VIRGO_CLUSTER) {
@@ -1292,10 +1308,9 @@ function createNeighbors(THREE, group, maps) {
       });
     }
     const label = neighbor.messier ? `${neighbor.name} (${neighbor.messier})` : neighbor.name;
-    const lift = size * aspect * 0.72 + 80;
-    const side = neighbor.id === "smc" ? 180 : neighbor.id === "lmc" ? -80 : neighbor.id === "m31" ? 340 : 0;
+    const labelAt = neighborLabelMapPosition(neighbor);
     const labelScale = neighbor.id === "lmc" || neighbor.id === "smc" ? 7.4 : neighbor.id === "m31" ? 12.5 : 5.2;
-    cluster.add(labelSprite(THREE, label, { x: at.x + side, y: at.y + lift, z: at.z }, labelScale));
+    cluster.add(labelSprite(THREE, label, labelAt, labelScale));
   }
   group.add(cluster);
   group.add(home);

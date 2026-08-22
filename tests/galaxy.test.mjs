@@ -52,6 +52,7 @@ import {
   milkyWayNameOpacity,
   solarBadgeOpacity,
   milkyWayInteriorCameraAim,
+  milkyWayCameraAim,
   lookAngleTo,
   milkyWayDiskDiameter,
   milkyWayDiskOpacity,
@@ -63,6 +64,7 @@ import {
   neighborhoodCameraAim,
   neighborApparentSize,
   neighborOpacity,
+  neighborLabelScenePosition,
   neighborScenePosition,
   orbitLineOpacity,
   orreryScale,
@@ -103,6 +105,21 @@ function aimDirection(aim) {
     y: Math.sin(aim.elevation),
     z: cosE * Math.cos(aim.azimuth),
   };
+}
+
+function cameraPosition(aim, distance) {
+  const direction = aimDirection(aim);
+  return {
+    x: direction.x * distance,
+    y: direction.y * distance,
+    z: direction.z * distance,
+  };
+}
+
+function angularSeparationFrom(camera, a, b) {
+  const first = unit({ x: a.x - camera.x, y: a.y - camera.y, z: a.z - camera.z });
+  const second = unit({ x: b.x - camera.x, y: b.y - camera.y, z: b.z - camera.z });
+  return Math.acos(Math.max(-1, Math.min(1, dot(first, second))));
 }
 
 test("Milky Way catalog keeps the thin disk and a thicker visual map", () => {
@@ -180,6 +197,16 @@ test("neighborhood and Local Group looks keep Andromeda beside the Milky Way", (
     assert.ok(lookAngleTo(aim, distance, lmc) < halfFov - 0.06, `${name} LMC`);
     assert.ok(lookAngleTo(aim, distance, smc) < halfFov - 0.06, `${name} SMC`);
   }
+});
+
+test("Magellanic Cloud labels stay separated in the face-on disk look", () => {
+  const camera = cameraPosition(milkyWayCameraAim(), CONFIG.mwViewDistance);
+  const lmc = neighborLabelScenePosition(findNeighbor("lmc"));
+  const smc = neighborLabelScenePosition(findNeighbor("smc"));
+  assert.ok(
+    angularSeparationFrom(camera, lmc, smc) > 0.17,
+    "long LMC and SMC annotations need distinct screen space",
+  );
 });
 
 test("galaxy scales are kpc mappings and do not reuse solar AU units", async () => {
