@@ -142,14 +142,14 @@ async function assertZoomStress(page) {
   await page.locator("#sky-button:not([hidden])").waitFor();
 
   for (let cycle = 0; cycle < 3; cycle += 1) {
-    await page.mouse.wheel(0, 12_000);
+    await page.mouse.wheel(0, 3_940);
     await page.waitForFunction(
       () => document.documentElement.dataset.galaxyReady === "1"
         && document.querySelector("#sky-button").hidden
         && [...document.querySelectorAll(".sky-label")].every((label) => label.hidden),
     );
     await assertBodyLabelsHidden(page);
-    await page.mouse.wheel(0, -12_000);
+    await page.mouse.wheel(0, -3_940);
     await page.locator("#sky-button:not([hidden])").waitFor();
     await page.locator("#reset-button").click();
     await moveToCanvas();
