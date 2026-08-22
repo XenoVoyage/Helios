@@ -363,6 +363,11 @@ async function assertCardClearsDock(page, viewport) {
       && card.right > topbar.left
       && card.top < topbar.bottom
       && card.bottom > topbar.top;
+    const helpersInside = [...document.querySelectorAll(".helper-toggles button")]
+      .every((button) => {
+        const box = button.getBoundingClientRect();
+        return box.top >= card.top && box.bottom <= card.bottom;
+      });
     const creditsHit = document.elementFromPoint(
       credits.left + credits.width / 2,
       credits.top + credits.height / 2,
@@ -373,6 +378,9 @@ async function assertCardClearsDock(page, viewport) {
       overlaps,
       creditsOverlap,
       topbarOverlap,
+      helpersInside,
+      cardClientHeight: document.querySelector("#body-card").clientHeight,
+      cardScrollHeight: document.querySelector("#body-card").scrollHeight,
       creditsHit: creditsHit?.id,
       clearance: Number.parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue("--dock-clearance"),
@@ -391,6 +399,15 @@ async function assertCardClearsDock(page, viewport) {
     layout.topbarOverlap,
     false,
     `${viewport.width}x${viewport.height} card clears the title and date`,
+  );
+  assert.equal(
+    layout.helpersInside,
+    true,
+    `${viewport.width}x${viewport.height} keeps every helper control inside the card`,
+  );
+  assert.ok(
+    layout.cardScrollHeight <= layout.cardClientHeight + 1,
+    `${viewport.width}x${viewport.height} card content is not vertically clipped`,
   );
   assert.equal(
     layout.creditsHit,

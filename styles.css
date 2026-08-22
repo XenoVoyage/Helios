@@ -410,6 +410,15 @@ input[type="range"] {
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
   .card {
     width: min(324px, calc(100vw - 24px));
+    max-height: calc(
+      100dvh - var(--dock-clearance) - 34px
+      - env(safe-area-inset-top) - env(safe-area-inset-bottom)
+    );
+    padding: 8px 12px;
+  }
+
+  .helper-toggles {
+    margin-top: 6px;
   }
 
   .version {
