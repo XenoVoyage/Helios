@@ -126,10 +126,26 @@ async function assertZoomStress(page) {
   const canvas = page.locator("#viewport");
   const bounds = await canvas.boundingBox();
   assert.ok(bounds);
-  const moveToCanvas = () => page.mouse.move(
-    bounds.x + bounds.width * 0.5,
-    bounds.y + bounds.height * 0.45,
-  );
+  const moveToCanvas = async () => {
+    const point = await page.evaluate(() => {
+      const viewport = document.querySelector("#viewport");
+      const box = viewport.getBoundingClientRect();
+      const candidates = [
+        [0.92, 0.5], [0.08, 0.5], [0.82, 0.7], [0.18, 0.7],
+        [0.82, 0.3], [0.18, 0.3], [0.5, 0.45],
+      ];
+      for (const [x, y] of candidates) {
+        const clientX = box.left + box.width * x;
+        const clientY = box.top + box.height * y;
+        if (document.elementFromPoint(clientX, clientY) === viewport) {
+          return { x: clientX, y: clientY };
+        }
+      }
+      return null;
+    });
+    assert.ok(point, "an unobstructed canvas point is available for wheel input");
+    await page.mouse.move(point.x, point.y);
+  };
   const wheelFourSteps = async (deltaY) => {
     for (let step = 0; step < 4; step += 1) {
       await page.mouse.wheel(0, deltaY);
