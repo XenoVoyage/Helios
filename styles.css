@@ -408,6 +408,10 @@ input[type="range"] {
 }
 
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
+  .card {
+    width: min(324px, calc(100vw - 24px));
+  }
+
   .version {
     top: calc(max(10px, env(safe-area-inset-top)) + 44px);
     right: auto;

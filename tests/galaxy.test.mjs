@@ -229,7 +229,7 @@ test("neighborhood and Local Group looks keep Andromeda beside the Milky Way", (
   }
 });
 
-test("Magellanic Cloud label sprites stay separated in every named camera seat", () => {
+test("Magellanic Cloud labels stay clear in every named camera seat", () => {
   const lmc = findNeighbor("lmc");
   const smc = findNeighbor("smc");
   const growingDistance = CONFIG.handoffViewDistance
@@ -260,6 +260,28 @@ test("Magellanic Cloud label sprites stay separated in every named camera seat",
       false,
       `${name} keeps the complete LMC and SMC label sprites separate`,
     );
+
+    // The generated irregular-galaxy textures have transparent outer bounds;
+    // this rectangle represents the bright central quarter reviewers must see.
+    const cores = [lmc, smc].map((neighbor) => {
+      const size = neighborApparentSize(neighbor);
+      return projectedSpriteRect(
+        aim,
+        distance,
+        neighborScenePosition(neighbor),
+        { width: size * 0.25, height: size * 0.68 * 0.25 },
+      );
+    });
+    const labels = [[lmcRect, "LMC"], [smcRect, "SMC"]];
+    for (const [label, labelName] of labels) {
+      for (const [core, coreName] of [[cores[0], "LMC"], [cores[1], "SMC"]]) {
+        assert.equal(
+          projectedSpritesOverlap(label, core),
+          false,
+          `${name} keeps the ${labelName} label off the ${coreName} bright core`,
+        );
+      }
+    }
   }
 });
 
@@ -489,7 +511,11 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     "outer density crossfades in after the measured volume",
   );
   assert.equal(localWebOpacity(CONFIG.universeViewDistance), 0);
-  assert.equal(universeOpacity(CONFIG.universeViewDistance), 0.25);
+  assert.equal(
+    universeOpacity(CONFIG.universeViewDistance),
+    0.75,
+    "the point-built outer web remains visible through the CMB shell",
+  );
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
   assert.equal(
     farGalaxySkyOpacity(CONFIG.handoffViewDistance),

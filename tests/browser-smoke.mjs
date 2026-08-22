@@ -197,6 +197,13 @@ async function assertZoomStress(page) {
 }
 
 async function saveTritonScreenshot(page, name) {
+  await page.waitForFunction(() => {
+    const label = document.querySelector('.sky-label[data-body-id="triton"]');
+    if (!label || label.hidden) return false;
+    const box = label.getBoundingClientRect();
+    return box.left >= 0 && box.right <= innerWidth
+      && box.top >= 0 && box.bottom + 72 <= innerHeight;
+  }, null, { timeout: 4_000 });
   const viewport = page.viewportSize();
   const label = await page.locator('.sky-label[data-body-id="triton"]').boundingBox();
   assert.ok(viewport);
@@ -221,6 +228,7 @@ async function captureTriton(page) {
   }
   await page.evaluate(() => document.querySelector('[data-body-id="triton"]').click());
   await page.waitForTimeout(1_500);
+  await page.locator("#card-close").click();
   await orbitCameraHalfTurn(page);
   await page.mouse.wheel(0, -1_200);
   await page.waitForTimeout(500);
@@ -236,7 +244,7 @@ async function captureTriton(page) {
   await page.locator("#play-button").click();
   await page.waitForTimeout(500);
   await page.locator("#play-button").click();
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1_500);
   await saveTritonScreenshot(page, "triton-rotation-b");
 }
 
@@ -342,6 +350,7 @@ async function assertCardClearsDock(page, viewport) {
     const card = document.querySelector("#body-card").getBoundingClientRect();
     const dock = document.querySelector("#dock").getBoundingClientRect();
     const credits = document.querySelector("#version-label").getBoundingClientRect();
+    const topbar = document.querySelector("#stage .topbar").getBoundingClientRect();
     const overlaps = card.left < dock.right
       && card.right > dock.left
       && card.top < dock.bottom
@@ -350,6 +359,10 @@ async function assertCardClearsDock(page, viewport) {
       && card.right > credits.left
       && card.top < credits.bottom
       && card.bottom > credits.top;
+    const topbarOverlap = card.left < topbar.right
+      && card.right > topbar.left
+      && card.top < topbar.bottom
+      && card.bottom > topbar.top;
     const creditsHit = document.elementFromPoint(
       credits.left + credits.width / 2,
       credits.top + credits.height / 2,
@@ -359,6 +372,7 @@ async function assertCardClearsDock(page, viewport) {
       dock: { top: dock.top, right: dock.right, bottom: dock.bottom, left: dock.left },
       overlaps,
       creditsOverlap,
+      topbarOverlap,
       creditsHit: creditsHit?.id,
       clearance: Number.parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue("--dock-clearance"),
@@ -372,6 +386,11 @@ async function assertCardClearsDock(page, viewport) {
     layout.creditsOverlap,
     false,
     `${viewport.width}x${viewport.height} card clears credits`,
+  );
+  assert.equal(
+    layout.topbarOverlap,
+    false,
+    `${viewport.width}x${viewport.height} card clears the title and date`,
   );
   assert.equal(
     layout.creditsHit,

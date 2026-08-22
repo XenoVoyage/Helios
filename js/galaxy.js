@@ -197,11 +197,11 @@ function neighborLabelMapPosition(neighbor) {
   // neighborhood, and Local Group seats. Keep the factual galaxy positions
   // untouched and move only their annotations in the local map frame.
   let side = 0;
-  if (neighbor.id === "smc") side = 1300;
-  else if (neighbor.id === "lmc") side = -180;
+  if (neighbor.id === "smc") side = 1500;
+  else if (neighbor.id === "lmc") side = -200;
   else if (neighbor.id === "m31") side = 340;
-  const vertical = neighbor.id === "smc" ? -450 : neighbor.id === "lmc" ? 450 : 0;
-  const depth = neighbor.id === "smc" ? 200 : neighbor.id === "lmc" ? -200 : 0;
+  const vertical = neighbor.id === "smc" ? -1500 : neighbor.id === "lmc" ? 1200 : 0;
+  const depth = neighbor.id === "lmc" ? -200 : 0;
   return { x: at.x + side, y: at.y + lift + vertical, z: at.z + depth };
 }
 
@@ -470,9 +470,9 @@ export function localWebOpacity(distance) {
   return 1 - smoothstep01((distance - start) / (end - start));
 }
 
-/** Outer density follows the local volume and recedes behind the CMB shell. */
+/** Outer density remains legible through the translucent CMB display shell. */
 export function universeOpacity(distance) {
-  return outerDensityBlend(distance) * (1 - cmbSkyOpacity(distance) * 0.75);
+  return outerDensityBlend(distance) * (1 - cmbSkyOpacity(distance) * 0.25);
 }
 
 /**
@@ -1618,8 +1618,9 @@ function createCmbShell(THREE, group) {
     new THREE.SphereGeometry(radius, 96, 64),
     unlitBasic(THREE, {
       map: loadMap(THREE, CMB_SHELL.map),
-      opacity: 0.42,
-      side: THREE.DoubleSide,
+      opacity: 0.3,
+      depthWrite: false,
+      side: THREE.FrontSide,
     }),
   );
   cmb.name = "cmb-sphere";
