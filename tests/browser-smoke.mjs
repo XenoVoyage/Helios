@@ -257,26 +257,27 @@ async function captureEarthSolstice(context, name, targetDate, lookSouth = false
   const approachDate = new Date(
     Date.parse(`${targetDate}T00:00:00Z`) - 30 * 86_400_000,
   ).toISOString().slice(0, 10);
+  const pauseAtDate = (date, timeout) => page.waitForFunction((target) => {
+    if (document.querySelector("#clock").textContent < target) return false;
+    const play = document.querySelector("#play-button");
+    if (play.getAttribute("aria-pressed") === "true") play.click();
+    return true;
+  }, date, { timeout });
   await setSpeed(80);
   await page.locator("#play-button").click();
-  await page.waitForFunction(
-    (target) => document.querySelector("#clock").textContent >= target,
-    approachDate,
-    { timeout: 10_000 },
-  );
+  await pauseAtDate(approachDate, 10_000);
   await setSpeed(2);
-  await page.waitForFunction(
-    (target) => document.querySelector("#clock").textContent >= target,
-    targetDate,
-    { timeout: 25_000 },
-  );
   await page.locator("#play-button").click();
+  await pauseAtDate(targetDate, 25_000);
   await page.waitForTimeout(350);
 
   const observedDate = await page.locator("#clock").textContent();
   const overshootDays = (Date.parse(`${observedDate}T00:00:00Z`)
     - Date.parse(`${targetDate}T00:00:00Z`)) / 86_400_000;
-  assert.ok(overshootDays >= 0 && overshootDays <= 5, `${name} captured near ${targetDate}`);
+  assert.ok(
+    overshootDays >= 0 && overshootDays <= 5,
+    `${name} captured ${observedDate}, near ${targetDate}`,
+  );
 
   if (lookSouth) {
     const bounds = await page.locator("#viewport").boundingBox();
