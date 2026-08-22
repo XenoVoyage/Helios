@@ -130,30 +130,36 @@ async function assertZoomStress(page) {
     bounds.x + bounds.width * 0.5,
     bounds.y + bounds.height * 0.45,
   );
+  const wheelFourSteps = async (deltaY) => {
+    for (let step = 0; step < 4; step += 1) {
+      await page.mouse.wheel(0, deltaY);
+      await page.waitForTimeout(40);
+    }
+  };
   await moveToCanvas();
   await canvas.focus();
 
   // Enter the measured-volume layer through the real wheel path so its
   // transition announcement remains observable after boot's ready message.
-  await page.mouse.wheel(0, 3_940);
+  await wheelFourSteps(1_000);
   await page.locator("#status-live").filter({ hasText: "2MRS galaxy distribution" }).waitFor();
   await assertBodyLabelsHidden(page);
-  await page.mouse.wheel(0, -3_940);
+  await wheelFourSteps(-1_000);
   await page.locator("#sky-button:not([hidden])").waitFor();
 
   for (let cycle = 0; cycle < 3; cycle += 1) {
-    await page.mouse.wheel(0, 3_940);
+    await page.locator("#reset-button").click();
+    await moveToCanvas();
+    await canvas.focus();
+    await wheelFourSteps(1_000);
     await page.waitForFunction(
       () => document.documentElement.dataset.galaxyReady === "1"
         && document.querySelector("#sky-button").hidden
         && [...document.querySelectorAll(".sky-label")].every((label) => label.hidden),
     );
     await assertBodyLabelsHidden(page);
-    await page.mouse.wheel(0, -3_940);
+    await wheelFourSteps(-1_000);
     await page.locator("#sky-button:not([hidden])").waitFor();
-    await page.locator("#reset-button").click();
-    await moveToCanvas();
-    await canvas.focus();
   }
 }
 
