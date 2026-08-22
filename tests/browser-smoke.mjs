@@ -341,14 +341,25 @@ async function assertCardClearsDock(page, viewport) {
   const layout = await page.evaluate(() => {
     const card = document.querySelector("#body-card").getBoundingClientRect();
     const dock = document.querySelector("#dock").getBoundingClientRect();
+    const credits = document.querySelector("#version-label").getBoundingClientRect();
     const overlaps = card.left < dock.right
       && card.right > dock.left
       && card.top < dock.bottom
       && card.bottom > dock.top;
+    const creditsOverlap = card.left < credits.right
+      && card.right > credits.left
+      && card.top < credits.bottom
+      && card.bottom > credits.top;
+    const creditsHit = document.elementFromPoint(
+      credits.left + credits.width / 2,
+      credits.top + credits.height / 2,
+    );
     return {
       card: { top: card.top, right: card.right, bottom: card.bottom, left: card.left },
       dock: { top: dock.top, right: dock.right, bottom: dock.bottom, left: dock.left },
       overlaps,
+      creditsOverlap,
+      creditsHit: creditsHit?.id,
       clearance: Number.parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue("--dock-clearance"),
       ),
@@ -357,6 +368,16 @@ async function assertCardClearsDock(page, viewport) {
     };
   });
   assert.equal(layout.overlaps, false, `${viewport.width}x${viewport.height} card clears dock`);
+  assert.equal(
+    layout.creditsOverlap,
+    false,
+    `${viewport.width}x${viewport.height} card clears credits`,
+  );
+  assert.equal(
+    layout.creditsHit,
+    "version-label",
+    `${viewport.width}x${viewport.height} credits stay hit-testable with a card open`,
+  );
   assert.ok(layout.card.top >= 0 && layout.card.bottom <= viewport.height + 1);
   assert.ok(Math.abs(layout.clearance - Math.ceil(layout.dockHeight)) <= 1);
   assert.equal(layout.speedOverflow, "visible");
@@ -544,7 +565,10 @@ try {
   ]) {
     await assertCreditsClearDock(touchPage, viewport);
   }
+  await assertCardClearsDock(touchPage, { width: 390, height: 844 });
   await saveScreenshot(touchPage, "touch-card");
+  await assertCardClearsDock(touchPage, { width: 568, height: 320 });
+  await saveScreenshot(touchPage, "touch-landscape-card");
   assert.deepEqual(touchErrors, []);
   await touch.close();
 

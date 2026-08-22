@@ -16,6 +16,7 @@ const BODY_POLES = Object.freeze({
   saturn: Object.freeze({ raDeg: 40.589, decDeg: 83.537 }),
   uranus: Object.freeze({ raDeg: 257.311, decDeg: -15.175 }),
   neptune: Object.freeze({ raDeg: 299.3337389588, decDeg: 42.9503590218 }),
+  triton: Object.freeze({ raDeg: 298.4509834088894, decDeg: 20.302361260483217 }),
   pluto: Object.freeze({ raDeg: 132.993, decDeg: -6.163 }),
 });
 
@@ -434,8 +435,10 @@ export const BODIES = Object.freeze([
     orbitDays: 5.876994,
     orbitFrame: laplaceFrame("neptune", 299.8, 43.1),
     rotationHours: -141.048,
-    tiltDeg: 0,
+    tiltDeg: 0.54,
     synchronous: true,
+    // NAIF IAU_TRITON periodic model evaluated at J2000 TDB.
+    orientationJ2000: orientationJ2000("triton", -1, 297.01780353391297),
     texture: "assets/textures/triton.jpg",
     color: "#c8c2b6",
   },

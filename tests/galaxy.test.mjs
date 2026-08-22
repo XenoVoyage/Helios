@@ -49,6 +49,7 @@ import {
   localGroupMemberOpacity,
   neighborBodyOpacity,
   milkyWayBelowCameraAim,
+  milkyWayEdgeCameraAim,
   milkyWayNameOpacity,
   solarBadgeOpacity,
   milkyWayInteriorCameraAim,
@@ -65,6 +66,7 @@ import {
   neighborApparentSize,
   neighborOpacity,
   neighborLabelScenePosition,
+  neighborLabelWorldSize,
   neighborScenePosition,
   orbitLineOpacity,
   orreryScale,
@@ -76,6 +78,7 @@ import {
   solarOpacity,
   sunScenePosition,
   universeOpacity,
+  virgoLabelOpacity,
   virgoOpacity,
   virgoScenePosition,
   visualMilkyWay,
@@ -116,10 +119,37 @@ function cameraPosition(aim, distance) {
   };
 }
 
-function angularSeparationFrom(camera, a, b) {
-  const first = unit({ x: a.x - camera.x, y: a.y - camera.y, z: a.z - camera.z });
-  const second = unit({ x: b.x - camera.x, y: b.y - camera.y, z: b.z - camera.z });
-  return Math.acos(Math.max(-1, Math.min(1, dot(first, second))));
+function cross(a, b) {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
+  };
+}
+
+function projectedSpriteRect(aim, distance, position, size) {
+  const camera = cameraPosition(aim, distance);
+  const forward = unit({ x: -camera.x, y: -camera.y, z: -camera.z });
+  const right = unit(cross(forward, { x: 0, y: 1, z: 0 }));
+  const up = cross(right, forward);
+  const relative = {
+    x: position.x - camera.x,
+    y: position.y - camera.y,
+    z: position.z - camera.z,
+  };
+  const depth = dot(relative, forward);
+  const focal = 1 / Math.tan((52 * Math.PI) / 180 / 2);
+  return {
+    x: (dot(relative, right) / depth) * focal,
+    y: (dot(relative, up) / depth) * focal,
+    halfWidth: (size.width / 2 / depth) * focal,
+    halfHeight: (size.height / 2 / depth) * focal,
+  };
+}
+
+function projectedSpritesOverlap(first, second) {
+  return Math.abs(first.x - second.x) < first.halfWidth + second.halfWidth
+    && Math.abs(first.y - second.y) < first.halfHeight + second.halfHeight;
 }
 
 test("Milky Way catalog keeps the thin disk and a thicker visual map", () => {
@@ -199,14 +229,38 @@ test("neighborhood and Local Group looks keep Andromeda beside the Milky Way", (
   }
 });
 
-test("Magellanic Cloud labels stay separated in the face-on disk look", () => {
-  const camera = cameraPosition(milkyWayCameraAim(), CONFIG.mwViewDistance);
-  const lmc = neighborLabelScenePosition(findNeighbor("lmc"));
-  const smc = neighborLabelScenePosition(findNeighbor("smc"));
-  assert.ok(
-    angularSeparationFrom(camera, lmc, smc) > 0.17,
-    "long LMC and SMC annotations need distinct screen space",
-  );
+test("Magellanic Cloud label sprites stay separated in every named camera seat", () => {
+  const lmc = findNeighbor("lmc");
+  const smc = findNeighbor("smc");
+  const growingDistance = CONFIG.handoffViewDistance
+    + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.9;
+  const looks = [
+    [milkyWayCameraAim(), extraZoomCameraDistance(growingDistance), "growing"],
+    [milkyWayCameraAim(), CONFIG.mwViewDistance, "disk"],
+    [milkyWayEdgeCameraAim(), CONFIG.mwViewDistance, "mwedge"],
+    [milkyWayBelowCameraAim(), CONFIG.mwViewDistance, "mwbelow"],
+    [neighborhoodCameraAim(), CONFIG.neighborhoodViewDistance, "neighborhood"],
+    [localGroupCameraAim(), CONFIG.localGroupViewDistance, "localgroup"],
+  ];
+  for (const [aim, distance, name] of looks) {
+    const lmcRect = projectedSpriteRect(
+      aim,
+      distance,
+      neighborLabelScenePosition(lmc),
+      neighborLabelWorldSize(lmc),
+    );
+    const smcRect = projectedSpriteRect(
+      aim,
+      distance,
+      neighborLabelScenePosition(smc),
+      neighborLabelWorldSize(smc),
+    );
+    assert.equal(
+      projectedSpritesOverlap(lmcRect, smcRect),
+      false,
+      `${name} keeps the complete LMC and SMC label sprites separate`,
+    );
+  }
 });
 
 test("galaxy scales are kpc mappings and do not reuse solar AU units", async () => {
@@ -389,6 +443,15 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   assert.ok(virgoOpacity(CONFIG.localGroupViewDistance) < 0.5);
   assert.equal(virgoOpacity(CONFIG.virgoViewDistance), 1);
+  assert.equal(
+    virgoLabelOpacity(CONFIG.localGroupViewDistance),
+    0,
+    "the distant Virgo name cannot leave a clipped fragment in the Local Group seat",
+  );
+  assert.ok(
+    virgoLabelOpacity((CONFIG.localGroupViewDistance + CONFIG.virgoViewDistance) / 2) > 0,
+  );
+  assert.equal(virgoLabelOpacity(CONFIG.virgoViewDistance), 1);
   assert.equal(nearClusterOpacity(CONFIG.localGroupViewDistance), 0);
   assert.equal(
     nearClusterOpacity(CONFIG.virgoViewDistance),

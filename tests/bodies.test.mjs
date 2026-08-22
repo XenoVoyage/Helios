@@ -125,6 +125,7 @@ function worldOffset(body, days) {
     x: offset.x * basis.xAxis.x + offset.y * basis.zAxis.x - offset.z * basis.yAxis.x,
     y: offset.x * basis.xAxis.y + offset.y * basis.zAxis.y - offset.z * basis.yAxis.y,
     z: offset.x * basis.xAxis.z + offset.y * basis.zAxis.z - offset.z * basis.yAxis.z,
+    spin: offset.spin,
   };
 }
 
@@ -216,6 +217,12 @@ test("physical catalog matches published NASA / JPL figures", () => {
     poleDecDeg: 65.64110274784535,
     primeMeridianDeg: 41.1952639807452,
     spinDirection: 1,
+  });
+  assert.deepEqual(findBody("triton").orientationJ2000, {
+    poleRaDeg: 298.4509834088894,
+    poleDecDeg: 20.302361260483217,
+    primeMeridianDeg: 297.01780353391297,
+    spinDirection: -1,
   });
 
   // NASA Saturnian Rings Fact Sheet: D-ring inner, A-ring outer.
@@ -375,6 +382,36 @@ test("Moon orientation keeps the near side Earth-facing with bounded natural lib
   assert.ok(Math.abs(Math.max(...latitudes) - 6.73) < 0.02);
 });
 
+test("Triton's source pole and phase keep Neptune on the registered hemisphere", () => {
+  const triton = findBody("triton");
+  const spinPole = sceneOrientationBasis(triton).zAxis;
+  const spinDirection = Math.sign(renderedSpinPeriod(triton));
+  const spinAxis = {
+    x: spinPole.x * spinDirection,
+    y: spinPole.y * spinDirection,
+    z: spinPole.z * spinDirection,
+  };
+  const obliquity = angleDeg(orbitNormal(triton), spinAxis);
+  assert.ok(obliquity < 0.6);
+  assert.ok(Math.abs(obliquity - triton.tiltDeg) < 0.01);
+
+  const longitudes = [];
+  const latitudes = [];
+  for (let step = 0; step <= 720; step += 1) {
+    const at = worldOffset(triton, triton.orbitDays * step / 720);
+    const facing = bodyFacingCoordinates(
+      triton,
+      { x: -at.x, y: -at.y, z: -at.z },
+      at.spin,
+    );
+    longitudes.push(facing.longitudeDeg);
+    latitudes.push(facing.latitudeDeg);
+  }
+  assert.ok(Math.max(...longitudes) - Math.min(...longitudes) < 0.01);
+  assert.ok(Math.abs((Math.min(...longitudes) + Math.max(...longitudes)) / 2) < 2);
+  assert.ok(Math.max(...latitudes.map(Math.abs)) < 0.6);
+});
+
 test("synchronous moon rates avoid secular longitude drift without registering new faces", () => {
   const synchronous = BODIES.filter((body) => body.synchronous);
   assert.deepEqual(synchronous.map((body) => body.id), [
@@ -390,7 +427,7 @@ test("synchronous moon rates avoid secular longitude drift without registering n
   ]);
   assert.deepEqual(
     synchronous.filter((body) => body.orientationJ2000).map((body) => body.id),
-    ["moon"],
+    ["moon", "triton"],
   );
   for (const body of synchronous) {
     assert.equal(renderedOrbitPeriod(body), Math.abs(body.rotationHours) / 24);

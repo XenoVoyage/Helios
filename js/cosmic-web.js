@@ -141,12 +141,14 @@ function proximityScores(point, centers) {
 }
 
 /**
- * Generate exactly `settings.count` samples inside `radius` scene units.
+ * Generate exactly `settings.count` samples between two scene radii.
  * The small uniform floor leaves a sparse field while the Voronoi proximity
  * weights concentrate most accepted points on walls and their intersections.
  */
-export function generateCosmicDensity(settings, radius) {
-  if (!(radius > 0)) throw new RangeError("cosmic density radius must be positive");
+export function generateCosmicDensity(settings, innerRadius, outerRadius) {
+  if (!(innerRadius >= 0) || !(outerRadius > innerRadius)) {
+    throw new RangeError("cosmic density radii must define a positive shell");
+  }
   const { count, voidCount, seed, verticalScale, warmth } = settings;
   if (!Number.isInteger(count) || count <= 0) throw new RangeError("cosmic density count must be positive");
   if (!Number.isInteger(voidCount) || voidCount < 4) throw new RangeError("cosmic density needs at least four void centers");
@@ -170,9 +172,18 @@ export function generateCosmicDensity(settings, radius) {
     if (rand() > acceptance) continue;
 
     const i = accepted * 3;
-    positions[i] = point.x * radius;
-    positions[i + 1] = point.y * radius * verticalScale;
-    positions[i + 2] = point.z * radius;
+    // Retain the accepted topology and radial ordering, but remap it into a
+    // volume-uniform shell beyond the measured 2MRS boundary. Normalize after
+    // the visual flattening so no direction can fall back inside that boundary.
+    const sourceRadius = Math.hypot(point.x, point.y, point.z);
+    const radialQuantile = (sourceRadius ** 3 - 0.035 ** 3) / (0.965 ** 3 - 0.035 ** 3);
+    const shellRadius = Math.cbrt(
+      innerRadius ** 3 + radialQuantile * (outerRadius ** 3 - innerRadius ** 3),
+    );
+    const directionLength = Math.hypot(point.x, point.y * verticalScale, point.z);
+    positions[i] = point.x / directionLength * shellRadius;
+    positions[i + 1] = point.y * verticalScale / directionLength * shellRadius;
+    positions[i + 2] = point.z / directionLength * shellRadius;
 
     const strength = clamp01(
       0.18 + scores.wall * 0.28 + scores.filament * 0.38 + scores.node * 0.42,

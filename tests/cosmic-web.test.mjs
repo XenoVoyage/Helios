@@ -62,8 +62,10 @@ test("post-Virgo density stays deterministic and within the point budget", async
   assert.equal(COSMIC_WEB_MODEL.outer.count, 6500);
   assert.equal(cosmicDensitySampleCount(), 49427);
   assert.ok(cosmicDensitySampleCount() <= COSMIC_WEB_MODEL.maxSamples);
-  const first = generateCosmicDensity(COSMIC_WEB_MODEL.outer, 1000);
-  const second = generateCosmicDensity(COSMIC_WEB_MODEL.outer, 1000);
+  const innerRadius = 600;
+  const outerRadius = 1000;
+  const first = generateCosmicDensity(COSMIC_WEB_MODEL.outer, innerRadius, outerRadius);
+  const second = generateCosmicDensity(COSMIC_WEB_MODEL.outer, innerRadius, outerRadius);
   assert.deepEqual(first.positions, second.positions);
   assert.deepEqual(first.colors, second.colors);
   assert.equal(first.positions.length, COSMIC_WEB_MODEL.outer.count * 3);
@@ -74,7 +76,8 @@ test("post-Virgo density stays deterministic and within the point budget", async
       first.positions[i + 1],
       first.positions[i + 2],
     );
-    assert.ok(Number.isFinite(radius) && radius < 966);
+    assert.ok(Number.isFinite(radius) && radius >= innerRadius - 0.001);
+    assert.ok(radius <= outerRadius + 0.001);
   }
 
   const source = await readFile(path.join(root, "js/galaxy.js"), "utf8");

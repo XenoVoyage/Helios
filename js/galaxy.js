@@ -48,6 +48,7 @@ const VISIBILITY_GROUPS = Object.freeze([
   "local-group",
   "near-clusters",
   "virgo",
+  "virgo-label",
   "cosmic-web",
   "home-mark",
   "universe",
@@ -163,6 +164,18 @@ export function neighborLabelScenePosition(neighbor) {
   return mapToScene(neighborLabelMapPosition(neighbor));
 }
 
+function neighborLabelScale(neighbor) {
+  if (neighbor.id === "lmc" || neighbor.id === "smc") return 7.4;
+  if (neighbor.id === "m31") return 12.5;
+  return 5.2;
+}
+
+/** World-space sprite bounds used by the renderer and camera-seat regressions. */
+export function neighborLabelWorldSize(neighbor) {
+  const scale = neighborLabelScale(neighbor);
+  return { width: LABEL.scaleX * scale, height: LABEL.scaleY * scale };
+}
+
 export function virgoScenePosition(cluster = VIRGO_CLUSTER) {
   return mapToScene(virgoMapPosition(cluster));
 }
@@ -180,11 +193,16 @@ function neighborLabelMapPosition(neighbor) {
   const size = neighborApparentSize(neighbor);
   const aspect = neighbor.id === "m31" ? 0.4 : neighbor.id === "m33" ? 0.46 : 0.68;
   const lift = size * aspect * 0.72 + 80;
-  // The two long Cloud names otherwise collide in the face-on disk look
-  // after the J2000 frame rotation. Keep their factual positions untouched;
-  // move only the SMC annotation farther along the map's local X axis.
-  const side = neighbor.id === "smc" ? 1200 : neighbor.id === "lmc" ? -80 : neighbor.id === "m31" ? 340 : 0;
-  return { x: at.x + side, y: at.y + lift, z: at.z };
+  // The long Cloud names need separation in face-on, edge-on, below-disk,
+  // neighborhood, and Local Group seats. Keep the factual galaxy positions
+  // untouched and move only their annotations in the local map frame.
+  let side = 0;
+  if (neighbor.id === "smc") side = 1300;
+  else if (neighbor.id === "lmc") side = -180;
+  else if (neighbor.id === "m31") side = 340;
+  const vertical = neighbor.id === "smc" ? -450 : neighbor.id === "lmc" ? 450 : 0;
+  const depth = neighbor.id === "smc" ? 200 : neighbor.id === "lmc" ? -200 : 0;
+  return { x: at.x + side, y: at.y + lift + vertical, z: at.z + depth };
 }
 
 function virgoMapPosition(cluster = VIRGO_CLUSTER) {
@@ -407,6 +425,16 @@ export function virgoOpacity(distance) {
   if (distance >= CONFIG.virgoViewDistance) return 1;
   if (distance <= CONFIG.localGroupViewDistance) return PRESENT_FLOOR;
   return PRESENT_FLOOR + (1 - PRESENT_FLOOR) * smoothstep01(
+    (distance - CONFIG.localGroupViewDistance)
+    / (CONFIG.virgoViewDistance - CONFIG.localGroupViewDistance),
+  );
+}
+
+/** Keep the distant Virgo mark, but introduce its name only as that seat approaches. */
+export function virgoLabelOpacity(distance) {
+  if (distance <= CONFIG.localGroupViewDistance) return 0;
+  if (distance >= CONFIG.virgoViewDistance) return 1;
+  return smoothstep01(
     (distance - CONFIG.localGroupViewDistance)
     / (CONFIG.virgoViewDistance - CONFIG.localGroupViewDistance),
   );
@@ -1309,7 +1337,7 @@ function createNeighbors(THREE, group, maps) {
     }
     const label = neighbor.messier ? `${neighbor.name} (${neighbor.messier})` : neighbor.name;
     const labelAt = neighborLabelMapPosition(neighbor);
-    const labelScale = neighbor.id === "lmc" || neighbor.id === "smc" ? 7.4 : neighbor.id === "m31" ? 12.5 : 5.2;
+    const labelScale = neighborLabelScale(neighbor);
     cluster.add(labelSprite(THREE, label, labelAt, labelScale));
   }
   group.add(cluster);
@@ -1502,12 +1530,14 @@ function createVirgoCluster(THREE, group, maps) {
     sprite.frustumCulled = false;
     cluster.add(sprite);
   }
-  cluster.add(labelSprite(
+  const label = labelSprite(
     THREE,
     "Virgo Cluster",
     { x: at.x, y: at.y + mark * 0.82, z: at.z },
     11,
-  ));
+  );
+  label.name = "virgo-label";
+  cluster.add(label);
   group.add(cluster);
 }
 
@@ -1563,8 +1593,9 @@ function createHomeMark(THREE, group) {
 function createOuterDensity(THREE, group) {
   const shell = new THREE.Group();
   shell.name = "universe";
-  const radius = visualUniverse(PARTICLE_HORIZON.comovingRadiusGpc);
-  const samples = generateCosmicDensity(COSMIC_WEB_MODEL.outer, radius * 0.92);
+  const innerRadius = visualWeb(CONFIG.webRadiusMpc);
+  const outerRadius = visualUniverse(PARTICLE_HORIZON.comovingRadiusGpc) * 0.92;
+  const samples = generateCosmicDensity(COSMIC_WEB_MODEL.outer, innerRadius, outerRadius);
   addPoints(
     THREE,
     shell,
@@ -1770,6 +1801,7 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
     if (mat.uniforms?.opacity) mat.uniforms.opacity.value = next;
   }
   const cluster = virgoOpacity(distance);
+  const clusterLabel = virgoLabelOpacity(distance);
   const near = nearClusterOpacity(distance);
   const web = webOpacity(distance);
   const localWeb = localWebOpacity(distance);
@@ -1788,6 +1820,7 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
   fadeNamedGroup(cache, "local-group", opacity, localGroupMemberOpacity(distance) * family);
   fadeNamedGroup(cache, "near-clusters", opacity, near);
   fadeNamedGroup(cache, "virgo", opacity, virgoShown);
+  fadeNamedGroup(cache, "virgo-label", opacity, virgoShown * clusterLabel);
   fadeNamedGroup(cache, "cosmic-web", opacity, localWeb);
   fadeNamedGroup(cache, "home-mark", opacity, localWeb);
   fadeNamedGroup(cache, "universe", opacity, universe);

@@ -406,3 +406,11 @@ input[type="range"] {
     overflow: auto;
   }
 }
+
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
+  .version {
+    top: calc(max(10px, env(safe-area-inset-top)) + 44px);
+    right: auto;
+    left: max(12px, env(safe-area-inset-left));
+  }
+}
