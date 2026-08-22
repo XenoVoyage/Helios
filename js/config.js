@@ -2,7 +2,8 @@
  * Canonical tunables. VERSION must match VERSION.txt.
  *
  * NASA / JPL catalog numbers stay in js/bodies.js. Galactic kpc, Virgo Mpc,
- * web Mpc, and the Planck Gpc / CMB radius stay in js/galaxy-catalog.js.
+ * web Mpc, particle-horizon Gpc, and illustrative CMB display radius stay in
+ * js/galaxy-catalog.js.
  * Only visual scale, the galaxy kpc / cluster / universe mapping, and the
  * time slider may diverge from 1:1. Time is not tied to scale.
  *
@@ -14,7 +15,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.21d",
+  VERSION: "v2026.8.22a",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -84,10 +85,12 @@ export const CONFIG = Object.freeze({
   // Visual core mark for the cluster, not a 1:1 member catalog.
   virgoMarkRadiusMpc: 2.2,
   // Fourth compressed scale for the local cosmic web. Input is catalog Mpc.
-  webScale: 26600,
+  // Keeps the 300 Mpc 2MRS boundary beyond the web camera so the measured
+  // distribution reads as a surrounding volume, not an outside-view ball.
+  webScale: 55000,
   webPower: 0.42,
-  // Visual local-web radius. Laniakea-scale, not a 1:1 160 Mpc diameter.
-  webRadiusMpc: 80,
+  // 2MRS display cutoff. Radial velocity / H0 is an approximate Mpc mapping.
+  webRadiusMpc: 300,
   // Visual home-hub glow. Not the published Laniakea diameter.
   laniakeaMarkRadiusMpc: 3.6,
   // Fifth compressed scale for the observable universe. Input is catalog Gpc.
@@ -106,21 +109,27 @@ export const CONFIG = Object.freeze({
 });
 
 /**
- * Pinch-out (larger gap) moves the camera farther: zoom out.
- * Pinch-in (smaller gap) moves closer: zoom in. Touch only uses this path.
+ * Pinch-out (larger gap) moves the camera closer: zoom in.
+ * Pinch-in (smaller gap) moves farther: zoom out. Touch only uses this path.
  */
 export function pinchZoomDistance(startDistance, startGap, gap) {
   if (!(startGap > 0) || !(gap > 0)) return startDistance;
-  return startDistance * (gap / startGap);
+  return startDistance * (startGap / gap);
 }
 
-/**
- * Mouse wheel keeps Helios' existing feel. Browser / iOS pinch is delivered
- * as a wheel (often with ctrlKey) and that delta is inverted so pinch-out
- * zooms out, matching the pointer-pinch path.
- */
-export function wheelZoomMultiplier(deltaY, invert = false) {
-  return Math.exp((invert ? -deltaY : deltaY) * 0.0016);
+/** Mouse wheel and browser pinch both follow the platform's delivered direction. */
+export function wheelZoomMultiplier(deltaY) {
+  return Math.exp(deltaY * 0.0016);
+}
+
+/** Global canvas shortcuts must yield to native and editable controls. */
+export function isShortcutTargetInteractive(target) {
+  for (let node = target; node; node = node.parentElement) {
+    const tag = String(node.tagName || "").toUpperCase();
+    if (["BUTTON", "A", "INPUT", "SELECT", "TEXTAREA"].includes(tag)) return true;
+    if (node.isContentEditable || node.getAttribute?.("contenteditable") === "true") return true;
+  }
+  return false;
 }
 
 /** Honest clock-rate label. Hours below 1 day/sec; days, months, years above. */
@@ -129,4 +138,23 @@ export function formatDaysPerSecond(daysPerSecond) {
   if (daysPerSecond >= 30) return `${(daysPerSecond / 30.437).toFixed(1)} mo`;
   if (daysPerSecond >= 1) return `${daysPerSecond.toFixed(daysPerSecond >= 10 ? 0 : 1)} d`;
   return `${(daysPerSecond * 24).toFixed(0)} h`;
+}
+
+export function describeDaysPerSecond(daysPerSecond) {
+  let value;
+  let unit;
+  if (daysPerSecond >= 365) {
+    value = Number((daysPerSecond / 365.25).toFixed(1));
+    unit = "year";
+  } else if (daysPerSecond >= 30) {
+    value = Number((daysPerSecond / 30.437).toFixed(1));
+    unit = "month";
+  } else if (daysPerSecond >= 1) {
+    value = Number(daysPerSecond.toFixed(daysPerSecond >= 10 ? 0 : 1));
+    unit = "day";
+  } else {
+    value = Number((daysPerSecond * 24).toFixed(0));
+    unit = "hour";
+  }
+  return `${value} ${unit}${value === 1 ? "" : "s"} per second`;
 }

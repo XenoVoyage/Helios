@@ -1,10 +1,20 @@
 import * as THREE from "../vendor/three.module.min.js";
-import { CONFIG, formatDaysPerSecond, pinchZoomDistance, wheelZoomMultiplier } from "./config.js";
+import {
+  CONFIG,
+  describeDaysPerSecond,
+  formatDaysPerSecond,
+  isShortcutTargetInteractive,
+  pinchZoomDistance,
+  wheelZoomMultiplier,
+} from "./config.js";
+import { advanceSimulationDays, elapsedSeconds, simulationDateLabel } from "./time.js";
 import {
   BODIES,
+  bodyOrientationBasis,
   describeBody,
   findBody,
   keplerOffset,
+  moonOrbitAttachment,
   ringTextureU,
   visualBodyRadius,
   visualOrbit,
@@ -13,6 +23,7 @@ import {
 import {
   attachSkyToCamera,
   createCelestialSphere,
+  equatorialVectorToScene,
   placeCameraForSkyLook,
   setCelestialFade,
   setConstellationsVisible,
@@ -92,7 +103,9 @@ let kuiperBelt;
 let orbitLines;
 let galaxy;
 let helpers;
+let dockObserver;
 let lastStamp = 0;
+let lastClockLabel = "";
 const earthSkyLook = wantsEarthSkyLook();
 
 function $(id) {
@@ -114,6 +127,7 @@ function seedRandom(seed) {
 }
 
 function boot() {
+  ui.stage = $("stage");
   ui.viewport = $("viewport");
   ui.labels = $("labels");
   ui.clock = $("clock");
@@ -135,8 +149,11 @@ function boot() {
   ui.status = $("status-live");
   ui.unsupported = $("unsupported");
   ui.version = $("version-label");
+  ui.dock = $("dock");
+  ui.skip = $("skip-link");
 
   ui.version.textContent = CONFIG.VERSION;
+  const galaxyLook = earthSkyLook ? null : requestedGalaxyLook();
   paintSpeed();
   paintClock();
   paintSkyButton();
@@ -145,7 +162,7 @@ function boot() {
   try {
     if (!createRenderer()) throw new Error("WebGL unavailable");
   } catch {
-    ui.unsupported.hidden = false;
+    showUnsupported();
     return;
   }
 
@@ -154,8 +171,6 @@ function boot() {
   camera = new THREE.PerspectiveCamera(52, 1, 0.05, CONFIG.cameraFar);
   celestial = createCelestialSphere(THREE);
   scene.add(celestial);
-  galaxy = createGalaxyLayer(THREE);
-  scene.add(galaxy);
   asteroidBelt = createBeltField({
     count: CONFIG.beltCount,
     innerAu: CONFIG.beltInnerAu,
@@ -198,9 +213,9 @@ function boot() {
     const node = nodes.get(body.id);
     if (body.parent) {
       const parentNode = nodes.get(body.parent);
-      // Moons follow the parent's equatorial plane so Titan stays in the
-      // ring plane instead of punching through a tilted disc.
-      const attach = body.kind === "moon" ? parentNode.tilt : parentNode.pivot;
+      const attach = body.kind === "moon" && moonOrbitAttachment(body) === "parent-equatorial"
+        ? parentNode.tilt
+        : parentNode.pivot;
       attach.add(node.pivot);
     } else {
       scene.add(node.pivot);
@@ -210,12 +225,13 @@ function boot() {
     }
   }
 
-  bindInput();
   resize();
   if (!renderer.domElement.width || !renderer.domElement.height) {
-    ui.unsupported.hidden = false;
+    showUnsupported();
     return;
   }
+  bindInput();
+  observeDock();
   if (earthSkyLook) {
     state.playing = false;
     state.focusedId = "earth";
@@ -224,7 +240,6 @@ function boot() {
     paintSpeed();
     paintCard();
   } else {
-    const galaxyLook = requestedGalaxyLook();
     if (galaxyLook === "solarfar") {
       state.distance = CONFIG.solarMaxDistance;
       state.azimuth = CONFIG.cameraAzimuth;
@@ -307,12 +322,22 @@ function boot() {
       state.focusedId = "sun";
     }
   }
+  if (galaxyOpacity(state.distance) > 0) ensureGalaxyLayer();
   updateBodies();
   placeCamera(1);
   paintScaleLayer();
   lastStamp = performance.now();
   requestAnimationFrame(tick);
   say("Helios is ready. Drag to orbit, pinch or scroll to zoom, tap a world to focus.");
+}
+
+function showUnsupported() {
+  ui.stage.hidden = true;
+  ui.stage.inert = true;
+  ui.skip.hidden = true;
+  ui.version.hidden = true;
+  ui.unsupported.hidden = false;
+  ui.unsupported.focus({ preventScroll: true });
 }
 
 function createRenderer() {
@@ -341,13 +366,42 @@ function loadMap(path) {
   return texture;
 }
 
+function applyBodyOrientation(tilt, body) {
+  const basis = bodyOrientationBasis(body);
+  if (!basis) {
+    tilt.rotation.z = body.tiltDeg * DEG;
+    return 0;
+  }
+  const xAxis = equatorialVectorToScene(basis.xAxis);
+  const bodyYAxis = equatorialVectorToScene(basis.yAxis);
+  const pole = equatorialVectorToScene(basis.zAxis);
+  const matrix = new THREE.Matrix4().makeBasis(
+    new THREE.Vector3(xAxis.x, xAxis.y, xAxis.z),
+    new THREE.Vector3(pole.x, pole.y, pole.z),
+    new THREE.Vector3(-bodyYAxis.x, -bodyYAxis.y, -bodyYAxis.z),
+  );
+  tilt.setRotationFromMatrix(matrix);
+  if (basis.primeMeridianDeg !== null) return basis.primeMeridianDeg * DEG;
+  // Keep an unverified texture's previous prime direction as closely as the
+  // corrected pole permits; this display phase is not an IAU longitude claim.
+  const legacyPrime = new THREE.Vector3(
+    Math.cos(body.tiltDeg * DEG),
+    Math.sin(body.tiltDeg * DEG),
+    0,
+  );
+  return Math.atan2(
+    legacyPrime.dot(new THREE.Vector3(bodyYAxis.x, bodyYAxis.y, bodyYAxis.z)),
+    legacyPrime.dot(new THREE.Vector3(xAxis.x, xAxis.y, xAxis.z)),
+  );
+}
+
 function createBodyNode(body) {
   const radius = visualBodyRadius(body);
   const segments = body.id === "sun" ? 64 : body.kind === "moon" ? 32 : 48;
   const pivot = new THREE.Group();
   pivot.name = body.id;
   const tilt = new THREE.Group();
-  tilt.rotation.z = body.tiltDeg * DEG;
+  const spinPhase = applyBodyOrientation(tilt, body);
   pivot.add(tilt);
 
   const material = body.id === "sun"
@@ -387,7 +441,7 @@ function createBodyNode(body) {
   label.hidden = true;
   ui.labels.append(label);
 
-  return { body, pivot, tilt, mesh, label, radius, glow };
+  return { body, pivot, tilt, mesh, label, radius, glow, spinPhase };
 }
 
 function createRing(body) {
@@ -556,14 +610,11 @@ function onPointerUp(event) {
 function onWheel(event) {
   event.preventDefault();
   if (state.pinching) return;
-  const touchPinch = Boolean(event.ctrlKey)
-    || event.pointerType === "touch"
-    || Boolean(event.sourceCapabilities?.firesTouchEvents);
-  zoomTo(state.distance * wheelZoomMultiplier(event.deltaY, touchPinch));
+  zoomTo(state.distance * wheelZoomMultiplier(event.deltaY));
 }
 
 function onKey(event) {
-  if (event.target instanceof HTMLInputElement) return;
+  if (event.repeat || isShortcutTargetInteractive(event.target)) return;
   if (event.code === "Space") {
     event.preventDefault();
     togglePlay();
@@ -584,6 +635,7 @@ function pointerGap() {
 
 function zoomTo(distance) {
   const next = clamp(distance, CONFIG.minDistance, CONFIG.maxDistance);
+  if (next > CONFIG.solarMaxDistance) ensureGalaxyLayer();
   if (next > CONFIG.solarMaxDistance && state.distance <= CONFIG.solarMaxDistance) {
     state.focusedId = "sun";
     state.selectedId = null;
@@ -701,12 +753,15 @@ function paintSpeed() {
   ui.play.textContent = state.playing ? "Pause" : "Play";
   ui.play.setAttribute("aria-pressed", String(state.playing));
   ui.speed.value = String(sliderFromSpeed(state.daysPerSecond));
+  ui.speed.setAttribute("aria-valuetext", describeDaysPerSecond(state.daysPerSecond));
   ui.speedReadout.textContent = `${formatDaysPerSecond(state.daysPerSecond)} / sec`;
 }
 
 function paintClock() {
-  const stamp = Date.UTC(2000, 0, 1, 12) + state.days * 86400000;
-  ui.clock.textContent = new Date(stamp).toISOString().slice(0, 10);
+  const label = simulationDateLabel(state.days);
+  if (label === lastClockLabel) return;
+  lastClockLabel = label;
+  ui.clock.textContent = label;
 }
 
 function paintSkyButton() {
@@ -774,27 +829,41 @@ function resize() {
   camera.aspect = width / Math.max(1, height);
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
+  paintDockClearance();
+}
+
+function paintDockClearance() {
+  const height = Math.ceil(ui.dock.getBoundingClientRect().height);
+  if (height > 0) {
+    document.documentElement.style.setProperty("--dock-clearance", `${height}px`);
+  }
+}
+
+function observeDock() {
+  paintDockClearance();
+  if (!("ResizeObserver" in window)) return;
+  dockObserver = new ResizeObserver(paintDockClearance);
+  dockObserver.observe(ui.dock);
 }
 
 function tick(now) {
-  const dt = Math.min(0.05, (now - lastStamp) / 1000);
+  const elapsed = elapsedSeconds(now, lastStamp);
+  const cameraDt = Math.min(0.05, elapsed);
   lastStamp = now;
-  if (state.playing) state.days += dt * state.daysPerSecond;
+  state.days = advanceSimulationDays(
+    state.days,
+    elapsed,
+    state.daysPerSecond,
+    state.playing,
+  );
   updateBodies();
   asteroidBelt.rotation.y = state.days * (Math.PI * 2) / 1682;
   kuiperBelt.rotation.y = state.days * (Math.PI * 2) / 90560;
   paintScaleLayer();
-  placeCamera(1 - Math.exp(-CONFIG.focusLerp * dt));
+  placeCamera(1 - Math.exp(-CONFIG.focusLerp * cameraDt));
   updateLabels();
   paintClock();
   renderer.render(scene, camera);
-  if (extraZoomWarmState === 0 && !earthSkyLook) {
-    extraZoomWarmState = 1;
-    const later = typeof requestIdleCallback === "function"
-      ? (fn) => requestIdleCallback(fn, { timeout: 280 })
-      : (fn) => requestAnimationFrame(fn);
-    later(warmExtraZoom);
-  }
   requestAnimationFrame(tick);
 }
 
@@ -803,7 +872,7 @@ function updateBodies() {
     const parent = node.body.parent ? findBody(node.body.parent) : null;
     const at = keplerOffset(node.body, parent, state.days);
     node.pivot.position.set(at.x, at.y, at.z);
-    node.mesh.rotation.y = at.spin;
+    node.mesh.rotation.y = node.spinPhase + at.spin;
   }
 }
 
@@ -830,7 +899,7 @@ function placeCamera(blend) {
   camera.far = CONFIG.cameraFar;
   camera.updateProjectionMatrix();
   attachSkyToCamera(celestial, camera);
-  attachFarGalaxySky(galaxy, camera);
+  if (galaxy) attachFarGalaxySky(galaxy, camera);
 }
 
 function fadeRoot(root, factor) {
@@ -857,21 +926,23 @@ function fadeBodyNode(node, factor) {
 }
 
 let lastScaleLayer = "solar";
-let extraZoomWarmState = 0;
 
-function warmExtraZoom() {
-  if (extraZoomWarmState === 2 || !galaxy || !renderer || earthSkyLook) return;
-  extraZoomWarmState = 2;
-  setGalaxyLayerVisible(galaxy, 0.001, CONFIG.mwViewDistance);
-  renderer.compile(scene, camera);
-  renderer.render(scene, camera);
-  setGalaxyLayerVisible(galaxy, galaxyOpacity(state.distance), state.distance);
+function ensureGalaxyLayer() {
+  if (galaxy || !scene || earthSkyLook) return galaxy;
+  galaxy = createGalaxyLayer(THREE);
+  scene.add(galaxy);
+  document.documentElement.dataset.galaxyReady = "1";
+  return galaxy;
 }
 
 function paintScaleLayer() {
-  if (earthSkyLook) return;
+  if (earthSkyLook) {
+    document.documentElement.dataset.heliosReady = "1";
+    return;
+  }
   const solar = solarOpacity(state.distance);
   const galactic = galaxyOpacity(state.distance);
+  if (galactic > 0) ensureGalaxyLayer();
   const shrink = orreryScale(state.distance);
   const sun = nodes.get("sun");
   if (sun) sun.pivot.scale.setScalar(shrink);
@@ -887,7 +958,7 @@ function paintScaleLayer() {
   setSkyBandBrightness(celestial, skyBandBrightness(state.distance));
   setStarBrightness(celestial, skyStarBrightness(state.distance));
   paintConstellations();
-  setGalaxyLayerVisible(galaxy, galactic, state.distance);
+  if (galaxy) setGalaxyLayerVisible(galaxy, galactic, state.distance);
   for (const node of nodes.values()) {
     const extra = node.body.id === "sun" || scaleLayer(state.distance) === "solar";
     fadeBodyNode(node, extra ? solar : 0);
@@ -902,8 +973,8 @@ function paintScaleLayer() {
     else if (layer === "neighborhood") say("Nearby galaxies.");
     else if (layer === "localgroup") say("Local Group.");
     else if (layer === "virgo") say("Virgo Cluster. The Local Group is a nearby family; Virgo is the nearest large cluster.");
-    else if (layer === "web") say("Cosmic web. Filaments and clusters around the Milky Way.");
-    else if (layer === "universe") say("Observable universe. The CMB sphere is the last outside layer.");
+    else if (layer === "web") say("2MRS galaxy distribution. Approximate redshift distances, with no invented links.");
+    else if (layer === "universe") say("Schematic observable universe. The illustrative CMB shell shares the outer display radius.");
     else if (layer === "solar") say("Solar system.");
   }
   document.documentElement.dataset.heliosReady = "1";

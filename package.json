@@ -1,12 +1,19 @@
 {
   "name": "helios",
-  "version": "2026.8.21-b",
   "private": true,
   "type": "module",
   "description": "Interactive 3D solar system.",
   "license": "MIT",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
-    "test": "node tests/static-check.mjs && node --test tests/bodies.test.mjs tests/sky.test.mjs tests/galaxy.test.mjs && node tests/http-smoke.mjs",
+    "test": "npm run test:static && npm run test:browser",
+    "test:static": "node tests/static-check.mjs && node --test tests/bodies.test.mjs tests/sky.test.mjs tests/galaxy.test.mjs tests/cosmic-web.test.mjs tests/time.test.mjs && node tests/http-smoke.mjs",
+    "test:browser": "node tests/browser-smoke.mjs",
     "serve": "node tests/serve.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
   }
 }

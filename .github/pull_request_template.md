@@ -12,6 +12,11 @@
 
 -
 
+## Rationale and deletions
+
+- Why this is the smallest complete solution:
+- Removed files, code, assets, or dependencies (or `None`):
+
 ## Validation
 
 <!-- List exact commands and results. Separate automated, rendered, deployed, and manually observed evidence. -->

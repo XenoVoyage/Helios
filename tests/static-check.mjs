@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -12,6 +13,11 @@ async function read(relative) {
   return readFile(path.join(root, relative), "utf8");
 }
 
+async function sha256(relative) {
+  const content = await readFile(path.join(root, relative));
+  return createHash("sha256").update(content).digest("hex");
+}
+
 const html = await read("index.html");
 const css = await read("styles.css");
 const app = await read("js/app.js");
@@ -21,17 +27,48 @@ const sky = await read("js/sky.js");
 const skyCatalog = await read("js/sky-catalog.js");
 const galaxy = await read("js/galaxy.js");
 const galaxyCatalog = await read("js/galaxy-catalog.js");
+const cosmicWeb = await read("js/cosmic-web.js");
+const twoMrsData = await read("js/2mrs-data.js");
 const helpers = await read("js/helpers.js");
+const time = await read("js/time.js");
 const version = (await read("VERSION.txt")).trim();
 const license = await read("LICENSE");
 const threeLicense = await read("vendor/THREE-LICENSE");
+const threeMetadata = JSON.parse(await read("vendor/three-metadata.json"));
+const packageJson = JSON.parse(await read("package.json"));
+const packageLock = JSON.parse(await read("package-lock.json"));
+const readme = await read("README.md");
+const provenance = await read("PROVENANCE.md");
+const agents = await read("AGENTS.md");
+const auditWorkflow = await read(".github/workflows/ci.yml");
+const pagesWorkflow = await read(".github/workflows/pages.yml");
 
 assert.equal(version, CONFIG.VERSION);
+assert.match(version, /^v\d{4}\.\d{1,2}\.\d{1,2}[a-z]$/);
+assert.ok(readme.includes(`Version ${version}`));
+assert.match(agents, /\*\*Project Engineering Standard:\*\* v1\.0/);
+assert.match(agents, /\*\*Standard Status:\*\* adopting/);
+assert.equal(packageJson.engines.node, "22.x");
+assert.equal(packageJson.devDependencies.playwright, "1.62.1");
+assert.equal(packageLock.packages[""].devDependencies.playwright, "1.62.1");
+for (const workflow of [auditWorkflow, pagesWorkflow]) {
+  for (const action of workflow.matchAll(/uses:\s*[^@\s]+@([^\s]+)/g)) {
+    assert.match(action[1], /^[0-9a-f]{40}$/, action[0]);
+  }
+}
+assert.match(pagesWorkflow, /cp index\.html styles\.css \.nojekyll LICENSE PROVENANCE\.md _site\//);
+assert.match(pagesWorkflow, /cp -R assets js vendor _site\//);
+assert.match(pagesWorkflow, /path: _site/);
+assert.match(pagesWorkflow, /actions\/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9/);
+assert.match(pagesWorkflow, /include-hidden-files: true/);
 assert.match(html, /Content-Security-Policy/);
 assert.match(html, /connect-src 'none'/);
 assert.match(html, /id="play-button"/);
 assert.match(html, /id="speed-slider"/);
 assert.match(html, /id="reset-button"/);
+assert.match(html, /id="unsupported"[^>]*role="alert"[^>]*tabindex="-1"/);
+assert.match(html, /href="\.\/PROVENANCE\.md"/);
+assert.match(html, /Credits, licenses, and scientific provenance/);
 assert.match(html, /viewport-fit=cover/);
 assert.doesNotMatch(html, remote);
 assert.doesNotMatch(css, remote);
@@ -43,6 +80,7 @@ assert.doesNotMatch(skyCatalog, remote);
 assert.doesNotMatch(galaxy, remote);
 assert.doesNotMatch(galaxyCatalog, remote);
 assert.doesNotMatch(helpers, remote);
+assert.doesNotMatch(time, remote);
 assert.match(html, /id="sky-button"/);
 assert.match(html, /id="helper-orbit"/);
 assert.match(html, /id="helper-axis"/);
@@ -56,10 +94,22 @@ assert.doesNotMatch(configSource, /https?:\/\//);
 assert.doesNotMatch(skyCatalog, /https?:\/\//);
 assert.doesNotMatch(galaxy, /https?:\/\//);
 assert.doesNotMatch(helpers, /https?:\/\//);
+assert.match(helpers, /keplerPathOffset/);
+assert.doesNotMatch(helpers, /\bkeplerOffset\b/);
 assert.match(html, /vendor\/three|js\/app\.js/);
 assert.match(license, /MIT License/);
 assert.match(threeLicense, /three\.js authors/);
+assert.match(provenance, /MIT license covers first-party code only/);
+assert.match(provenance, /not JPL Horizons ephemerides/);
+assert.match(provenance, /No inpainting or synthetic terrain/);
 assert.match(css, /min-height: 44px/);
+assert.match(
+  css,
+  /\.sky-label\[hidden\]\s*\{[^}]*display:\s*none/,
+  "author CSS must preserve native hidden semantics for 44px body-label buttons",
+);
+assert.match(css, /--dock-clearance/);
+assert.doesNotMatch(css, /\.speed-group\s*\{[^}]*overflow:\s*hidden/);
 assert.doesNotMatch(css, /:hover\s*\{[^}]*display:\s*block/);
 assert.doesNotMatch(css, /--gold|#e8c872/i);
 assert.match(css, /--cyan:\s*#66f7ff/);
@@ -80,6 +130,8 @@ assert.match(app, /solarMaxDistance/);
 assert.match(app, /localGroupViewDistance/);
 assert.match(app, /virgoViewDistance/);
 assert.match(app, /webViewDistance/);
+assert.match(app, /2MRS galaxy distribution/);
+assert.doesNotMatch(app, /Seeded filaments and clusters/);
 assert.match(app, /universeViewDistance/);
 assert.match(app, /handoffViewDistance/);
 assert.match(app, /galaxyLook === "solarfar"/);
@@ -91,7 +143,8 @@ assert.match(sky, /gl_PointSize = size \* brightness \* brightness/);
 assert.match(app, /orreryScale/);
 assert.match(app, /orbitLineOpacity/);
 assert.match(app, /solarDebrisOpacity/);
-assert.match(app, /warmExtraZoom/);
+assert.match(app, /ensureGalaxyLayer/);
+assert.doesNotMatch(app, /warmExtraZoom|renderer\.compile/);
 assert.match(app, /paintConstellations/);
 assert.match(app, /ui\.sky\.hidden/);
 assert.match(app, /skyStaysOn/);
@@ -105,10 +158,14 @@ assert.doesNotMatch(app, /extraZoomTailMix/);
 assert.match(app, /pinchZoomDistance/);
 assert.match(app, /wheelZoomMultiplier/);
 assert.match(app, /clearSelection/);
+assert.match(app, /function showUnsupported/);
+assert.match(app, /ui\.version\.hidden = true/);
+assert.match(app, /ui\.stage\.inert = true/);
+assert.match(app, /ResizeObserver/);
 assert.match(app, /hidePlanets = scaleLayer\(state\.distance\) !== "solar"/);
 assert.match(html, /id="card-close"/);
 assert.match(html, /aria-label="Close"/);
-assert.match(html, /user-scalable=no/);
+assert.doesNotMatch(html, /user-scalable=no|maximum-scale=1/);
 assert.match(css, /#card-close/);
 assert.match(configSource, /pinchZoomDistance/);
 assert.match(galaxy, /milkyWayInteriorCameraAim/);
@@ -135,7 +192,11 @@ assert.match(galaxy, /visualUniverse/);
 assert.match(galaxy, /cmb-shell|cmb\.jpg/);
 assert.match(galaxy, /cosmic-web/);
 assert.match(galaxy, /far-galaxy-sky/);
-assert.match(galaxy, /deep-field/);
+assert.doesNotMatch(galaxy, /deep-field/);
+assert.match(galaxy, /2mrs-galaxies/);
+assert.match(cosmicWeb, /createTwoMrsSamples/);
+assert.match(cosmicWeb, /seeded Voronoi-proximity/);
+assert.match(twoMrsData, /NASA HEASARC TWOMASSRSC/);
 assert.match(galaxy, /mw-disk-edge/);
 assert.doesNotMatch(galaxy, /You are here/);
 assert.doesNotMatch(galaxyCatalog, /SUPERCLUSTERS/);
@@ -144,8 +205,9 @@ assert.match(galaxyCatalog, /Large Magellanic Cloud/);
 assert.match(galaxyCatalog, /Small Magellanic Cloud/);
 assert.match(galaxyCatalog, /LOCAL_GROUP/);
 assert.match(galaxyCatalog, /VIRGO_CLUSTER/);
+assert.match(galaxyCatalog, /POST_VIRGO_CLUSTERS/);
 assert.match(galaxyCatalog, /CMB_SHELL/);
-assert.match(galaxyCatalog, /OBSERVABLE_UNIVERSE/);
+assert.match(galaxyCatalog, /PARTICLE_HORIZON/);
 assert.match(sky, /milky-way\.jpg/);
 assert.match(sky, /andromeda\.png/);
 assert.match(galaxy, /andromeda\.png|SKY_ASSETS/);
@@ -156,6 +218,7 @@ assert.ok(CONFIG.cameraFar > CONFIG.maxDistance);
 
 await stat(path.join(root, "vendor/three.module.min.js"));
 await stat(path.join(root, "vendor/three.core.min.js"));
+await stat(path.join(root, "PROVENANCE.md"));
 await stat(path.join(root, ".nojekyll"));
 await stat(path.join(root, "assets/sky/milky-way.jpg"));
 await stat(path.join(root, "assets/sky/andromeda.png"));
@@ -164,7 +227,10 @@ await stat(path.join(root, "js/sky.js"));
 await stat(path.join(root, "js/sky-catalog.js"));
 await stat(path.join(root, "js/galaxy.js"));
 await stat(path.join(root, "js/galaxy-catalog.js"));
+await stat(path.join(root, "js/cosmic-web.js"));
+await stat(path.join(root, "js/2mrs-data.js"));
 await stat(path.join(root, "js/helpers.js"));
+await stat(path.join(root, "js/time.js"));
 await stat(path.join(root, "docs/assets/helios-overview.webp"));
 await stat(path.join(root, "docs/assets/helios-titan-rings.webp"));
 await stat(path.join(root, "docs/assets/helios-constellations.webp"));
@@ -179,20 +245,21 @@ await stat(path.join(root, "docs/assets/helios-local-group.webp"));
 await stat(path.join(root, "docs/assets/helios-virgo.webp"));
 await stat(path.join(root, "docs/assets/helios-web.webp"));
 await stat(path.join(root, "docs/assets/helios-universe.webp"));
-assert.match(await read("README.md"), /docs\/assets\/helios-overview\.webp/);
-assert.match(await read("README.md"), /docs\/assets\/helios-solar-far\.webp/);
-assert.match(await read("README.md"), /docs\/assets\/helios-milky-way\.webp/);
-assert.match(await read("README.md"), /docs\/assets\/helios-tail-sky\.webp/);
-assert.match(await read("README.md"), /docs\/assets\/helios-growing\.webp/);
-assert.match(await read("README.md"), /docs\/assets\/helios-disk\.webp/);
-assert.match(await read("README.md"), /docs\/assets\/helios-preweb\.webp/);
-assert.match(await read("README.md"), /docs\/assets\/helios-local-group\.webp/);
-assert.match(await read("README.md"), /docs\/assets\/helios-virgo\.webp/);
-assert.match(await read("README.md"), /docs\/assets\/helios-web\.webp/);
-assert.match(await read("README.md"), /docs\/assets\/helios-universe\.webp/);
-assert.doesNotMatch(await read("README.md"), /helios-superclusters\.webp/);
-assert.doesNotMatch(await read("README.md"), /You are here/);
-assert.match(await read("README.md"), /Play Helios in your browser/);
+assert.match(readme, /docs\/assets\/helios-overview\.webp/);
+assert.match(readme, /docs\/assets\/helios-solar-far\.webp/);
+assert.match(readme, /docs\/assets\/helios-milky-way\.webp/);
+assert.match(readme, /docs\/assets\/helios-tail-sky\.webp/);
+assert.match(readme, /docs\/assets\/helios-growing\.webp/);
+assert.match(readme, /docs\/assets\/helios-disk\.webp/);
+assert.match(readme, /docs\/assets\/helios-preweb\.webp/);
+assert.match(readme, /docs\/assets\/helios-local-group\.webp/);
+assert.match(readme, /docs\/assets\/helios-virgo\.webp/);
+assert.match(readme, /docs\/assets\/helios-web\.webp/);
+assert.match(readme, /docs\/assets\/helios-universe\.webp/);
+assert.doesNotMatch(readme, /grow brighter|brightens that sky/);
+assert.doesNotMatch(readme, /helios-superclusters\.webp/);
+assert.doesNotMatch(readme, /You are here/);
+assert.match(readme, /Play Helios in your browser/);
 
 const threeRoot = path.join(root, "vendor");
 const seenThree = new Set();
@@ -215,6 +282,16 @@ assert.equal(three.REVISION, "185");
 assert.equal(typeof three.WebGLRenderer, "function");
 assert.equal(typeof three.Scene, "function");
 assert.equal(typeof three.TextureLoader, "function");
+assert.equal(threeMetadata.version, "0.185.0");
+assert.equal(threeMetadata.source, "https://registry.npmjs.org/three/-/three-0.185.0.tgz");
+for (const entry of [threeMetadata.module, threeMetadata.core]) {
+  assert.equal((await stat(path.join(root, entry.path))).size, entry.bytes);
+  assert.equal(await sha256(entry.path), entry.sha256);
+}
+assert.equal(
+  await sha256("assets/textures/triton.jpg"),
+  "7962d4997fc8c8f47e7f54304174a565f59d3cc01e5de119329f59673c684ba9",
+);
 
 const required = [
   "sun",

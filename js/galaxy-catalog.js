@@ -8,7 +8,15 @@
  * the solar-system AU curve.
  */
 
-/** GRAVITY Collaboration 2019, A&A 625, L10. Geometric R0 from S2. */
+/**
+ * Solar location references:
+ * rKpc: GRAVITY Collaboration 2019, A&A 625, L10
+ *   https://doi.org/10.1051/0004-6361/201935656
+ * zKpc: Bennett & Bovy 2019, MNRAS 482, 1417
+ *   https://doi.org/10.1093/mnras/sty2813
+ * arm: Reid et al. 2014, ApJ 783, 130 (Local / Orion Arm)
+ *   https://doi.org/10.1088/0004-637X/783/2/130
+ */
 export const SUN_GALACTIC = Object.freeze({
   rKpc: 8.178,
   zKpc: 0.0208,
@@ -18,8 +26,9 @@ export const SUN_GALACTIC = Object.freeze({
 /**
  * Stellar disk size from Bland-Hawthorn & Gerhard 2016, ARA&A 54, 529.
  * heightKpc is the thin-disk scale height; thickHeightKpc is the thick
- * disk. haloRadiusKpc is the stellar halo, not the dark-matter halo.
- * Visual disk thickness lives in CONFIG.mwVisualHeightKpc.
+ * disk. haloRadiusKpc is a stylized inner-stellar-halo display scale, not a
+ * physical outer boundary or the dark-matter halo. Visual disk thickness
+ * lives in CONFIG.mwVisualHeightKpc.
  */
 export const MILKY_WAY = Object.freeze({
   diskRadiusKpc: 16.5,
@@ -29,7 +38,11 @@ export const MILKY_WAY = Object.freeze({
   haloRadiusKpc: 15,
 });
 
-/** Sgr A*; Reid & Brunthaler 2004, ApJ 616, 872. l, b ~ 0 by definition. */
+/**
+ * IAU Galactic-coordinate origin carried to J2000 (l=0, b=0), not the
+ * measured position of Sgr A*. Reid & Brunthaler 2004, Appendix A:
+ * https://arxiv.org/html/astro-ph/0408107v1#A1
+ */
 export const GALACTIC_CENTER = Object.freeze({
   name: "Galactic Center",
   raDeg: 266.4051,
@@ -38,81 +51,6 @@ export const GALACTIC_CENTER = Object.freeze({
   bDeg: 0,
   distanceKpc: SUN_GALACTIC.rKpc,
 });
-
-/**
- * Reid et al. 2019, ApJ 885, 131, Table 2. Logarithmic spirals from
- * BeSSeL maser parallaxes. β is galactocentric azimuth in degrees,
- * 0 toward the Sun, increasing with galactic longitude. Pitch angles
- * inner/outer of the kink. Local Arm is the Orion Arm.
- */
-export const SPIRAL_ARMS = Object.freeze([
-  {
-    id: "norma",
-    name: "Norma",
-    betaMinDeg: 5,
-    betaMaxDeg: 54,
-    betaKinkDeg: 18,
-    rKinkKpc: 4.46,
-    pitchInnerDeg: -1.0,
-    pitchOuterDeg: 19.5,
-    widthKpc: 0.14,
-  },
-  {
-    id: "scutum",
-    name: "Scutum-Centaurus",
-    betaMinDeg: 0,
-    betaMaxDeg: 104,
-    betaKinkDeg: 23,
-    rKinkKpc: 4.91,
-    pitchInnerDeg: 14.1,
-    pitchOuterDeg: 12.1,
-    widthKpc: 0.23,
-  },
-  {
-    id: "sagittarius",
-    name: "Sagittarius-Carina",
-    betaMinDeg: 2,
-    betaMaxDeg: 97,
-    betaKinkDeg: 24,
-    rKinkKpc: 6.04,
-    pitchInnerDeg: 17.1,
-    pitchOuterDeg: 1.0,
-    widthKpc: 0.27,
-  },
-  {
-    id: "orion",
-    name: "Orion Arm",
-    betaMinDeg: -8,
-    betaMaxDeg: 34,
-    betaKinkDeg: 9,
-    rKinkKpc: 8.26,
-    pitchInnerDeg: 11.4,
-    pitchOuterDeg: 11.4,
-    widthKpc: 0.31,
-  },
-  {
-    id: "perseus",
-    name: "Perseus",
-    betaMinDeg: -23,
-    betaMaxDeg: 115,
-    betaKinkDeg: 40,
-    rKinkKpc: 8.87,
-    pitchInnerDeg: 10.3,
-    pitchOuterDeg: 8.7,
-    widthKpc: 0.35,
-  },
-  {
-    id: "outer",
-    name: "Outer",
-    betaMinDeg: -16,
-    betaMaxDeg: 71,
-    betaKinkDeg: 18,
-    rKinkKpc: 12.24,
-    pitchInnerDeg: 3.0,
-    pitchOuterDeg: 9.4,
-    widthKpc: 0.65,
-  },
-]);
 
 /**
  * Nearby galaxies. Positions: SIMBAD ICRS / IAU galactic J2000.
@@ -257,8 +195,9 @@ export const LOCAL_GROUP = Object.freeze([
 /**
  * Nearest large cluster. Centered on M87. Distance: Mei et al. 2007,
  * ApJ 655, 144, ACS Virgo Cluster Survey mean 16.5 Mpc. Position: SIMBAD
- * M87 ICRS / IAU galactic J2000. We sit in the Local Group, not in Virgo;
- * Virgo is the nearest large cluster (Virgo Supercluster).
+ * M87 ICRS / IAU galactic J2000. We sit in the Local Group, not in the Virgo
+ * Cluster. The historical Local/Virgo Supercluster is the larger containing
+ * region; it is not an alias for this cluster.
  */
 export const VIRGO_CLUSTER = Object.freeze({
   id: "virgo",
@@ -273,6 +212,98 @@ export const VIRGO_CLUSTER = Object.freeze({
 });
 
 /**
+ * A deliberately small post-Virgo anchor set from Table 1 of Lambert et al.
+ * 2020, MNRAS 497, 2954 (doi:10.1093/mnras/staa1689). Table 1 prints the 20
+ * highest-membership 2MRS groups; Helios retains only its named groups beyond
+ * Virgo that lie within about 100 Mpc. Positions are mean J2000 / IAU galactic
+ * coordinates and distanceMpc is the table's comoving distance Dc for the
+ * paper's H0=73 km s-1 Mpc-1, OmegaM=0.3, OmegaLambda=0.7 cosmology.
+ *
+ * This hand-curated factual subset is not a redistributed copy of the full
+ * 3022-row catalogue. Generated cosmic-density points are not assigned these
+ * names and are never represented as additional measured clusters.
+ */
+export const POST_VIRGO_CLUSTERS = Object.freeze([
+  {
+    id: "2mrs-153",
+    name: "Abell 3627",
+    catalogGroupId: 153,
+    raDeg: 243.67,
+    decDeg: -60.89,
+    lDeg: 325.27,
+    bDeg: -7.17,
+    distanceMpc: 67.3,
+    richness: 67,
+  },
+  {
+    id: "2mrs-50",
+    name: "Abell 3526B",
+    catalogGroupId: 50,
+    raDeg: 192.03,
+    decDeg: -41.21,
+    lDeg: 302.26,
+    bDeg: 21.66,
+    distanceMpc: 51.7,
+    richness: 45,
+  },
+  {
+    id: "2mrs-3031",
+    name: "Abell 0426",
+    catalogGroupId: 3031,
+    raDeg: 49.76,
+    decDeg: 41.38,
+    lDeg: 150.53,
+    bDeg: -13.45,
+    distanceMpc: 70.4,
+    richness: 47,
+  },
+  {
+    id: "2mrs-228",
+    name: "Coma Cluster",
+    catalogGroupId: 228,
+    raDeg: 194.9,
+    decDeg: 28,
+    lDeg: 59.1,
+    bDeg: 87.99,
+    distanceMpc: 98.9,
+    richness: 78,
+  },
+  {
+    id: "2mrs-271",
+    name: "Abell 0262",
+    catalogGroupId: 271,
+    raDeg: 28.44,
+    decDeg: 36.23,
+    lDeg: 136.75,
+    bDeg: -24.96,
+    distanceMpc: 63.2,
+    richness: 25,
+  },
+  {
+    id: "2mrs-500",
+    name: "Abell 1367",
+    catalogGroupId: 500,
+    raDeg: 176.15,
+    decDeg: 19.97,
+    lDeg: 234.45,
+    bDeg: 73.12,
+    distanceMpc: 92.5,
+    richness: 44,
+  },
+  {
+    id: "2mrs-151",
+    name: "Abell S0805",
+    catalogGroupId: 151,
+    raDeg: 281.49,
+    decDeg: -63.03,
+    lDeg: 332.53,
+    bDeg: -23.38,
+    distanceMpc: 60,
+    richness: 31,
+  },
+]);
+
+/**
  * We sit in Laniakea (Tully, Courtois, Hoffman, Pomarède 2014, Nature 513,
  * 71). The historical Virgo / Local Supercluster is part of that basin.
  * Diameter ~160 Mpc. The extra-zoom web marks our location as the Milky
@@ -281,27 +312,31 @@ export const VIRGO_CLUSTER = Object.freeze({
 export const LANIAKEA = Object.freeze({
   id: "laniakea",
   name: "Laniakea",
-  also: "Virgo Supercluster",
+  contains: "Local (Virgo) Supercluster",
   home: true,
   diameterMpc: 160,
 });
 
 /**
- * Planck 2018 ΛCDM particle-horizon / last-scattering radius (Aghanim et al.
- * 2020, A&A 641, A6). Comoving radius ~46.5 billion ly (~14.25 Gpc).
- * 1 Gpc = 3.26156 Gly. The CMB shell uses this radius. Hubble constant and
- * age are not displayed.
+ * Planck 2018 ΛCDM particle-horizon scale (Aghanim et al. 2020, A&A 641,
+ * A6). Comoving radius ~46.5 billion ly (~14.25 Gpc). 1 Gpc = 3.26156 Gly.
  */
-export const OBSERVABLE_UNIVERSE = Object.freeze({
+export const PARTICLE_HORIZON = Object.freeze({
+  name: "Particle horizon",
   comovingRadiusGly: 46.5,
   comovingRadiusGpc: 14.25,
   lyPerGpc: 3.26156,
 });
 
-/** Last-scattering surface. Same comoving radius as the observable universe. */
+/**
+ * The physical last-scattering surface is distinct from the particle horizon.
+ * Helios deliberately co-locates this illustrative shell with the outer
+ * display radius so the approved scale transition stays readable.
+ */
 export const CMB_SHELL = Object.freeze({
-  name: "CMB",
-  comovingRadiusGpc: OBSERVABLE_UNIVERSE.comovingRadiusGpc,
+  name: "Illustrative CMB shell",
+  displayRadiusGpc: PARTICLE_HORIZON.comovingRadiusGpc,
+  physicalRelation: "inside-particle-horizon",
   map: "assets/sky/cmb.jpg",
 });
 
@@ -315,8 +350,4 @@ export function findLocalGroupMember(id) {
 
 export function localGroupFamily() {
   return [...NEIGHBORS, ...LOCAL_GROUP];
-}
-
-export function findSpiralArm(id) {
-  return SPIRAL_ARMS.find((item) => item.id === id) ?? null;
 }
