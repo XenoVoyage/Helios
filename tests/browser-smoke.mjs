@@ -247,19 +247,28 @@ async function captureEarthSolstice(context, name, targetDate, lookSouth = false
   }
   await page.evaluate(() => document.querySelector('[data-body-id="earth"]').click());
   await page.locator("#body-card:not([hidden])").waitFor();
-  await page.locator("#speed-slider").evaluate((slider) => {
+  const setSpeed = (target) => page.locator("#speed-slider").evaluate((slider, daysPerSecond) => {
     const minimum = 1 / 24;
     const maximum = 400;
-    const target = 80;
-    slider.value = String((Math.log(target) - Math.log(minimum))
+    slider.value = String((Math.log(daysPerSecond) - Math.log(minimum))
       / (Math.log(maximum) - Math.log(minimum)));
     slider.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  }, target);
+  const approachDate = new Date(
+    Date.parse(`${targetDate}T00:00:00Z`) - 30 * 86_400_000,
+  ).toISOString().slice(0, 10);
+  await setSpeed(80);
   await page.locator("#play-button").click();
   await page.waitForFunction(
     (target) => document.querySelector("#clock").textContent >= target,
-    targetDate,
+    approachDate,
     { timeout: 10_000 },
+  );
+  await setSpeed(2);
+  await page.waitForFunction(
+    (target) => document.querySelector("#clock").textContent >= target,
+    targetDate,
+    { timeout: 25_000 },
   );
   await page.locator("#play-button").click();
   await page.waitForTimeout(350);
