@@ -31,6 +31,8 @@ try {
     "js/sky-catalog.js",
     "js/galaxy.js",
     "js/galaxy-catalog.js",
+    "js/cosmic-web.js",
+    "js/2mrs-data.js",
     "js/helpers.js",
     "js/time.js",
     "styles.css",

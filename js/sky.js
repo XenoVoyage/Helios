@@ -21,11 +21,41 @@ const TAU = Math.PI * 2;
 
 /** IAU 2006 mean obliquity of the ecliptic at J2000, degrees. */
 export const OBLIQUITY_J2000_DEG = 23.43927944;
+const OBLIQUITY_J2000_RAD = OBLIQUITY_J2000_DEG * DEG;
+const COS_OBLIQUITY_J2000 = Math.cos(OBLIQUITY_J2000_RAD);
+const SIN_OBLIQUITY_J2000 = Math.sin(OBLIQUITY_J2000_RAD);
 
 /** IAU galactic pole (J2000), used to orient the Milky Way texture. */
 export const GALACTIC_NGP_RA_DEG = 192.85948;
 export const GALACTIC_NGP_DEC_DEG = 27.12825;
 export const GALACTIC_NCP_LON_DEG = 122.93192;
+const GALACTIC_NGP_RA_RAD = GALACTIC_NGP_RA_DEG * DEG;
+const GALACTIC_NGP_DEC_RAD = GALACTIC_NGP_DEC_DEG * DEG;
+const GALACTIC_NCP_LON_RAD = GALACTIC_NCP_LON_DEG * DEG;
+
+const GALACTIC_EQUATORIAL_BASIS = (() => {
+  const sinAG = Math.sin(GALACTIC_NGP_RA_RAD);
+  const cosAG = Math.cos(GALACTIC_NGP_RA_RAD);
+  const sinDG = Math.sin(GALACTIC_NGP_DEC_RAD);
+  const cosDG = Math.cos(GALACTIC_NGP_DEC_RAD);
+  const sinL = Math.sin(GALACTIC_NCP_LON_RAD);
+  const cosL = Math.cos(GALACTIC_NCP_LON_RAD);
+  const meridian = { x: -sinDG * cosAG, y: -sinDG * sinAG, z: cosDG };
+  const east = { x: -sinAG, y: cosAG, z: 0 };
+  return Object.freeze({
+    x: Object.freeze({
+      x: cosL * meridian.x + sinL * east.x,
+      y: cosL * meridian.y + sinL * east.y,
+      z: cosL * meridian.z + sinL * east.z,
+    }),
+    y: Object.freeze({
+      x: sinL * meridian.x - cosL * east.x,
+      y: sinL * meridian.y - cosL * east.y,
+      z: sinL * meridian.z - cosL * east.z,
+    }),
+    z: Object.freeze({ x: cosDG * cosAG, y: cosDG * sinAG, z: sinDG }),
+  });
+})();
 
 /** Cassiopeia / Andromeda / MW crossing, used by ?look=sky. */
 export const EARTH_SKY_LOOK = Object.freeze({ raDeg: 16, decDeg: 49 });
@@ -111,25 +141,44 @@ export function equatorialUnit(raDeg, decDeg) {
 }
 
 /**
- * Equatorial J2000 to the scene frame used by keplerOffset:
+ * Equatorial J2000 vector to the scene frame used by keplerOffset:
  * +X vernal equinox, +Y ecliptic north, right-handed.
  */
-export function equatorialToScene(raDeg, decDeg) {
-  const eq = equatorialUnit(raDeg, decDeg);
-  const cosE = Math.cos(OBLIQUITY_J2000_DEG * DEG);
-  const sinE = Math.sin(OBLIQUITY_J2000_DEG * DEG);
+export function equatorialVectorToScene(eq) {
   const xEc = eq.x;
-  const yEc = eq.y * cosE + eq.z * sinE;
-  const zEc = -eq.y * sinE + eq.z * cosE;
+  const yEc = eq.y * COS_OBLIQUITY_J2000 + eq.z * SIN_OBLIQUITY_J2000;
+  const zEc = -eq.y * SIN_OBLIQUITY_J2000 + eq.z * COS_OBLIQUITY_J2000;
   return { x: xEc, y: zEc, z: -yEc };
+}
+
+/** Equatorial J2000 sky position in the scene frame. */
+export function equatorialToScene(raDeg, decDeg) {
+  return equatorialVectorToScene(equatorialUnit(raDeg, decDeg));
+}
+
+/**
+ * IAU Galactic cartesian to the same J2000 ecliptic scene frame.
+ *
+ * The three equatorial basis vectors are the exact inverse of
+ * equatorialToGalactic below. Keeping this transform beside that owner
+ * prevents the solar sky and extra-zoom map from inventing separate axes.
+ * Magnitude is preserved, so callers may pass unit vectors or distances.
+ */
+export function galacticToScene(x, y, z) {
+  const basis = GALACTIC_EQUATORIAL_BASIS;
+  return equatorialVectorToScene({
+    x: x * basis.x.x + y * basis.y.x + z * basis.z.x,
+    y: x * basis.x.y + y * basis.y.y + z * basis.z.y,
+    z: x * basis.x.z + y * basis.y.z + z * basis.z.z,
+  });
 }
 
 export function equatorialToGalactic(raDeg, decDeg) {
   const ra = raDeg * DEG;
   const dec = decDeg * DEG;
-  const aG = GALACTIC_NGP_RA_DEG * DEG;
-  const dG = GALACTIC_NGP_DEC_DEG * DEG;
-  const lNCP = GALACTIC_NCP_LON_DEG * DEG;
+  const aG = GALACTIC_NGP_RA_RAD;
+  const dG = GALACTIC_NGP_DEC_RAD;
+  const lNCP = GALACTIC_NCP_LON_RAD;
   const sinD = Math.sin(dec);
   const cosD = Math.cos(dec);
   const sinDG = Math.sin(dG);
@@ -259,10 +308,10 @@ function createMilkyWay(THREE, radius) {
       varying vec3 vDir;
       const float PI = 3.141592653589793;
       const float TAU = 6.283185307179586;
-      const float EPS = 0.4090928042223289;
-      const float NGP_RA = 3.366032882493748;
-      const float NGP_DEC = 0.473477302980151;
-      const float NCP_L = 2.1455668513703367;
+      const float EPS = ${OBLIQUITY_J2000_RAD};
+      const float NGP_RA = ${GALACTIC_NGP_RA_RAD};
+      const float NGP_DEC = ${GALACTIC_NGP_DEC_RAD};
+      const float NCP_L = ${GALACTIC_NCP_LON_RAD};
       void main() {
         vec3 dir = normalize(vDir);
         vec3 ecl = vec3(dir.x, -dir.z, dir.y);

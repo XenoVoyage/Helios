@@ -4,24 +4,43 @@ This ledger records what Helios imports, what it transforms, and what remains
 unresolved. The repository's MIT license covers first-party code only.
 Third-party images, data, and Three.js retain their own terms and attribution.
 
-Sources were last checked on 2026-08-21. Hashes are SHA-256 of the tracked
+Sources were last checked on 2026-08-22. Hashes are SHA-256 of the tracked
 local files.
 
 ## Scientific data and model boundaries
 
 | Area | Source snapshot | How Helios uses it |
 | --- | --- | --- |
-| Planet properties and heliocentric elements | [NASA planetary fact sheet](https://nssdc.gsfc.nasa.gov/planetary/factsheet/) and published J2000 mean elements | Fixed J2000 Keplerian approximations with two-body propagation. Calendar positions are not JPL Horizons ephemerides and do not model perturbations. |
-| Moon properties and mean elements | [JPL satellite physical parameters and mean elements](https://ssd.jpl.nasa.gov/sats/elem/) (`DE405/LE405`, `MAR099`, `JUP365`, `SAT441`, `NEP097`) | One J2000 snapshot. JPL describes these mean elements as adequate for describing orbits, not for ephemeris computation. Laplace-plane rows are transformed once into the parent-equatorial display basis. |
-| Body poles | [NAIF generic PCK `pck00011.tpc`](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc) | IAU pole polynomials and periodic terms are evaluated at J2000 to provide the parent-equatorial basis; the approved visual obliquity remains a separate scene transform. |
+| Planet properties and heliocentric elements | [NASA planetary fact sheet](https://nssdc.gsfc.nasa.gov/planetary/factsheet/), NASA New Horizons' [Pluto seasons explanation](https://science.nasa.gov/blogs/new-horizons/2015/10/23/a-planet-for-all-seasons/), and published J2000 mean elements | Fixed J2000 Keplerian approximations with two-body propagation. Calendar positions are not JPL Horizons ephemerides and do not model perturbations. Pluto's displayed retrograde obliquity is 119.6°, the angle between its PCK spin axis and this fixed orbit (consistent with NASA's approximately 119.5°); the inherited 122.53° value was not consistent with either. |
+| Moon properties and mean elements | [JPL satellite physical parameters and mean elements](https://ssd.jpl.nasa.gov/sats/elem/) (`DE405/LE405`, `MAR099`, `JUP365`, `SAT441`, `NEP097`) and NASA's [tidal-locking explanation](https://science.nasa.gov/moon/tidal-locking/) | One J2000 snapshot. JPL describes the elements as a fitted precessing ellipse useful for general shape and orientation, not ephemeris computation. Helios uses `orbitDays` as the mean-anomaly clock in its frozen Kepler ellipse. For the nine cataloged synchronous moons, `rotationHours` supplies a signed display-longitude rate; the difference between those clocks advances periapsis uniformly to prevent secular longitudinal drift. This is a display correction, not propagation of the published apsidal or nodal periods. Only the Moon has a source-registered pole and prime meridian. The other moon maps retain unverified phases and simple parent-frame axes, so they are not registered near-side models; in particular, Triton's retained axis permits a large parent-latitude offset. Laplace-plane rows are transformed once into the parent-equatorial display basis. |
+| Body poles and prime meridians | [NAIF generic PCK `pck00011.tpc`](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc) | The Sun, planets, Ceres, Pluto, and Moon use PCK poles evaluated at J2000; this also puts Saturn's rings and each declared parent-equatorial moon frame on the source pole. Earth uses the PCK's low-accuracy `W = 190.147°`. The Moon uses the `IAU_MOON` Mean Earth/Polar Axis pole and prime meridian with all periodic terms evaluated at J2000: `RA = 266.85773344495135°`, `Dec = 65.64110274784535°`, `W = 41.1952639807452°`. Its W therefore intentionally differs from the `38.3213°` polynomial constant. Those two verified maps use W; the other inherited maps lack a retained longitude-registration record, so Helios derives the closest phase to their previous display roll and makes no scientific prime-meridian claim for them. Poles then stay fixed and spin advances linearly from the catalog period and PCK direction; this is not the complete time-dependent PCK model. Non-lunar moon axes retain their simple catalog obliquity. |
 | Bright stars | Hipparcos ESA I/239 through the [HYG compilation](https://www.astronexus.com/projects/hyg) | Equatorial J2000 positions, Johnson V magnitude, and B-V color for a bright subset in `js/sky-catalog.js`. The exact upstream HYG release and its matching license version were not retained; this is an adoption blocker. |
 | Constellation figures | [IAU / Alan MacRobert constellation charts](https://www.iau.org/public/themes/constellations/), CC BY 4.0 | HIP-number line paths in `js/sky-catalog.js`; these are conventional stick figures, not constellation boundaries. |
-| Galactic and Local Group values | Sources cited beside each value in `js/galaxy-catalog.js`: GRAVITY 2019, SIMBAD, NED, Pietrzyński 2019, Graczyk 2020, de Grijs & Bono 2014, McConnachie 2012, Mei 2007, and Tully 2014 | Published positions, distances, and scale references. Visible Milky Way arms, far-field galaxies, cluster hubs, and cosmic-web filaments are deterministic illustrations, not survey reconstructions. |
+| Galactic and Local Group values | Sources cited beside each value in `js/galaxy-catalog.js`: GRAVITY 2019, SIMBAD, NED, Pietrzyński 2019, Graczyk 2020, de Grijs & Bono 2014, McConnachie 2012, Mei 2007, and Tully 2014 | Published positions, distances, and scale references. Visible Milky Way arms and the far-field sky are deterministic illustrations, not survey reconstructions. |
+| Post-Virgo galaxy distribution | NASA HEASARC [2MASS Redshift Survey catalog](https://heasarc.gsfc.nasa.gov/w3browse/all/twomassrsc.html), Huchra et al. 2012, ApJS 199, 26. [Data.gov metadata](https://catalog.data.gov/dataset/2mass-redshift-survey-2mrs-catalog) lists public access and the US government-works license link. | `scripts/build-2mrs.mjs` queried `name, lii, bii, radial_velocity, ks_mag_0`, sorted by name, and retained 42,927 of 44,599 rows with `0 < cz <= 21,900 km/s`. It quantizes galactic direction, velocity, and K magnitude into `js/2mrs-data.js`. Radius is the deliberately approximate Hubble-law mapping `D=cz/H0` with `H0=73 km/s/Mpc`, capped at 300 Mpc; peculiar velocities and redshift-space distortions are not corrected. 2MRS is K-limited (`Ks <= 11.75`), 97.6% redshift-complete within its limits, covers 91% of the sky, and retains its Zone of Avoidance (`|b| >= 5°`, or `8°` toward the bulge). The points trace the flux-limited observed galaxy distribution, not total-matter density. Sorted source SHA-256: `236be982e9a172c55d483d40c38ca38b36a3dc8b8af4f402a0fd045f1b87da6f`; derived payload SHA-256: `9c97c9547b88f2f6ab307b9ca733071f0ce12a9549a070cf44be0aac7863b3b9`. |
+| Post-Virgo cluster anchors | Lambert et al. 2020, MNRAS 497, 2954, [doi:10.1093/mnras/staa1689](https://doi.org/10.1093/mnras/staa1689), Table 1 | Seven named groups beyond Virgo and within about 100 Mpc are hand-transcribed as a small factual subset in `POST_VIRGO_CLUSTERS`; no bulk 2MRS group-catalog artifact is redistributed. Positions are the table's mean J2000 / galactic coordinates and distances are its comoving `Dc` values for `H0=73`, `OmegaM=0.3`, `OmegaLambda=0.7`. Generated points never receive catalog names. |
+| Beyond the 2MRS range | First-party `js/cosmic-web.js`, informed by the Voronoi-foam hierarchy described by van de Weygaert & Icke 1989, A&A 213, 1 | A fixed-seed 6,500-point Voronoi-proximity density illustration supplies continuity toward the CMB. It is not observed galaxies, a survey reconstruction, a named structure map, or a cosmological simulation. It contains no invented connections. Total post-Virgo density is 49,427 samples in two point draws, plus one seven-point cluster-anchor draw. |
 | Outer cosmological scale | [Planck 2018 VI](https://arxiv.org/abs/1807.06209) | The particle-horizon display uses about 46.5 Gly / 14.25 Gpc. The physical last-scattering surface is distinct; the illustrative CMB sphere is deliberately co-located with the outer display radius. Seeing that sphere “from outside” is a camera/scale metaphor. |
 
 Runtime mapping and the source values live in `js/bodies.js`,
 `js/sky-catalog.js`, and `js/galaxy-catalog.js`. Display compression lives in
 `js/config.js` and the corresponding rendering modules.
+
+Celestial and galaxy positions share one rigid coordinate transform in
+`js/sky.js`: the IAU J2000 Galactic basis (north pole RA `192.85948°`, Dec
+`27.12825°`, north-celestial-pole longitude `122.93192°`) is inverted into
+equatorial J2000 and then rotated by the J2000 mean obliquity into Helios's
+Y-up ecliptic scene frame. The transform preserves lengths and pairwise angles;
+the visual distance-compression curves remain separate and unchanged.
+
+The fixed lunar pole, eccentric Kepler path, and synchronous spin produce
+bounded geometric libration (about ±6.4° longitude and ±6.7° latitude in this
+model). Helios does not propagate the PCK's time-varying lunar pole or physical
+libration terms, the source elements' nodal precession, tides, or perturbations.
+It also does not cast astronomical shadows: the Sun point light supplies the
+day/night terminator while a deliberate ambient fill keeps night sides
+readable. Solar/lunar eclipses and shadow contacts are therefore outside this
+orrery model rather than claimed simulations.
 
 ## Image assets
 

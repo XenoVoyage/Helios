@@ -10,6 +10,7 @@ import {
 import { advanceSimulationDays, elapsedSeconds, simulationDateLabel } from "./time.js";
 import {
   BODIES,
+  bodyOrientationBasis,
   describeBody,
   findBody,
   keplerOffset,
@@ -22,6 +23,7 @@ import {
 import {
   attachSkyToCamera,
   createCelestialSphere,
+  equatorialVectorToScene,
   placeCameraForSkyLook,
   setCelestialFade,
   setConstellationsVisible,
@@ -333,6 +335,7 @@ function showUnsupported() {
   ui.stage.hidden = true;
   ui.stage.inert = true;
   ui.skip.hidden = true;
+  ui.version.hidden = true;
   ui.unsupported.hidden = false;
   ui.unsupported.focus({ preventScroll: true });
 }
@@ -363,13 +366,42 @@ function loadMap(path) {
   return texture;
 }
 
+function applyBodyOrientation(tilt, body) {
+  const basis = bodyOrientationBasis(body);
+  if (!basis) {
+    tilt.rotation.z = body.tiltDeg * DEG;
+    return 0;
+  }
+  const xAxis = equatorialVectorToScene(basis.xAxis);
+  const bodyYAxis = equatorialVectorToScene(basis.yAxis);
+  const pole = equatorialVectorToScene(basis.zAxis);
+  const matrix = new THREE.Matrix4().makeBasis(
+    new THREE.Vector3(xAxis.x, xAxis.y, xAxis.z),
+    new THREE.Vector3(pole.x, pole.y, pole.z),
+    new THREE.Vector3(-bodyYAxis.x, -bodyYAxis.y, -bodyYAxis.z),
+  );
+  tilt.setRotationFromMatrix(matrix);
+  if (basis.primeMeridianDeg !== null) return basis.primeMeridianDeg * DEG;
+  // Keep an unverified texture's previous prime direction as closely as the
+  // corrected pole permits; this display phase is not an IAU longitude claim.
+  const legacyPrime = new THREE.Vector3(
+    Math.cos(body.tiltDeg * DEG),
+    Math.sin(body.tiltDeg * DEG),
+    0,
+  );
+  return Math.atan2(
+    legacyPrime.dot(new THREE.Vector3(bodyYAxis.x, bodyYAxis.y, bodyYAxis.z)),
+    legacyPrime.dot(new THREE.Vector3(xAxis.x, xAxis.y, xAxis.z)),
+  );
+}
+
 function createBodyNode(body) {
   const radius = visualBodyRadius(body);
   const segments = body.id === "sun" ? 64 : body.kind === "moon" ? 32 : 48;
   const pivot = new THREE.Group();
   pivot.name = body.id;
   const tilt = new THREE.Group();
-  tilt.rotation.z = body.tiltDeg * DEG;
+  const spinPhase = applyBodyOrientation(tilt, body);
   pivot.add(tilt);
 
   const material = body.id === "sun"
@@ -409,7 +441,7 @@ function createBodyNode(body) {
   label.hidden = true;
   ui.labels.append(label);
 
-  return { body, pivot, tilt, mesh, label, radius, glow };
+  return { body, pivot, tilt, mesh, label, radius, glow, spinPhase };
 }
 
 function createRing(body) {
@@ -840,7 +872,7 @@ function updateBodies() {
     const parent = node.body.parent ? findBody(node.body.parent) : null;
     const at = keplerOffset(node.body, parent, state.days);
     node.pivot.position.set(at.x, at.y, at.z);
-    node.mesh.rotation.y = at.spin;
+    node.mesh.rotation.y = node.spinPhase + at.spin;
   }
 }
 
@@ -941,7 +973,7 @@ function paintScaleLayer() {
     else if (layer === "neighborhood") say("Nearby galaxies.");
     else if (layer === "localgroup") say("Local Group.");
     else if (layer === "virgo") say("Virgo Cluster. The Local Group is a nearby family; Virgo is the nearest large cluster.");
-    else if (layer === "web") say("Illustrative cosmic web. Seeded filaments and clusters around the Milky Way.");
+    else if (layer === "web") say("2MRS galaxy distribution. Approximate redshift distances, with no invented links.");
     else if (layer === "universe") say("Schematic observable universe. The illustrative CMB shell shares the outer display radius.");
     else if (layer === "solar") say("Solar system.");
   }

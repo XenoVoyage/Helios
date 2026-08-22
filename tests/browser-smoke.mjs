@@ -74,6 +74,22 @@ async function assertRenderedCanvas(page) {
   return png;
 }
 
+async function assertBodyLabelsHidden(page) {
+  const labels = await page.locator(".sky-label").evaluateAll((elements) => ({
+    count: elements.length,
+    hidden: elements.filter((element) => element.hidden).length,
+    painted: elements.filter((element) => element.getClientRects().length > 0).length,
+    displayed: elements.filter((element) => getComputedStyle(element).display !== "none").length,
+    hitTested: document.elementsFromPoint(20, 76)
+      .filter((element) => element.classList.contains("sky-label")).length,
+  }));
+  assert.ok(labels.count > 0, "body labels exist");
+  assert.equal(labels.hidden, labels.count, "every body label has hidden semantics");
+  assert.equal(labels.painted, 0, "hidden body labels have no rendered boxes");
+  assert.equal(labels.displayed, 0, "author CSS preserves hidden display semantics");
+  assert.equal(labels.hitTested, 0, "hidden body labels cannot intercept pointer input");
+}
+
 async function saveScreenshot(page, name, options = {}) {
   if (!screenshotDir) return;
   await mkdir(screenshotDir, { recursive: true });
@@ -88,6 +104,57 @@ async function orbitCameraHalfTurn(page) {
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.72, y, { steps: 8 });
   await page.mouse.up();
+}
+
+async function assertBodySelectionSweep(page) {
+  const bodies = await page.locator(".sky-label").evaluateAll((labels) => (
+    labels.map((label) => ({ id: label.dataset.bodyId, name: label.textContent }))
+  ));
+  assert.equal(bodies.length, 20, "the browser exposes exactly the v1 body set");
+
+  for (const body of bodies) {
+    await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), body.id);
+    await page.locator("#body-card:not([hidden])").waitFor();
+    assert.equal(await page.locator("#card-name").textContent(), body.name);
+    assert.ok((await page.locator("#card-meta").textContent()).length > 20);
+  }
+  await assertRenderedCanvas(page);
+  await page.locator("#reset-button").click();
+}
+
+async function assertZoomStress(page) {
+  const canvas = page.locator("#viewport");
+  const bounds = await canvas.boundingBox();
+  assert.ok(bounds);
+  const moveToCanvas = () => page.mouse.move(
+    bounds.x + bounds.width * 0.5,
+    bounds.y + bounds.height * 0.45,
+  );
+  await moveToCanvas();
+  await canvas.focus();
+
+  // Enter the measured-volume layer through the real wheel path so its
+  // transition announcement remains observable after boot's ready message.
+  await page.mouse.wheel(0, 3_940);
+  await page.locator("#status-live").filter({ hasText: "2MRS galaxy distribution" }).waitFor();
+  await assertBodyLabelsHidden(page);
+  await page.mouse.wheel(0, -3_940);
+  await page.locator("#sky-button:not([hidden])").waitFor();
+
+  for (let cycle = 0; cycle < 3; cycle += 1) {
+    await page.mouse.wheel(0, 12_000);
+    await page.waitForFunction(
+      () => document.documentElement.dataset.galaxyReady === "1"
+        && document.querySelector("#sky-button").hidden
+        && [...document.querySelectorAll(".sky-label")].every((label) => label.hidden),
+    );
+    await assertBodyLabelsHidden(page);
+    await page.mouse.wheel(0, -12_000);
+    await page.locator("#sky-button:not([hidden])").waitFor();
+    await page.locator("#reset-button").click();
+    await moveToCanvas();
+    await canvas.focus();
+  }
 }
 
 async function saveTritonScreenshot(page, name) {
@@ -134,6 +201,56 @@ async function captureTriton(page) {
   await saveTritonScreenshot(page, "triton-rotation-b");
 }
 
+async function captureEarthSolstice(context, name, targetDate, lookSouth = false) {
+  if (!screenshotDir) return;
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page);
+  if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
+    await page.locator("#play-button").click();
+  }
+  await page.evaluate(() => document.querySelector('[data-body-id="earth"]').click());
+  await page.locator("#body-card:not([hidden])").waitFor();
+  await page.locator("#speed-slider").evaluate((slider) => {
+    const minimum = 1 / 24;
+    const maximum = 400;
+    const target = 80;
+    slider.value = String((Math.log(target) - Math.log(minimum))
+      / (Math.log(maximum) - Math.log(minimum)));
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator("#play-button").click();
+  await page.waitForFunction(
+    (target) => document.querySelector("#clock").textContent >= target,
+    targetDate,
+    { timeout: 10_000 },
+  );
+  await page.locator("#play-button").click();
+  await page.waitForTimeout(350);
+
+  const observedDate = await page.locator("#clock").textContent();
+  const overshootDays = (Date.parse(`${observedDate}T00:00:00Z`)
+    - Date.parse(`${targetDate}T00:00:00Z`)) / 86_400_000;
+  assert.ok(overshootDays >= 0 && overshootDays <= 5, `${name} captured near ${targetDate}`);
+
+  if (lookSouth) {
+    const bounds = await page.locator("#viewport").boundingBox();
+    assert.ok(bounds);
+    await page.mouse.move(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.65);
+    await page.mouse.down();
+    await page.mouse.move(
+      bounds.x + bounds.width * 0.5,
+      bounds.y + bounds.height * 0.4,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    await page.waitForTimeout(350);
+  }
+  await saveScreenshot(page, name);
+  assert.deepEqual(errors, []);
+  await page.close();
+}
+
 async function assertCardClearsDock(page, viewport) {
   await page.setViewportSize(viewport);
   await page.locator("#reset-button").click();
@@ -162,6 +279,35 @@ async function assertCardClearsDock(page, viewport) {
   assert.ok(layout.card.top >= 0 && layout.card.bottom <= viewport.height + 1);
   assert.ok(Math.abs(layout.clearance - Math.ceil(layout.dockHeight)) <= 1);
   assert.equal(layout.speedOverflow, "visible");
+}
+
+async function assertCreditsClearDock(page, viewport) {
+  await page.setViewportSize(viewport);
+  await page.locator("#reset-button").click();
+  await page.waitForTimeout(100);
+  const layout = await page.evaluate(() => {
+    const credits = document.querySelector("#version-label");
+    const dock = document.querySelector("#dock");
+    const creditsBox = credits.getBoundingClientRect();
+    const dockBox = dock.getBoundingClientRect();
+    const overlaps = creditsBox.left < dockBox.right
+      && creditsBox.right > dockBox.left
+      && creditsBox.top < dockBox.bottom
+      && creditsBox.bottom > dockBox.top;
+    const hit = document.elementFromPoint(
+      creditsBox.left + creditsBox.width / 2,
+      creditsBox.top + creditsBox.height / 2,
+    );
+    return {
+      width: creditsBox.width,
+      height: creditsBox.height,
+      overlaps,
+      hit: hit?.id,
+    };
+  });
+  assert.ok(layout.width >= 44 && layout.height >= 44);
+  assert.equal(layout.overlaps, false, `${viewport.width}px credits clear dock`);
+  assert.equal(layout.hit, "version-label", `${viewport.width}px credits remain hit-testable`);
 }
 
 try {
@@ -210,6 +356,9 @@ try {
   await desktopPage.locator("#reset-button").click();
   assert.equal(await desktopPage.locator("#body-card").getAttribute("hidden"), "");
 
+  await assertBodySelectionSweep(desktopPage);
+  await assertZoomStress(desktopPage);
+
   const play = desktopPage.locator("#play-button");
   const playingBeforeSpace = await play.getAttribute("aria-pressed");
   await play.focus();
@@ -224,22 +373,42 @@ try {
   assert.deepEqual(desktopErrors, []);
   await desktopPage.close();
 
-  const directPage = await desktop.newPage();
-  const directErrors = captureErrors(directPage);
-  await openReady(directPage, "?look=milkyway");
-  assert.equal(await directPage.getAttribute("html", "data-galaxy-ready"), "1");
-  await assertRenderedCanvas(directPage);
-  await saveScreenshot(directPage, "desktop-milkyway");
-  assert.deepEqual(directErrors, []);
-  await directPage.close();
-
-  const skyPage = await desktop.newPage();
-  const skyErrors = captureErrors(skyPage);
-  await openReady(skyPage, "?look=sky");
-  await assertRenderedCanvas(skyPage);
-  assert.equal(await skyPage.locator("#card-name").textContent(), "Earth");
-  assert.deepEqual(skyErrors, []);
-  await skyPage.close();
+  const directLooks = [
+    "sky",
+    "solarfar",
+    "tailsky",
+    "growing",
+    "disk",
+    "milkyway",
+    "mwedge",
+    "mwbelow",
+    "neighborhood",
+    "localgroup",
+    "virgo",
+    "preweb",
+    "web",
+    "universe",
+  ];
+  for (const look of directLooks) {
+    const directPage = await desktop.newPage();
+    const directErrors = captureErrors(directPage);
+    await openReady(directPage, `?look=${look}`);
+    await assertRenderedCanvas(directPage);
+    if (look === "sky") {
+      assert.equal(await directPage.locator("#card-name").textContent(), "Earth");
+    } else if (look === "solarfar") {
+      assert.equal(await directPage.getAttribute("html", "data-galaxy-ready"), null);
+    } else {
+      assert.equal(await directPage.getAttribute("html", "data-galaxy-ready"), "1");
+      await assertBodyLabelsHidden(directPage);
+    }
+    await directPage.waitForTimeout(250);
+    await saveScreenshot(directPage, `desktop-${look}`);
+    assert.deepEqual(directErrors, [], `${look} has no browser errors`);
+    await directPage.close();
+  }
+  await captureEarthSolstice(desktop, "earth-june-solstice", "2000-06-21");
+  await captureEarthSolstice(desktop, "earth-december-solstice", "2000-12-21", true);
   await desktop.close();
 
   const touch = await browser.newContext({
@@ -252,6 +421,9 @@ try {
   const touchErrors = captureErrors(touchPage);
   await openReady(touchPage);
   await assertRenderedCanvas(touchPage);
+  const credits = touchPage.locator("#version-label");
+  await credits.waitFor();
+  assert.equal(await credits.getAttribute("href"), "./PROVENANCE.md");
 
   const cdp = await touch.newCDPSession(touchPage);
   await cdp.send("Input.dispatchTouchEvent", {
@@ -273,6 +445,7 @@ try {
     () => document.documentElement.dataset.galaxyReady === "1"
       && document.querySelector("#sky-button").hidden,
   );
+  await assertBodyLabelsHidden(touchPage);
 
   for (const viewport of [
     { width: 320, height: 568 },
@@ -282,11 +455,19 @@ try {
   ]) {
     await assertCardClearsDock(touchPage, viewport);
   }
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 768, height: 1024 },
+    { width: 844, height: 390 },
+    { width: 1024, height: 768 },
+  ]) {
+    await assertCreditsClearDock(touchPage, viewport);
+  }
   await saveScreenshot(touchPage, "touch-card");
   assert.deepEqual(touchErrors, []);
   await touch.close();
 
-  const failure = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const failure = await browser.newContext({ viewport: { width: 1024, height: 768 } });
   const failurePage = await failure.newPage();
   await failurePage.addInitScript(() => {
     const original = HTMLCanvasElement.prototype.getContext;

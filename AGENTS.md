@@ -26,13 +26,17 @@ status from automated checks alone.
 | Scene, camera, input, HUD | `js/app.js` |
 | Focus orbit / axis / spin marks | `js/helpers.js` |
 | Celestial sphere | `js/sky.js`, `js/sky-catalog.js`, `assets/sky/` |
-| Galactic neighborhood, Local Group, Virgo, cosmic web, CMB / observable universe | `js/galaxy.js`, `js/galaxy-catalog.js` |
+| Galactic neighborhood, Local Group, Virgo, 2MRS / outer density, CMB / observable universe | `js/galaxy.js`, `js/galaxy-catalog.js`, `js/cosmic-web.js`, `js/2mrs-data.js` |
 | Semantic shell and CSP | `index.html` |
 | Presentation | `styles.css` |
 | Public version label | `VERSION.txt` (`js/config.js` must match) |
 | Scientific and asset provenance | `PROVENANCE.md` |
 | Agent contract | `AGENTS.md` |
 | Human introduction | `README.md` |
+
+`js/2mrs-data.js` is a generated, hash-verified payload. Read its metadata
+header—not the base64 body—unless the task is specifically catalog regeneration
+or data-integrity work; `scripts/build-2mrs.mjs` is its canonical generator.
 
 Do not add managers, services, factories, event buses, plugin systems, accounts, telemetry, CDNs, or a physics engine. Split a file only when a new boundary has a small explicit interface.
 

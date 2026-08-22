@@ -4,9 +4,9 @@
  */
 import {
   findBody,
-  keplerOffset,
+  keplerPathOffset,
   moonOrbitAttachment,
-  renderedPeriod,
+  renderedSpinPeriod,
   visualBodyRadius,
 } from "./bodies.js";
 
@@ -52,7 +52,7 @@ export function setHelperVisibility(helpers, { selected, orbit, axis, spin }) {
 export function bindFocusHelpers(THREE, helpers, { body, node, parentNode, scene }) {
   const radius = visualBodyRadius(body);
   rebuildAxis(THREE, helpers.axis, radius);
-  rebuildSpin(THREE, helpers.spin, radius, renderedPeriod(body.rotationHours, body.tiltDeg) < 0);
+  rebuildSpin(THREE, helpers.spin, radius, renderedSpinPeriod(body) < 0);
   node.tilt.add(helpers.axis);
   node.tilt.add(helpers.spin);
 
@@ -66,9 +66,8 @@ export function bindFocusHelpers(THREE, helpers, { body, node, parentNode, scene
 
   const parent = body.parent ? findBody(body.parent) : null;
   const points = [];
-  const period = Math.abs(body.orbitDays);
   for (let i = 0; i <= 180; i += 1) {
-    const at = keplerOffset(body, parent, (period * i) / 180);
+    const at = keplerPathOffset(body, parent, i / 180);
     points.push(new THREE.Vector3(at.x, at.y, at.z));
   }
   helpers.orbit.geometry.dispose();

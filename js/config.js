@@ -15,7 +15,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.8.21e",
+  VERSION: "v2026.8.22a",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
   visualScale: 2.6,
@@ -85,10 +85,12 @@ export const CONFIG = Object.freeze({
   // Visual core mark for the cluster, not a 1:1 member catalog.
   virgoMarkRadiusMpc: 2.2,
   // Fourth compressed scale for the local cosmic web. Input is catalog Mpc.
-  webScale: 26600,
+  // Keeps the 300 Mpc 2MRS boundary beyond the web camera so the measured
+  // distribution reads as a surrounding volume, not an outside-view ball.
+  webScale: 55000,
   webPower: 0.42,
-  // Visual local-web radius. Laniakea-scale, not a 1:1 160 Mpc diameter.
-  webRadiusMpc: 80,
+  // 2MRS display cutoff. Radial velocity / H0 is an approximate Mpc mapping.
+  webRadiusMpc: 300,
   // Visual home-hub glow. Not the published Laniakea diameter.
   laniakeaMarkRadiusMpc: 3.6,
   // Fifth compressed scale for the observable universe. Input is catalog Gpc.

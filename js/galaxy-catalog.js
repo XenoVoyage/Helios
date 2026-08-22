@@ -212,6 +212,98 @@ export const VIRGO_CLUSTER = Object.freeze({
 });
 
 /**
+ * A deliberately small post-Virgo anchor set from Table 1 of Lambert et al.
+ * 2020, MNRAS 497, 2954 (doi:10.1093/mnras/staa1689). Table 1 prints the 20
+ * highest-membership 2MRS groups; Helios retains only its named groups beyond
+ * Virgo that lie within about 100 Mpc. Positions are mean J2000 / IAU galactic
+ * coordinates and distanceMpc is the table's comoving distance Dc for the
+ * paper's H0=73 km s-1 Mpc-1, OmegaM=0.3, OmegaLambda=0.7 cosmology.
+ *
+ * This hand-curated factual subset is not a redistributed copy of the full
+ * 3022-row catalogue. Generated cosmic-density points are not assigned these
+ * names and are never represented as additional measured clusters.
+ */
+export const POST_VIRGO_CLUSTERS = Object.freeze([
+  {
+    id: "2mrs-153",
+    name: "Abell 3627",
+    catalogGroupId: 153,
+    raDeg: 243.67,
+    decDeg: -60.89,
+    lDeg: 325.27,
+    bDeg: -7.17,
+    distanceMpc: 67.3,
+    richness: 67,
+  },
+  {
+    id: "2mrs-50",
+    name: "Abell 3526B",
+    catalogGroupId: 50,
+    raDeg: 192.03,
+    decDeg: -41.21,
+    lDeg: 302.26,
+    bDeg: 21.66,
+    distanceMpc: 51.7,
+    richness: 45,
+  },
+  {
+    id: "2mrs-3031",
+    name: "Abell 0426",
+    catalogGroupId: 3031,
+    raDeg: 49.76,
+    decDeg: 41.38,
+    lDeg: 150.53,
+    bDeg: -13.45,
+    distanceMpc: 70.4,
+    richness: 47,
+  },
+  {
+    id: "2mrs-228",
+    name: "Coma Cluster",
+    catalogGroupId: 228,
+    raDeg: 194.9,
+    decDeg: 28,
+    lDeg: 59.1,
+    bDeg: 87.99,
+    distanceMpc: 98.9,
+    richness: 78,
+  },
+  {
+    id: "2mrs-271",
+    name: "Abell 0262",
+    catalogGroupId: 271,
+    raDeg: 28.44,
+    decDeg: 36.23,
+    lDeg: 136.75,
+    bDeg: -24.96,
+    distanceMpc: 63.2,
+    richness: 25,
+  },
+  {
+    id: "2mrs-500",
+    name: "Abell 1367",
+    catalogGroupId: 500,
+    raDeg: 176.15,
+    decDeg: 19.97,
+    lDeg: 234.45,
+    bDeg: 73.12,
+    distanceMpc: 92.5,
+    richness: 44,
+  },
+  {
+    id: "2mrs-151",
+    name: "Abell S0805",
+    catalogGroupId: 151,
+    raDeg: 281.49,
+    decDeg: -63.03,
+    lDeg: 332.53,
+    bDeg: -23.38,
+    distanceMpc: 60,
+    richness: 31,
+  },
+]);
+
+/**
  * We sit in Laniakea (Tully, Courtois, Hoffman, Pomarède 2014, Nature 513,
  * 71). The historical Virgo / Local Supercluster is part of that basin.
  * Diameter ~160 Mpc. The extra-zoom web marks our location as the Milky

@@ -7,10 +7,13 @@ import { CONFIG } from "../js/config.js";
 import {
   ANDROMEDA,
   CONSTELLATION_LINES,
+  MAJOR_CONSTELLATIONS,
   STARS,
 } from "../js/sky-catalog.js";
 import {
   CONSTELLATION_STAR_BOOST,
+  GALACTIC_NGP_DEC_DEG,
+  GALACTIC_NGP_RA_DEG,
   constellationHasStar,
   constellationLabelPixelHeight,
   equatorialToGalactic,
@@ -18,10 +21,15 @@ import {
   findConstellation,
   findStarByHip,
   findStarByName,
+  galacticToScene,
   galacticToUv,
   isConstellationLineStar,
   sizeFromMag,
 } from "../js/sky.js";
+
+function dot(a, b) {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
 
 test("named stars have sane J2000 RA/Dec and magnitudes", () => {
   const sirius = findStarByName("Sirius");
@@ -107,14 +115,40 @@ test("equatorial J2000 lands on the orrery ecliptic axes", () => {
   assert.ok(Math.abs(eclipticNorth.z) < 0.02);
 });
 
+test("IAU Galactic axes form a right-handed J2000 scene frame", () => {
+  const x = galacticToScene(1, 0, 0);
+  const y = galacticToScene(0, 1, 0);
+  const z = galacticToScene(0, 0, 1);
+  for (const axis of [x, y, z]) {
+    assert.ok(Math.abs(dot(axis, axis) - 1) < 1e-12, "axis stays unit length");
+  }
+  assert.ok(Math.abs(dot(x, y)) < 1e-12);
+  assert.ok(Math.abs(dot(x, z)) < 1e-12);
+  assert.ok(Math.abs(dot(y, z)) < 1e-12);
+  const crossXY = {
+    x: x.y * y.z - x.z * y.y,
+    y: x.z * y.x - x.x * y.z,
+    z: x.x * y.y - x.y * y.x,
+  };
+  assert.ok(dot(crossXY, z) > 1 - 1e-12, "basis determinant is +1");
+
+  const galacticCenter = equatorialToScene(266.4049948, -28.936174);
+  const northPole = equatorialToScene(GALACTIC_NGP_RA_DEG, GALACTIC_NGP_DEC_DEG);
+  assert.ok(dot(x, galacticCenter) > 1 - 1e-12, "Galactic +X is the J2000 center");
+  assert.ok(dot(z, northPole) > 1 - 1e-12, "Galactic +Z is the J2000 north pole");
+});
+
 test("catalog is a few thousand brightest Hipparcos stars and the far plane clears the sky", () => {
   assert.ok(STARS.length > 3000 && STARS.length < 8000);
   assert.ok(STARS.every((row) => row[0] > 0 && Number.isFinite(row[1]) && Number.isFinite(row[2])));
   assert.ok(CONFIG.cameraFar > CONFIG.skyRadius);
-  assert.equal(CONFIG.VERSION, "v2026.8.21e");
+  assert.equal(CONFIG.VERSION, "v2026.8.22a");
 });
 
 test("constellation names stay readable at overview", () => {
+  assert.equal(CONSTELLATION_LINES.length, 88);
+  assert.equal(MAJOR_CONSTELLATIONS.length, 10);
+  assert.ok(MAJOR_CONSTELLATIONS.every((id) => findConstellation(id)));
   assert.ok(constellationLabelPixelHeight() > 22);
   assert.ok(constellationLabelPixelHeight(800, 52) > 16);
 });
