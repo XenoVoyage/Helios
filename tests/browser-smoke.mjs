@@ -152,11 +152,25 @@ async function assertZoomStress(page) {
     await moveToCanvas();
     await canvas.focus();
     await wheelFourSteps(1_000);
-    await page.waitForFunction(
-      () => document.documentElement.dataset.galaxyReady === "1"
-        && document.querySelector("#sky-button").hidden
-        && [...document.querySelectorAll(".sky-label")].every((label) => label.hidden),
-    );
+    try {
+      await page.waitForFunction(
+        () => document.documentElement.dataset.galaxyReady === "1"
+          && document.querySelector("#sky-button").hidden
+          && [...document.querySelectorAll(".sky-label")].every((label) => label.hidden),
+        null,
+        { timeout: 5_000 },
+      );
+    } catch (error) {
+      const state = await page.evaluate(() => ({
+        galaxyReady: document.documentElement.dataset.galaxyReady,
+        skyHidden: document.querySelector("#sky-button").hidden,
+        labelCount: document.querySelectorAll(".sky-label").length,
+        visibleLabels: [...document.querySelectorAll(".sky-label")]
+          .filter((label) => !label.hidden).map((label) => label.textContent),
+        status: document.querySelector("#status-live").textContent,
+      }));
+      assert.fail(`zoom stress cycle ${cycle + 1}: ${JSON.stringify(state)} (${error.message})`);
+    }
     await assertBodyLabelsHidden(page);
     await wheelFourSteps(-1_000);
     await page.locator("#sky-button:not([hidden])").waitFor();
