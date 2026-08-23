@@ -200,8 +200,16 @@ function assertFrameFloor(metrics, name, meanFloor, coverageFloor) {
 async function auditedCanvasFrame(page, name, meanFloor, coverageFloor) {
   const png = await page.locator("#viewport").screenshot();
   const metrics = await distributedFrameMetrics(page, png);
-  assertFrameFloor(metrics, name, meanFloor, coverageFloor);
   await saveScreenshot(page, name);
+  console.log(
+    `${name}: mean=${metrics.meanLuminance.toFixed(3)}, `
+      + `coverage=${(metrics.brightCoverage * 100).toFixed(3)}%, `
+      + `side-means=${metrics.regions.map((region) => region.meanLuminance.toFixed(3)).join("/")}, `
+      + `side-coverage=${metrics.regions.map((region) => (
+        `${(region.brightCoverage * 100).toFixed(3)}%`
+      )).join("/")}`,
+  );
+  assertFrameFloor(metrics, name, meanFloor, coverageFloor);
   return { png, metrics };
 }
 

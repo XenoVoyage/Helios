@@ -534,8 +534,11 @@ export function webOpacity(distance) {
 function outerDensityBlend(distance) {
   if (distance <= CONFIG.webViewDistance) return 0;
   const span = CONFIG.universeViewDistance - CONFIG.webViewDistance;
-  const start = CONFIG.webViewDistance + span * 0.08;
-  const ready = CONFIG.webViewDistance + span * 0.58;
+  // Bring the illustrative outer volume up early enough to preserve a visible
+  // filament field while the finite 2MRS sample yields. This is an exposure
+  // crossfade for legibility, not an extra population of observed galaxies.
+  const start = CONFIG.webViewDistance + span * 0.02;
+  const ready = CONFIG.webViewDistance + span * 0.48;
   if (distance <= start) return 0;
   if (distance >= ready) return 1;
   return smoothstep01((distance - start) / (ready - start));
@@ -554,7 +557,7 @@ export function localWebOpacity(distance) {
 
 /** Outer density remains legible through the translucent CMB display shell. */
 export function universeOpacity(distance) {
-  return outerDensityBlend(distance) * (1 - cmbSkyOpacity(distance) * 0.18);
+  return outerDensityBlend(distance) * (1 - cmbSkyOpacity(distance) * 0.08);
 }
 
 /**
@@ -1758,7 +1761,7 @@ function createOuterDensity(THREE, group) {
     "illustrative-outer-density",
     samples.positions,
     samples.colors,
-    1700,
+    2000,
     1,
     true,
     THREE.AdditiveBlending,
@@ -1793,7 +1796,7 @@ function createCmbShell(THREE, group) {
     unlitBasic(THREE, {
       map: loadMap(THREE, CMB_SHELL.map),
       color: 0xd5dcff,
-      opacity: 0.11,
+      opacity: 0.055,
       depthWrite: false,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
@@ -1806,7 +1809,7 @@ function createCmbShell(THREE, group) {
   const rim = new THREE.Sprite(unlitSprite(THREE, {
     map: horizonRimMap(THREE),
     color: 0xa9bdff,
-    opacity: 0.36,
+    opacity: 0.42,
     blending: THREE.AdditiveBlending,
     depthTest: false,
   }));

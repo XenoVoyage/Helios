@@ -516,7 +516,7 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   assert.equal(localWebOpacity(CONFIG.universeViewDistance), 0);
   assert.ok(
-    Math.abs(universeOpacity(CONFIG.universeViewDistance) - 0.82) < 1e-12,
+    Math.abs(universeOpacity(CONFIG.universeViewDistance) - 0.92) < 1e-12,
     "the point-built outer web remains visible through the CMB shell",
   );
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
