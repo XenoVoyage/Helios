@@ -59,8 +59,8 @@ test("2MRS samples retain galactic directions and bounded Hubble-law distances",
 });
 
 test("post-Virgo density stays deterministic and within the point budget", async () => {
-  assert.equal(COSMIC_WEB_MODEL.outer.count, 6500);
-  assert.equal(cosmicDensitySampleCount(), 49427);
+  assert.equal(COSMIC_WEB_MODEL.outer.count, 7000);
+  assert.equal(cosmicDensitySampleCount(), 49927);
   assert.ok(cosmicDensitySampleCount() <= COSMIC_WEB_MODEL.maxSamples);
   const innerRadius = 600;
   const outerRadius = 1000;
@@ -70,6 +70,9 @@ test("post-Virgo density stays deterministic and within the point budget", async
   assert.deepEqual(first.colors, second.colors);
   assert.equal(first.positions.length, COSMIC_WEB_MODEL.outer.count * 3);
   assert.ok(first.attempts > COSMIC_WEB_MODEL.outer.count);
+  const radialBands = [0, 0, 0, 0];
+  let coolStructureCount = 0;
+  let warmKnotCount = 0;
   for (let i = 0; i < first.positions.length; i += 3) {
     const radius = Math.hypot(
       first.positions[i],
@@ -78,11 +81,29 @@ test("post-Virgo density stays deterministic and within the point budget", async
     );
     assert.ok(Number.isFinite(radius) && radius >= innerRadius - 0.001);
     assert.ok(radius <= outerRadius + 0.001);
+    const radialFraction = (radius ** 3 - innerRadius ** 3)
+      / (outerRadius ** 3 - innerRadius ** 3);
+    radialBands[Math.min(3, Math.floor(radialFraction * 4))] += 1;
+
+    const red = first.colors[i];
+    const green = first.colors[i + 1];
+    const blue = first.colors[i + 2];
+    assert.ok(red >= 0 && red <= 1 && green >= 0 && green <= 1 && blue >= 0 && blue <= 1);
+    if (blue - red > 0.28) coolStructureCount += 1;
+    if (red > 0.72 && red > blue) warmKnotCount += 1;
   }
+  assert.ok(radialBands.every((band) => band > COSMIC_WEB_MODEL.outer.count * 0.2));
+  assert.ok(coolStructureCount > COSMIC_WEB_MODEL.outer.count * 0.25);
+  assert.ok(warmKnotCount > COSMIC_WEB_MODEL.outer.count * 0.01);
 
   const source = await readFile(path.join(root, "js/galaxy.js"), "utf8");
   assert.match(source, /"catalog-cluster-anchors"/);
   assert.match(source, /"2mrs-galaxies"/);
   assert.match(source, /"illustrative-outer-density"/);
+  assert.doesNotMatch(
+    source,
+    /2mrs-galaxies-halo|illustrative-outer-density-halo/,
+    "each density sample is submitted once rather than duplicated for a halo pass",
+  );
   assert.doesNotMatch(source, /pushFilament|collectWebHubs|createWebVolume/);
 });

@@ -7,13 +7,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { bodyOrientationBasis, findBody } from "../js/bodies.js";
-import { CONFIG } from "../js/config.js";
+import { CONFIG, wheelZoomMultiplier } from "../js/config.js";
 import { equatorialVectorToScene } from "../js/sky.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.BROWSER_SMOKE_PORT || 4175);
 const base = `http://127.0.0.1:${port}/Helios/`;
 const screenshotDir = process.env.HELIOS_SCREENSHOT_DIR;
+const BRIGHT_LUMINANCE = 12;
+const TRANSITION_MEAN_LUMINANCE_FLOOR = 5.5;
+const TRANSITION_BRIGHT_COVERAGE_FLOOR = 0.006;
+const FAR_SKY_MEAN_LUMINANCE_FLOOR = 4.5;
+const FAR_SKY_BRIGHT_COVERAGE_FLOOR = 0.002;
 const child = spawn(process.execPath, ["tests/serve.mjs"], {
   cwd: root,
   env: { ...process.env, PORT: String(port) },
@@ -97,6 +102,322 @@ async function saveScreenshot(page, name, options = {}) {
   if (!screenshotDir) return;
   await mkdir(screenshotDir, { recursive: true });
   await writeFile(path.join(screenshotDir, `${name}.png`), await page.screenshot(options));
+}
+
+async function distributedFrameMetrics(page, png) {
+  return page.evaluate(async ({ source, brightLuminance }) => {
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", reject, { once: true });
+    });
+    image.src = `data:image/png;base64,${source}`;
+    await ready;
+
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const context = surface.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+
+    // Distributed off-center tiles exclude the camera-attached hierarchy
+    // titles. A white title therefore cannot make an otherwise black web pass.
+    const regions = [
+      { name: "lower-left", x: 0.05, y: 0.56, width: 0.38, height: 0.26 },
+      { name: "lower-right", x: 0.57, y: 0.56, width: 0.38, height: 0.26 },
+      { name: "bottom-center", x: 0.25, y: 0.72, width: 0.5, height: 0.18 },
+    ];
+    let luminanceTotal = 0;
+    let bright = 0;
+    let samples = 0;
+    const regionMetrics = [];
+
+    for (const region of regions) {
+      const x = Math.floor(surface.width * region.x);
+      const y = Math.floor(surface.height * region.y);
+      const width = Math.max(1, Math.floor(surface.width * region.width));
+      const height = Math.max(1, Math.floor(surface.height * region.height));
+      const pixels = context.getImageData(x, y, width, height).data;
+      let regionLuminance = 0;
+      let regionBright = 0;
+      let regionSamples = 0;
+      // A two-pixel stride keeps the audit inexpensive without averaging away
+      // point-built galaxies or filaments.
+      for (let row = 0; row < height; row += 2) {
+        for (let column = 0; column < width; column += 2) {
+          const offset = (row * width + column) * 4;
+          const luminance = pixels[offset] * 0.2126
+            + pixels[offset + 1] * 0.7152
+            + pixels[offset + 2] * 0.0722;
+          regionLuminance += luminance;
+          if (luminance >= brightLuminance) regionBright += 1;
+          regionSamples += 1;
+        }
+      }
+      luminanceTotal += regionLuminance;
+      bright += regionBright;
+      samples += regionSamples;
+      regionMetrics.push({
+        name: region.name,
+        meanLuminance: regionLuminance / regionSamples,
+        brightCoverage: regionBright / regionSamples,
+      });
+    }
+
+    return {
+      meanLuminance: luminanceTotal / samples,
+      brightCoverage: bright / samples,
+      samples,
+      regions: regionMetrics,
+    };
+  }, {
+    source: png.toString("base64"),
+    brightLuminance: BRIGHT_LUMINANCE,
+  });
+}
+
+function assertFrameFloor(metrics, name, meanFloor, coverageFloor) {
+  const mean = metrics.meanLuminance.toFixed(3);
+  const coverage = (metrics.brightCoverage * 100).toFixed(3);
+  assert.ok(
+    metrics.meanLuminance >= meanFloor,
+    `${name} central mean luminance ${mean} stays at or above ${meanFloor}`,
+  );
+  assert.ok(
+    metrics.brightCoverage >= coverageFloor,
+    `${name} distributed bright-pixel coverage ${coverage}% stays at or above `
+      + `${(coverageFloor * 100).toFixed(3)}%`,
+  );
+  const populatedRegions = metrics.regions.filter((region) => (
+    region.meanLuminance >= meanFloor * 0.45
+    && region.brightCoverage >= coverageFloor * 0.45
+  ));
+  assert.ok(
+    populatedRegions.length >= 2,
+    `${name} has visible structure in at least two label-free regions`,
+  );
+}
+
+async function auditedCanvasFrame(page, name, meanFloor, coverageFloor) {
+  const png = await page.locator("#viewport").screenshot();
+  const metrics = await distributedFrameMetrics(page, png);
+  assertFrameFloor(metrics, name, meanFloor, coverageFloor);
+  await saveScreenshot(page, name);
+  return { png, metrics };
+}
+
+async function moveToCanvas(page) {
+  const point = await page.evaluate(() => {
+    const viewport = document.querySelector("#viewport");
+    const box = viewport.getBoundingClientRect();
+    const candidates = [[0.5, 0.5], [0.72, 0.46], [0.28, 0.46]];
+    for (const [x, y] of candidates) {
+      const clientX = box.left + box.width * x;
+      const clientY = box.top + box.height * y;
+      if (document.elementFromPoint(clientX, clientY) === viewport) {
+        return { x: clientX, y: clientY };
+      }
+    }
+    return null;
+  });
+  assert.ok(point, "an unobstructed canvas point is available for visual-audit input");
+  await page.mouse.move(point.x, point.y);
+}
+
+async function zoomBetweenAuditDistances(page, from, to) {
+  await moveToCanvas(page);
+  await page.mouse.wheel(0, Math.log(to / from) / Math.log(wheelZoomMultiplier(1)));
+  await page.waitForTimeout(350);
+}
+
+async function auditScaleTransitions(context) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page, "?look=virgo");
+  if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
+    await page.locator("#play-button").click();
+  }
+  await page.waitForTimeout(350);
+
+  const virgoToWeb = [0.15, 0.35, 0.55, 0.75, 0.92].map((fraction) => ({
+    name: `desktop-transition-virgo-web-${String(Math.round(fraction * 100)).padStart(2, "0")}`,
+    distance: CONFIG.virgoViewDistance
+      + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * fraction,
+  }));
+  const webToUniverse = [
+    0.15, 0.35, 0.55, 0.68, 0.7, 0.72, 0.74, 0.76,
+    0.78, 0.8, 0.82, 0.85, 0.9, 0.95, 1.01,
+  ].map((fraction) => ({
+    name: `desktop-transition-web-universe-${String(Math.round(fraction * 100)).padStart(2, "0")}`,
+    distance: CONFIG.webViewDistance
+      + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * fraction,
+  }));
+  const stops = [...virgoToWeb, ...webToUniverse];
+  let distance = CONFIG.virgoViewDistance;
+  const observations = [];
+
+  for (let index = 0; index < stops.length; index += 1) {
+    const stop = stops[index];
+    await zoomBetweenAuditDistances(page, distance, stop.distance);
+    distance = stop.distance;
+    if (index === virgoToWeb.length) {
+      await page.locator("#status-live")
+        .filter({ hasText: "2MRS galaxy distribution" }).waitFor();
+    }
+    if (index === stops.length - 1) {
+      await page.locator("#status-live")
+        .filter({ hasText: "Schematic observable universe" }).waitFor();
+    }
+    await assertBodyLabelsHidden(page);
+    const frame = await auditedCanvasFrame(
+      page,
+      stop.name,
+      TRANSITION_MEAN_LUMINANCE_FLOOR,
+      TRANSITION_BRIGHT_COVERAGE_FLOOR,
+    );
+    observations.push({ name: stop.name, ...frame.metrics });
+  }
+
+  assert.equal(observations.length, stops.length, "every transition distance is audited");
+  for (let i = 1; i < observations.length; i += 1) {
+    assert.ok(
+      observations[i].meanLuminance >= observations[i - 1].meanLuminance * 0.45,
+      `${observations[i].name} has no adjacent mean-luminance collapse`,
+    );
+    assert.ok(
+      observations[i].brightCoverage >= observations[i - 1].brightCoverage * 0.35,
+      `${observations[i].name} has no adjacent bright-coverage collapse`,
+    );
+  }
+  const webObservations = observations.slice(virgoToWeb.length);
+  const earlyMean = webObservations.slice(0, 3)
+    .reduce((total, item) => total + item.meanLuminance, 0) / 3;
+  const lateMean = webObservations.slice(-3)
+    .reduce((total, item) => total + item.meanLuminance, 0) / 3;
+  assert.ok(
+    lateMean >= earlyMean * 0.85,
+    "the observable-universe approach remains at least as legible as the early outer web",
+  );
+  assert.deepEqual(errors, [], "continuous Virgo-to-universe zoom has no browser errors");
+  await page.close();
+}
+
+async function dragCamera(page, deltaX, deltaY) {
+  const start = await page.evaluate(({ deltaX: dx, deltaY: dy }) => {
+    const viewport = document.querySelector("#viewport");
+    const box = viewport.getBoundingClientRect();
+    const x = box.left + box.width / 2 - dx / 2;
+    const y = box.top + box.height / 2 - dy / 2;
+    const endX = x + dx;
+    const endY = y + dy;
+    const inset = 24;
+    if (
+      x <= box.left + inset || x >= box.right - inset
+      || y <= box.top + inset || y >= box.bottom - inset
+      || endX <= box.left + inset || endX >= box.right - inset
+      || endY <= box.top + inset || endY >= box.bottom - inset
+      || document.elementFromPoint(x, y) !== viewport
+      || document.elementFromPoint(endX, endY) !== viewport
+    ) return null;
+    return { x, y };
+  }, { deltaX, deltaY });
+  assert.ok(start, "far-sky audit drag remains on unobstructed canvas");
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + deltaX, start.y + deltaY, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+}
+
+async function auditFarSkyDirections(context) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page, "?look=growing");
+  if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
+    await page.locator("#play-button").click();
+  }
+  await page.waitForTimeout(350);
+
+  const forward = await auditedCanvasFrame(
+    page,
+    "desktop-far-sky-forward",
+    FAR_SKY_MEAN_LUMINANCE_FLOOR,
+    FAR_SKY_BRIGHT_COVERAGE_FLOOR,
+  );
+  await dragCamera(page, -300, 0);
+  const quarterYaw = await auditedCanvasFrame(
+    page,
+    "desktop-far-sky-yaw-quarter",
+    FAR_SKY_MEAN_LUMINANCE_FLOOR,
+    FAR_SKY_BRIGHT_COVERAGE_FLOOR,
+  );
+  await dragCamera(page, -300, 0);
+  const yaw = await auditedCanvasFrame(
+    page,
+    "desktop-far-sky-yaw-180",
+    FAR_SKY_MEAN_LUMINANCE_FLOOR,
+    FAR_SKY_BRIGHT_COVERAGE_FLOOR,
+  );
+  assert.notEqual(
+    digest(forward.png),
+    digest(quarterYaw.png),
+    "far sky changes across a quarter-turn yaw",
+  );
+  assert.notEqual(digest(forward.png), digest(yaw.png), "far sky changes across a half-turn yaw");
+
+  await dragCamera(page, 0, 300);
+  await dragCamera(page, 0, 300);
+  const high = await auditedCanvasFrame(
+    page,
+    "desktop-far-sky-pitch-high",
+    FAR_SKY_MEAN_LUMINANCE_FLOOR,
+    FAR_SKY_BRIGHT_COVERAGE_FLOOR,
+  );
+  await dragCamera(page, 0, -300);
+  await dragCamera(page, 0, -300);
+  await dragCamera(page, 0, -300);
+  await dragCamera(page, 0, -300);
+  const low = await auditedCanvasFrame(
+    page,
+    "desktop-far-sky-pitch-low",
+    FAR_SKY_MEAN_LUMINANCE_FLOOR,
+    FAR_SKY_BRIGHT_COVERAGE_FLOOR,
+  );
+  assert.notEqual(digest(high.png), digest(low.png), "far sky changes between pitch extremes");
+  await dragCamera(page, 260, 220);
+  const diagonal = await auditedCanvasFrame(
+    page,
+    "desktop-far-sky-diagonal",
+    FAR_SKY_MEAN_LUMINANCE_FLOOR,
+    FAR_SKY_BRIGHT_COVERAGE_FLOOR,
+  );
+  assert.notEqual(digest(low.png), digest(diagonal.png), "far sky changes toward a cube corner");
+  assert.deepEqual(errors, [], "far-sky yaw and pitch audit has no browser errors");
+  await page.close();
+}
+
+async function auditResponsiveCosmology(context, prefix) {
+  for (const look of ["localgroup", "virgo", "web", "universe"]) {
+    const page = await context.newPage();
+    const errors = captureErrors(page);
+    await openReady(page, `?look=${look}`);
+    await assertRenderedCanvas(page);
+    assert.equal(await page.getAttribute("html", "data-galaxy-ready"), "1");
+    await assertBodyLabelsHidden(page);
+    await page.waitForTimeout(250);
+    if (look === "web" || look === "universe") {
+      await auditedCanvasFrame(
+        page,
+        `${prefix}-${look}`,
+        TRANSITION_MEAN_LUMINANCE_FLOOR,
+        TRANSITION_BRIGHT_COVERAGE_FLOOR,
+      );
+    } else {
+      await saveScreenshot(page, `${prefix}-${look}`);
+    }
+    assert.deepEqual(errors, [], `${prefix} ${look} has no browser errors`);
+    await page.close();
+  }
 }
 
 async function orbitCameraHalfTurn(page) {
@@ -545,6 +866,8 @@ try {
     assert.deepEqual(directErrors, [], `${look} has no browser errors`);
     await directPage.close();
   }
+  await auditScaleTransitions(desktop);
+  await auditFarSkyDirections(desktop);
   await captureEarthSolstice(desktop, "earth-june-solstice", "2000-06-21");
   await captureEarthSolstice(desktop, "earth-december-solstice", "2000-12-21", true);
   await desktop.close();
@@ -606,7 +929,17 @@ try {
   await assertCardClearsDock(touchPage, { width: 568, height: 320 });
   await saveScreenshot(touchPage, "touch-landscape-card");
   assert.deepEqual(touchErrors, []);
+  await auditResponsiveCosmology(touch, "touch-portrait");
   await touch.close();
+
+  const compactLandscape = await browser.newContext({
+    viewport: { width: 844, height: 390 },
+    deviceScaleFactor: 1,
+    hasTouch: true,
+    isMobile: true,
+  });
+  await auditResponsiveCosmology(compactLandscape, "touch-landscape");
+  await compactLandscape.close();
 
   const failure = await browser.newContext({ viewport: { width: 1024, height: 768 } });
   const failurePage = await failure.newPage();

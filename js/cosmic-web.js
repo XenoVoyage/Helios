@@ -16,7 +16,7 @@ export const COSMIC_WEB_MODEL = Object.freeze({
   outerMethod: "seeded Voronoi-proximity point density illustration",
   maxSamples: 50000,
   outer: Object.freeze({
-    count: 6500,
+    count: 7000,
     voidCount: 24,
     seed: 0x4cf42026,
     verticalScale: 0.94,
@@ -134,9 +134,11 @@ function proximityScores(point, centers) {
   const d3 = Math.sqrt(third);
   const d4 = Math.sqrt(fourth);
   const scale = Math.max(d4, 1e-6);
-  const wall = Math.exp(-18 * (d2 - d1) / scale);
-  const filament = wall * Math.exp(-24 * (d3 - d2) / scale);
-  const node = filament * Math.exp(-30 * (d4 - d3) / scale);
+  // A slightly wider ridge keeps adjacent samples visually connected while
+  // still leaving the interiors of the seeded Voronoi cells genuinely sparse.
+  const wall = Math.exp(-14 * (d2 - d1) / scale);
+  const filament = wall * Math.exp(-18 * (d3 - d2) / scale);
+  const node = filament * Math.exp(-22 * (d4 - d3) / scale);
   return { wall, filament, node };
 }
 
@@ -167,7 +169,7 @@ export function generateCosmicDensity(settings, innerRadius, outerRadius) {
     const scores = proximityScores(point, centers);
     const acceptance = Math.min(
       0.96,
-      0.025 + scores.wall * 0.34 + scores.filament * 0.44 + scores.node * 0.17,
+      0.012 + scores.wall * 0.2 + scores.filament * 0.54 + scores.node * 0.22,
     );
     if (rand() > acceptance) continue;
 
@@ -186,11 +188,17 @@ export function generateCosmicDensity(settings, innerRadius, outerRadius) {
     positions[i + 2] = point.z / directionLength * shellRadius;
 
     const strength = clamp01(
-      0.18 + scores.wall * 0.28 + scores.filament * 0.38 + scores.node * 0.42,
+      0.12 + scores.wall * 0.18 + scores.filament * 0.44 + scores.node * 0.62,
     );
-    colors[i] = clamp01(0.34 + warmth * 0.42 + scores.node * 0.45);
-    colors[i + 1] = clamp01(0.48 + strength * 0.34 + warmth * 0.12);
-    colors[i + 2] = clamp01(0.66 + strength * 0.34 - warmth * 0.12);
+    // Cool walls, brighter violet filaments, and warm nodes reveal the
+    // illustrative topology without implying extra measured structure.
+    colors[i] = clamp01(
+      0.34 + warmth * 0.35 + scores.filament * 0.16 + scores.node * 0.72,
+    );
+    colors[i + 1] = clamp01(0.45 + strength * 0.28 + warmth * 0.08);
+    colors[i + 2] = clamp01(
+      0.66 + scores.wall * 0.08 + scores.filament * 0.14 - scores.node * 0.3 - warmth * 0.08,
+    );
     accepted += 1;
   }
 
