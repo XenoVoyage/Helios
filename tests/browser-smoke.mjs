@@ -197,7 +197,13 @@ function assertFrameFloor(metrics, name, meanFloor, coverageFloor) {
   );
 }
 
-async function auditedCanvasFrame(page, name, meanFloor, coverageFloor) {
+async function auditedCanvasFrame(
+  page,
+  name,
+  meanFloor,
+  coverageFloor,
+  { deferFloor = false } = {},
+) {
   const png = await page.locator("#viewport").screenshot();
   const metrics = await distributedFrameMetrics(page, png);
   await saveScreenshot(page, name);
@@ -209,7 +215,7 @@ async function auditedCanvasFrame(page, name, meanFloor, coverageFloor) {
         `${(region.brightCoverage * 100).toFixed(3)}%`
       )).join("/")}`,
   );
-  assertFrameFloor(metrics, name, meanFloor, coverageFloor);
+  if (!deferFloor) assertFrameFloor(metrics, name, meanFloor, coverageFloor);
   return { png, metrics };
 }
 
@@ -281,11 +287,20 @@ async function auditScaleTransitions(context) {
       stop.name,
       TRANSITION_MEAN_LUMINANCE_FLOOR,
       TRANSITION_BRIGHT_COVERAGE_FLOOR,
+      { deferFloor: true },
     );
     observations.push({ name: stop.name, ...frame.metrics });
   }
 
   assert.equal(observations.length, stops.length, "every transition distance is audited");
+  for (const observation of observations) {
+    assertFrameFloor(
+      observation,
+      observation.name,
+      TRANSITION_MEAN_LUMINANCE_FLOOR,
+      TRANSITION_BRIGHT_COVERAGE_FLOOR,
+    );
+  }
   for (let i = 1; i < observations.length; i += 1) {
     assert.ok(
       observations[i].meanLuminance >= observations[i - 1].meanLuminance * 0.45,

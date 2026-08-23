@@ -506,9 +506,10 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   const outerTransition = CONFIG.webViewDistance
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.2;
-  assert.ok(
-    localWebOpacity(outerTransition) > 0 && localWebOpacity(outerTransition) < 1,
-    "2MRS volume fades rather than popping off",
+  assert.equal(
+    localWebOpacity(outerTransition),
+    1,
+    "2MRS stays fully visible while the camera remains inside its display volume",
   );
   assert.ok(
     universeOpacity(outerTransition) > 0 && universeOpacity(outerTransition) < 1,
@@ -519,6 +520,12 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.ok(
     localWebOpacity(readabilityTransition) + universeOpacity(readabilityTransition) > 1.35,
     "measured and illustrative volumes overlap through the sparse outer handoff",
+  );
+  const measuredBoundary = CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.74;
+  assert.ok(
+    localWebOpacity(measuredBoundary) > 0 && localWebOpacity(measuredBoundary) < 1,
+    "2MRS fades smoothly as the camera reaches the measured display boundary",
   );
   assert.equal(localWebOpacity(CONFIG.universeViewDistance), 0);
   assert.ok(
