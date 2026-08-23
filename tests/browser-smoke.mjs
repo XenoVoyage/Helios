@@ -180,7 +180,7 @@ function assertFrameFloor(metrics, name, meanFloor, coverageFloor) {
   const coverage = (metrics.brightCoverage * 100).toFixed(3);
   assert.ok(
     metrics.meanLuminance >= meanFloor,
-    `${name} central mean luminance ${mean} stays at or above ${meanFloor}`,
+    `${name} distributed mean luminance ${mean} stays at or above ${meanFloor}`,
   );
   assert.ok(
     metrics.brightCoverage >= coverageFloor,

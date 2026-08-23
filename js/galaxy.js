@@ -567,8 +567,8 @@ export function farGalaxySkyOpacity(distance) {
   const span = CONFIG.webViewDistance - CONFIG.virgoViewDistance;
   const progress = (distance - CONFIG.virgoViewDistance) / span;
   if (progress <= 0.12) return 1;
-  if (progress >= 0.72) return 0;
-  return 1 - smoothstep01((progress - 0.12) / 0.6);
+  if (progress >= 0.88) return 0;
+  return 1 - smoothstep01((progress - 0.12) / 0.76);
 }
 
 /** Microwave sky waits until after a long web, then becomes the outer shell. */
@@ -1709,8 +1709,8 @@ function createMeasuredWeb(THREE, group) {
     "2mrs-galaxies",
     samples.positions,
     samples.colors,
-    920,
-    0.98,
+    1180,
+    1,
     true,
     THREE.AdditiveBlending,
   );
@@ -1758,8 +1758,8 @@ function createOuterDensity(THREE, group) {
     "illustrative-outer-density",
     samples.positions,
     samples.colors,
-    1500,
-    0.94,
+    1700,
+    1,
     true,
     THREE.AdditiveBlending,
   );
@@ -1793,9 +1793,10 @@ function createCmbShell(THREE, group) {
     unlitBasic(THREE, {
       map: loadMap(THREE, CMB_SHELL.map),
       color: 0xd5dcff,
-      opacity: 0.2,
+      opacity: 0.11,
       depthWrite: false,
       side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
     }),
   );
   cmb.name = "cmb-sphere";
@@ -1805,7 +1806,7 @@ function createCmbShell(THREE, group) {
   const rim = new THREE.Sprite(unlitSprite(THREE, {
     map: horizonRimMap(THREE),
     color: 0xa9bdff,
-    opacity: 0.42,
+    opacity: 0.36,
     blending: THREE.AdditiveBlending,
     depthTest: false,
   }));
