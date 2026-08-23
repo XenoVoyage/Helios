@@ -180,7 +180,7 @@ async function distributedFrameMetrics(page, png) {
 }
 
 async function cmbTextureMetrics(page, png) {
-  return page.evaluate(async ({ source }) => {
+  return page.evaluate(async ({ source, brightLuminance }) => {
     const image = new Image();
     const ready = new Promise((resolve, reject) => {
       image.addEventListener("load", resolve, { once: true });
@@ -224,8 +224,8 @@ async function cmbTextureMetrics(page, png) {
         blue += b;
         luminance += luma;
         luminanceSquared += luma * luma;
-        if (luma >= BRIGHT_LUMINANCE && r - b >= 6) warm += 1;
-        if (luma >= BRIGHT_LUMINANCE && b - r >= 6) cool += 1;
+        if (luma >= brightLuminance && r - b >= 6) warm += 1;
+        if (luma >= brightLuminance && b - r >= 6) cool += 1;
         samples += 1;
       }
     }
@@ -244,7 +244,10 @@ async function cmbTextureMetrics(page, png) {
       coolCoverage: cool / samples,
       samples,
     };
-  }, { source: png.toString("base64") });
+  }, {
+    source: png.toString("base64"),
+    brightLuminance: BRIGHT_LUMINANCE,
+  });
 }
 
 async function assertCmbTextureVisible(page) {
