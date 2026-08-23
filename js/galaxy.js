@@ -1765,7 +1765,7 @@ function createOuterDensity(THREE, group) {
     "illustrative-outer-density",
     samples.positions,
     samples.colors,
-    2600,
+    3000,
     1,
     true,
     THREE.AdditiveBlending,
