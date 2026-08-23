@@ -547,13 +547,15 @@ function outerDensityBlend(distance) {
 /** Local density reaches full strength at the web seat, then yields outward. */
 export function localWebOpacity(distance) {
   if (distance <= CONFIG.webViewDistance) return webOpacity(distance);
-  // 2MRS is a finite 300 Mpc display volume, so retain it while the camera is
-  // still inside. Yield only across the measured boundary, where the outer
-  // illustrative density and the CMB veil are already visible.
+  // 2MRS is a finite 300 Mpc display volume. Keep that measured inner volume
+  // as nested context while the camera crosses its boundary, then yield once
+  // the CMB veil is strong enough to carry the outside view without a void.
   const cameraDistance = extraZoomCameraDistance(distance);
   const measuredRadius = farthestWebDistance();
   const start = measuredRadius * 0.96;
-  const end = measuredRadius * 1.02;
+  const transitionSpan = CONFIG.universeViewDistance - CONFIG.webViewDistance;
+  const cmbStrongSeat = CONFIG.webViewDistance + transitionSpan * 0.82;
+  const end = extraZoomCameraDistance(cmbStrongSeat);
   if (cameraDistance <= start) return 1;
   if (cameraDistance >= end) return 0;
   return 1 - smoothstep01((cameraDistance - start) / (end - start));

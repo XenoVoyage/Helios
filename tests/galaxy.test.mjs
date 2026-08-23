@@ -527,6 +527,13 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     localWebOpacity(measuredBoundary) > 0 && localWebOpacity(measuredBoundary) < 1,
     "2MRS fades smoothly as the camera reaches the measured display boundary",
   );
+  const cmbStrongTransition = CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.82;
+  assert.equal(
+    localWebOpacity(cmbStrongTransition),
+    0,
+    "the measured inner context yields when the CMB veil becomes strong",
+  );
   assert.equal(localWebOpacity(CONFIG.universeViewDistance), 0);
   assert.ok(
     Math.abs(universeOpacity(CONFIG.universeViewDistance) - 0.92) < 1e-12,
