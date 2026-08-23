@@ -54,8 +54,6 @@ const VISIBILITY_GROUPS = Object.freeze([
   "virgo-label",
   "virgo-supercluster-label",
   "laniakea-label",
-  "cosmic-web-label",
-  "observable-universe-label",
   "cosmic-web",
   "home-mark",
   "universe",
@@ -77,9 +75,8 @@ const LABEL_TIER = Object.freeze({
 const SCOPE_LABEL_ROW = Object.freeze({
   virgoSupercluster: 0.24,
   laniakea: 0.12,
-  cosmicWeb: 0.24,
-  observableUniverse: 0.12,
 });
+const CMB_TEXTURE_OPACITY = 0.4;
 
 export { galacticToScene };
 
@@ -433,14 +430,6 @@ export function semanticLabelOpacities(distance) {
       CONFIG.virgoViewDistance + virgoToWeb * 0.55,
       CONFIG.virgoViewDistance + virgoToWeb * 0.8,
     ),
-    cosmicWeb: windowOpacity(
-      distance,
-      CONFIG.virgoViewDistance + virgoToWeb * 0.45,
-      CONFIG.virgoViewDistance + virgoToWeb * 0.68,
-      cmbTransitionStart(),
-      CONFIG.universeViewDistance,
-    ),
-    observableUniverse: cmbSkyOpacity(distance),
   };
 }
 
@@ -563,7 +552,7 @@ export function localWebOpacity(distance) {
 
 /** Outer density remains legible through the translucent CMB display shell. */
 export function universeOpacity(distance) {
-  return outerDensityBlend(distance) * (1 - cmbSkyOpacity(distance) * 0.08);
+  return outerDensityBlend(distance) * (1 - cmbSkyOpacity(distance) * 0.25);
 }
 
 /**
@@ -906,8 +895,6 @@ function createScaleLabels(THREE, group) {
   const definitions = [
     ["virgo-supercluster-label", "virgoSupercluster", "Local (Virgo) Supercluster"],
     ["laniakea-label", "laniakea", `${LANIAKEA.name} Supercluster`],
-    ["cosmic-web-label", "cosmicWeb", "Cosmic Web"],
-    ["observable-universe-label", "observableUniverse", "Observable Universe"],
   ];
   for (const [name, semanticName, text] of definitions) {
     const labelGroup = new THREE.Group();
@@ -1775,24 +1762,6 @@ function createOuterDensity(THREE, group) {
   group.add(shell);
 }
 
-function horizonRimMap(THREE) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext("2d");
-  const rim = ctx.createRadialGradient(256, 256, 160, 256, 256, 252);
-  rim.addColorStop(0, "rgba(92, 118, 220, 0)");
-  rim.addColorStop(0.58, "rgba(105, 135, 235, 0.04)");
-  rim.addColorStop(0.82, "rgba(130, 160, 255, 0.38)");
-  rim.addColorStop(0.94, "rgba(184, 201, 255, 0.7)");
-  rim.addColorStop(1, "rgba(104, 132, 238, 0)");
-  ctx.fillStyle = rim;
-  ctx.fillRect(0, 0, 512, 512);
-  const map = new THREE.CanvasTexture(canvas);
-  map.colorSpace = THREE.SRGBColorSpace;
-  return map;
-}
-
 function createCmbShell(THREE, group) {
   const shell = new THREE.Group();
   shell.name = "cmb-shell";
@@ -1801,28 +1770,14 @@ function createCmbShell(THREE, group) {
     new THREE.SphereGeometry(radius, 96, 64),
     unlitBasic(THREE, {
       map: loadMap(THREE, CMB_SHELL.map),
-      color: 0xd5dcff,
-      opacity: 0.055,
+      opacity: CMB_TEXTURE_OPACITY,
       depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
+      side: THREE.FrontSide,
     }),
   );
   cmb.name = "cmb-sphere";
-  cmb.material.forceSinglePass = true;
   cmb.frustumCulled = false;
   shell.add(cmb);
-  const rim = new THREE.Sprite(unlitSprite(THREE, {
-    map: horizonRimMap(THREE),
-    color: 0xa9bdff,
-    opacity: 0.42,
-    blending: THREE.AdditiveBlending,
-    depthTest: false,
-  }));
-  rim.name = "observable-horizon-rim";
-  rim.scale.set(radius * 2.08, radius * 2.08, 1);
-  rim.frustumCulled = false;
-  shell.add(rim);
   group.add(shell);
 }
 
@@ -2062,8 +2017,6 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
   fadeNamedGroup(cache, "virgo-label", opacity, virgoShown * clusterLabel);
   fadeNamedGroup(cache, "virgo-supercluster-label", opacity, labels.virgoSupercluster);
   fadeNamedGroup(cache, "laniakea-label", opacity, labels.laniakea);
-  fadeNamedGroup(cache, "cosmic-web-label", opacity, labels.cosmicWeb);
-  fadeNamedGroup(cache, "observable-universe-label", opacity, labels.observableUniverse);
   fadeNamedGroup(cache, "cosmic-web", opacity, localWeb);
   fadeNamedGroup(cache, "home-mark", opacity, localWeb);
   fadeNamedGroup(cache, "universe", opacity, universe);

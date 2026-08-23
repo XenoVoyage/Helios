@@ -536,8 +536,8 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   assert.equal(localWebOpacity(CONFIG.universeViewDistance), 0);
   assert.ok(
-    Math.abs(universeOpacity(CONFIG.universeViewDistance) - 0.92) < 1e-12,
-    "the point-built outer web remains visible through the CMB shell",
+    Math.abs(universeOpacity(CONFIG.universeViewDistance) - 0.75) < 1e-12,
+    "the point-built outer web remains visible behind the texture-dominant CMB shell",
   );
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
   assert.equal(
@@ -632,7 +632,7 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
 });
 
-test("semantic labels roll up from galaxies to the observable universe", () => {
+test("semantic labels roll up from galaxies to superclusters, then clear for the web", () => {
   assert.ok(semanticLabelScale("catalog") < semanticLabelScale("group"));
   assert.ok(semanticLabelScale("group") < semanticLabelScale("structure"));
   assert.ok(semanticLabelScale("structure") < semanticLabelScale("scope"));
@@ -640,16 +640,6 @@ test("semantic labels roll up from galaxies to the observable universe", () => {
     semanticLabelRow("virgoSupercluster"),
     semanticLabelRow("laniakea"),
     "overlapping supercluster titles occupy separate rows",
-  );
-  assert.notEqual(
-    semanticLabelRow("laniakea"),
-    semanticLabelRow("cosmicWeb"),
-    "Laniakea and Cosmic Web titles occupy separate rows",
-  );
-  assert.notEqual(
-    semanticLabelRow("cosmicWeb"),
-    semanticLabelRow("observableUniverse"),
-    "Cosmic Web and Observable Universe titles occupy separate rows",
   );
 
   const neighborhood = semanticLabelOpacities(CONFIG.neighborhoodViewDistance);
@@ -669,9 +659,10 @@ test("semantic labels roll up from galaxies to the observable universe", () => {
   assert.equal(virgo.galaxies, 0);
   assert.equal(laniakea.laniakea, 1);
   assert.ok(laniakea.virgoSupercluster > 0, "supercluster labels crossfade without a gap");
-  assert.equal(web.cosmicWeb, 1);
-  assert.equal(universe.observableUniverse, 1);
-  assert.equal(universe.cosmicWeb, 0);
+  const semanticKeys = ["galaxies", "localGroup", "virgoSupercluster", "laniakea"];
+  assert.deepEqual(Object.keys(web).sort(), semanticKeys.sort());
+  assert.ok(Object.values(web).every((opacity) => opacity === 0));
+  assert.ok(Object.values(universe).every((opacity) => opacity === 0));
 
   for (let i = 0; i <= 100; i += 1) {
     const distance = CONFIG.neighborhoodViewDistance
@@ -683,17 +674,16 @@ test("semantic labels roll up from galaxies to the observable universe", () => {
     );
   }
 
-  for (let i = 0; i <= 240; i += 1) {
+  const finalHierarchyDistance = CONFIG.virgoViewDistance + span * 0.675;
+  for (let i = 0; i <= 180; i += 1) {
     const distance = CONFIG.neighborhoodViewDistance
-      + (CONFIG.universeViewDistance - CONFIG.neighborhoodViewDistance) * (i / 240);
+      + (finalHierarchyDistance - CONFIG.neighborhoodViewDistance) * (i / 180);
     const labels = semanticLabelOpacities(distance);
     const dominant = Math.max(
       labels.galaxies,
       labels.localGroup,
       labels.virgoSupercluster,
       labels.laniakea,
-      labels.cosmicWeb,
-      labels.observableUniverse,
     );
     assert.ok(dominant >= 0.48, `a dominant semantic label remains through ${distance}`);
   }
@@ -1175,7 +1165,36 @@ test("post-Virgo map uses measured cluster anchors and no invented web links", a
   assert.match(galaxySource, /depthTest:\s*false/);
   assert.match(galaxySource, /fog:\s*false/);
   assert.match(galaxySource, /name = "cmb-sphere"/);
-  assert.match(galaxySource, /side:\s*THREE\.DoubleSide/);
+  const cmbSource = galaxySource.slice(
+    galaxySource.indexOf("function createCmbShell"),
+    galaxySource.indexOf("/** One deterministic square face"),
+  );
+  assert.match(cmbSource, /map:\s*loadMap\(THREE, CMB_SHELL\.map\)/);
+  assert.match(cmbSource, /opacity:\s*CMB_TEXTURE_OPACITY/);
+  assert.match(cmbSource, /side:\s*THREE\.FrontSide/);
+  assert.match(galaxySource, /const CMB_TEXTURE_OPACITY = 0\.4;/);
+  assert.doesNotMatch(
+    cmbSource,
+    /color:|blending:|AdditiveBlending|DoubleSide|forceSinglePass|horizonRimMap|observable-horizon-rim/,
+    "the CMB stays untinted, normally blended, front-facing, and free of an artificial rim",
+  );
+  assert.doesNotMatch(
+    galaxySource,
+    /horizonRimMap|observable-horizon-rim/,
+    "the removed blue boundary has no dead renderer left behind",
+  );
+  const scopeLabelSource = galaxySource.slice(
+    galaxySource.indexOf("function createScaleLabels"),
+    galaxySource.indexOf("function pinSprite"),
+  );
+  assert.match(scopeLabelSource, /virgo-supercluster-label/);
+  assert.match(scopeLabelSource, /laniakea-label/);
+  assert.doesNotMatch(scopeLabelSource, /cosmic-web-label|observable-universe-label/);
+  assert.doesNotMatch(
+    galaxySource,
+    /"cosmic-web-label"|"observable-universe-label"/,
+    "web and universe remain scientific scale states without screen badges",
+  );
   assert.match(galaxySource, /function handoffBlendStart/);
   assert.doesNotMatch(galaxySource, /far-galaxy-glow/);
   assert.match(galaxySource, /outerDensityBlend/);

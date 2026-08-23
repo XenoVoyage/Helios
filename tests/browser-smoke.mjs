@@ -19,6 +19,10 @@ const TRANSITION_MEAN_LUMINANCE_FLOOR = 5.5;
 const TRANSITION_BRIGHT_COVERAGE_FLOOR = 0.006;
 const FAR_SKY_MEAN_LUMINANCE_FLOOR = 4.5;
 const FAR_SKY_BRIGHT_COVERAGE_FLOOR = 0.002;
+const CMB_MEAN_LUMINANCE_FLOOR = 28;
+const CMB_LUMINANCE_STDDEV_FLOOR = 12;
+const CMB_COLOR_COVERAGE_FLOOR = 0.08;
+const CMB_BLUE_RED_RATIO_CEILING = 1.15;
 const child = spawn(process.execPath, ["tests/serve.mjs"], {
   cwd: root,
   env: { ...process.env, PORT: String(port) },
@@ -173,6 +177,107 @@ async function distributedFrameMetrics(page, png) {
     source: png.toString("base64"),
     brightLuminance: BRIGHT_LUMINANCE,
   });
+}
+
+async function cmbTextureMetrics(page, png) {
+  return page.evaluate(async ({ source }) => {
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", reject, { once: true });
+    });
+    image.src = `data:image/png;base64,${source}`;
+    await ready;
+
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const context = surface.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+
+    // The direct universe seat centers the sphere here, clear of the header
+    // and dock. Its interior—not the former rim—must carry recognizable warm
+    // and cool CMB texture structure.
+    const x = Math.floor(surface.width * 0.28);
+    const y = Math.floor(surface.height * 0.14);
+    const width = Math.max(1, Math.floor(surface.width * 0.44));
+    const height = Math.max(1, Math.floor(surface.height * 0.58));
+    const pixels = context.getImageData(x, y, width, height).data;
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    let luminance = 0;
+    let luminanceSquared = 0;
+    let warm = 0;
+    let cool = 0;
+    let samples = 0;
+
+    for (let row = 0; row < height; row += 2) {
+      for (let column = 0; column < width; column += 2) {
+        const offset = (row * width + column) * 4;
+        const r = pixels[offset];
+        const g = pixels[offset + 1];
+        const b = pixels[offset + 2];
+        const luma = r * 0.2126 + g * 0.7152 + b * 0.0722;
+        red += r;
+        green += g;
+        blue += b;
+        luminance += luma;
+        luminanceSquared += luma * luma;
+        if (luma >= BRIGHT_LUMINANCE && r - b >= 6) warm += 1;
+        if (luma >= BRIGHT_LUMINANCE && b - r >= 6) cool += 1;
+        samples += 1;
+      }
+    }
+
+    const meanLuminance = luminance / samples;
+    return {
+      meanRed: red / samples,
+      meanGreen: green / samples,
+      meanBlue: blue / samples,
+      meanLuminance,
+      luminanceStdDev: Math.sqrt(Math.max(
+        0,
+        luminanceSquared / samples - meanLuminance * meanLuminance,
+      )),
+      warmCoverage: warm / samples,
+      coolCoverage: cool / samples,
+      samples,
+    };
+  }, { source: png.toString("base64") });
+}
+
+async function assertCmbTextureVisible(page) {
+  const png = await page.locator("#viewport").screenshot();
+  const metrics = await cmbTextureMetrics(page, png);
+  console.log(
+    `desktop-universe-cmb: mean=${metrics.meanLuminance.toFixed(3)}, `
+      + `stddev=${metrics.luminanceStdDev.toFixed(3)}, `
+      + `rgb=${metrics.meanRed.toFixed(3)}/${metrics.meanGreen.toFixed(3)}`
+      + `/${metrics.meanBlue.toFixed(3)}, `
+      + `warm=${(metrics.warmCoverage * 100).toFixed(3)}%, `
+      + `cool=${(metrics.coolCoverage * 100).toFixed(3)}%`,
+  );
+  assert.ok(
+    metrics.meanLuminance >= CMB_MEAN_LUMINANCE_FLOOR,
+    "the final CMB texture is brighter than the rejected dark-blue rendering",
+  );
+  assert.ok(
+    metrics.luminanceStdDev >= CMB_LUMINANCE_STDDEV_FLOOR,
+    "the final sphere retains visible CMB texture variation",
+  );
+  assert.ok(
+    metrics.warmCoverage >= CMB_COLOR_COVERAGE_FLOOR,
+    "the final sphere retains a substantial warm CMB population",
+  );
+  assert.ok(
+    metrics.coolCoverage >= CMB_COLOR_COVERAGE_FLOOR,
+    "the final sphere retains a substantial cool CMB population",
+  );
+  assert.ok(
+    metrics.meanBlue <= metrics.meanRed * CMB_BLUE_RED_RATIO_CEILING,
+    "the final sphere is not dominated by an artificial blue treatment",
+  );
 }
 
 function assertFrameFloor(metrics, name, meanFloor, coverageFloor) {
@@ -884,6 +989,7 @@ try {
       await assertBodyLabelsHidden(directPage);
     }
     await directPage.waitForTimeout(250);
+    if (look === "universe") await assertCmbTextureVisible(directPage);
     await saveScreenshot(directPage, `desktop-${look}`);
     assert.deepEqual(directErrors, [], `${look} has no browser errors`);
     await directPage.close();
