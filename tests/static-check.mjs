@@ -88,6 +88,11 @@ assert.match(html, /id="helper-spin"/);
 assert.match(app, /kuiperInnerAu/);
 assert.match(app, /selectedId/);
 assert.match(app, /visualBodyRadius/);
+assert.match(
+  app,
+  /node\.tilt\.quaternion\.premultiply\(parentNode\.tilt\.quaternion\.clone\(\)\.invert\(\)\)/,
+  "absolute moon axes must cancel an inherited parent-equatorial rotation",
+);
 assert.doesNotMatch(app, /https?:\/\//);
 assert.doesNotMatch(bodies, /https?:\/\//);
 assert.doesNotMatch(configSource, /https?:\/\//);
@@ -102,6 +107,9 @@ assert.match(threeLicense, /three\.js authors/);
 assert.match(provenance, /MIT license covers first-party code only/);
 assert.match(provenance, /not JPL Horizons ephemerides/);
 assert.match(provenance, /No inpainting or synthetic terrain/);
+assert.match(provenance, /doi:10\.1093\/mnras\/staa1946/);
+assert.match(galaxyCatalog, /doi:10\.1093\/mnras\/staa1946/);
+assert.doesNotMatch(`${provenance}\n${galaxyCatalog}`, /staa1689/);
 assert.match(css, /min-height: 44px/);
 assert.match(
   css,

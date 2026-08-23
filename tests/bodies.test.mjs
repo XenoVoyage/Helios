@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as THREE from "../vendor/three.module.min.js";
 import { CONFIG, formatDaysPerSecond } from "../js/config.js";
 import {
   BODIES,
@@ -87,8 +88,7 @@ function sceneOrientationBasis(body) {
   };
 }
 
-function bodyFacingCoordinates(body, direction, spin) {
-  const basis = sceneOrientationBasis(body);
+function facingCoordinates(basis, direction, spin) {
   const facing = normalized(direction);
   const W = basis.primeMeridian + spin;
   const bodyX = {
@@ -104,6 +104,54 @@ function bodyFacingCoordinates(body, direction, spin) {
   return {
     longitudeDeg: Math.atan2(dot(facing, bodyY), dot(facing, bodyX)) * 180 / Math.PI,
     latitudeDeg: Math.asin(dot(facing, basis.zAxis)) * 180 / Math.PI,
+  };
+}
+
+function bodyFacingCoordinates(body, direction, spin) {
+  return facingCoordinates(sceneOrientationBasis(body), direction, spin);
+}
+
+function sceneOrientationMatrix(body) {
+  const basis = sceneOrientationBasis(body);
+  return new THREE.Matrix4().makeBasis(
+    new THREE.Vector3(basis.xAxis.x, basis.xAxis.y, basis.xAxis.z),
+    new THREE.Vector3(basis.zAxis.x, basis.zAxis.y, basis.zAxis.z),
+    new THREE.Vector3(-basis.yAxis.x, -basis.yAxis.y, -basis.yAxis.z),
+  );
+}
+
+function runtimeMoonHierarchy(body) {
+  const parent = findBody(body.parent);
+  const parentTilt = new THREE.Group();
+  const pivot = new THREE.Group();
+  const tilt = new THREE.Group();
+  parentTilt.setRotationFromMatrix(sceneOrientationMatrix(parent));
+  tilt.setRotationFromMatrix(sceneOrientationMatrix(body));
+  if (moonOrbitAttachment(body) === "parent-equatorial" && body.orientationJ2000) {
+    tilt.quaternion.premultiply(parentTilt.quaternion.clone().invert());
+  }
+  pivot.add(tilt);
+  parentTilt.add(pivot);
+  return { body, parent, parentTilt, pivot, tilt };
+}
+
+function runtimeMoonState(hierarchy, days) {
+  const at = keplerOffset(hierarchy.body, hierarchy.parent, days);
+  hierarchy.pivot.position.set(at.x, at.y, at.z);
+  hierarchy.parentTilt.updateMatrixWorld(true);
+  const offset = hierarchy.pivot.getWorldPosition(new THREE.Vector3());
+  const xAxis = new THREE.Vector3(1, 0, 0).transformDirection(hierarchy.tilt.matrixWorld);
+  const zAxis = new THREE.Vector3(0, 1, 0).transformDirection(hierarchy.tilt.matrixWorld);
+  const yAxis = new THREE.Vector3(0, 0, -1).transformDirection(hierarchy.tilt.matrixWorld);
+  return {
+    at,
+    offset: { x: offset.x, y: offset.y, z: offset.z },
+    basis: {
+      xAxis: { x: xAxis.x, y: xAxis.y, z: xAxis.z },
+      yAxis: { x: yAxis.x, y: yAxis.y, z: yAxis.z },
+      zAxis: { x: zAxis.x, y: zAxis.y, z: zAxis.z },
+      primeMeridian: sceneOrientationBasis(hierarchy.body).primeMeridian,
+    },
   };
 }
 
@@ -382,34 +430,40 @@ test("Moon orientation keeps the near side Earth-facing with bounded natural lib
   assert.ok(Math.abs(Math.max(...latitudes) - 6.73) < 0.02);
 });
 
-test("Triton's source pole and phase keep Neptune on the registered hemisphere", () => {
+test("Triton's runtime hierarchy preserves its absolute pole and registered hemisphere", () => {
   const triton = findBody("triton");
-  const spinPole = sceneOrientationBasis(triton).zAxis;
+  const hierarchy = runtimeMoonHierarchy(triton);
+  const start = runtimeMoonState(hierarchy, 0);
+  const next = runtimeMoonState(hierarchy, triton.orbitDays * 1e-5);
+  const spinPole = start.basis.zAxis;
+  assert.ok(angleDeg(spinPole, sceneOrientationBasis(triton).zAxis) < 1e-6);
   const spinDirection = Math.sign(renderedSpinPeriod(triton));
   const spinAxis = {
     x: spinPole.x * spinDirection,
     y: spinPole.y * spinDirection,
     z: spinPole.z * spinDirection,
   };
-  const obliquity = angleDeg(orbitNormal(triton), spinAxis);
+  const runtimeOrbitNormal = normalized(cross(start.offset, subtract(next.offset, start.offset)));
+  const obliquity = angleDeg(runtimeOrbitNormal, spinAxis);
   assert.ok(obliquity < 0.6);
   assert.ok(Math.abs(obliquity - triton.tiltDeg) < 0.01);
 
   const longitudes = [];
   const latitudes = [];
   for (let step = 0; step <= 720; step += 1) {
-    const at = worldOffset(triton, triton.orbitDays * step / 720);
-    const facing = bodyFacingCoordinates(
-      triton,
-      { x: -at.x, y: -at.y, z: -at.z },
-      at.spin,
+    const state = runtimeMoonState(hierarchy, triton.orbitDays * step / 720);
+    const facing = facingCoordinates(
+      state.basis,
+      { x: -state.offset.x, y: -state.offset.y, z: -state.offset.z },
+      state.at.spin,
     );
     longitudes.push(facing.longitudeDeg);
     latitudes.push(facing.latitudeDeg);
   }
-  assert.ok(Math.max(...longitudes) - Math.min(...longitudes) < 0.01);
-  assert.ok(Math.abs((Math.min(...longitudes) + Math.max(...longitudes)) / 2) < 2);
-  assert.ok(Math.max(...latitudes.map(Math.abs)) < 0.6);
+  assert.ok(Math.abs(Math.min(...longitudes) + 1.30205) < 0.001);
+  assert.ok(Math.abs(Math.max(...longitudes) + 1.29948) < 0.001);
+  assert.ok(Math.abs(Math.min(...latitudes) + 0.54209) < 0.001);
+  assert.ok(Math.abs(Math.max(...latitudes) - 0.54209) < 0.001);
 });
 
 test("synchronous moon rates avoid secular longitude drift without registering new faces", () => {

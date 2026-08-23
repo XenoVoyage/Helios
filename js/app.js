@@ -216,6 +216,11 @@ function boot() {
       const attach = body.kind === "moon" && moonOrbitAttachment(body) === "parent-equatorial"
         ? parentNode.tilt
         : parentNode.pivot;
+      if (attach === parentNode.tilt && body.orientationJ2000) {
+        // The orbit inherits its parent's equatorial frame, but PCK body axes
+        // are absolute J2000 orientations. Cancel that inherited rotation once.
+        node.tilt.quaternion.premultiply(parentNode.tilt.quaternion.clone().invert());
+      }
       attach.add(node.pivot);
     } else {
       scene.add(node.pivot);

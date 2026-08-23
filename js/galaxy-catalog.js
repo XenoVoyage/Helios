@@ -213,7 +213,7 @@ export const VIRGO_CLUSTER = Object.freeze({
 
 /**
  * A deliberately small post-Virgo anchor set from Table 1 of Lambert et al.
- * 2020, MNRAS 497, 2954 (doi:10.1093/mnras/staa1689). Table 1 prints the 20
+ * 2020, MNRAS 497, 2954 (doi:10.1093/mnras/staa1946). Table 1 prints the 20
  * highest-membership 2MRS groups; Helios retains only its named groups beyond
  * Virgo that lie within about 100 Mpc. Positions are mean J2000 / IAU galactic
  * coordinates and distanceMpc is the table's comoving distance Dc for the
