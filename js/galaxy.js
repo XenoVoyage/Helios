@@ -548,8 +548,10 @@ function outerDensityBlend(distance) {
 export function localWebOpacity(distance) {
   if (distance <= CONFIG.webViewDistance) return webOpacity(distance);
   const span = CONFIG.universeViewDistance - CONFIG.webViewDistance;
-  const start = CONFIG.webViewDistance + span * 0.04;
-  const end = CONFIG.webViewDistance + span * 0.56;
+  // Retain the measured volume while the much larger illustrative shell
+  // approaches screen-readable density; the overlap prevents a dark void.
+  const start = CONFIG.webViewDistance + span * 0.08;
+  const end = CONFIG.webViewDistance + span * 0.74;
   if (distance <= start) return 1;
   if (distance >= end) return 0;
   return 1 - smoothstep01((distance - start) / (end - start));
@@ -1761,7 +1763,7 @@ function createOuterDensity(THREE, group) {
     "illustrative-outer-density",
     samples.positions,
     samples.colors,
-    2000,
+    2600,
     1,
     true,
     THREE.AdditiveBlending,

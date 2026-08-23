@@ -514,6 +514,12 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     universeOpacity(outerTransition) > 0 && universeOpacity(outerTransition) < 1,
     "outer density crossfades in after the measured volume",
   );
+  const readabilityTransition = CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.35;
+  assert.ok(
+    localWebOpacity(readabilityTransition) + universeOpacity(readabilityTransition) > 1.35,
+    "measured and illustrative volumes overlap through the sparse outer handoff",
+  );
   assert.equal(localWebOpacity(CONFIG.universeViewDistance), 0);
   assert.ok(
     Math.abs(universeOpacity(CONFIG.universeViewDistance) - 0.92) < 1e-12,
