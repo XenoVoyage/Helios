@@ -125,7 +125,6 @@ async function distributedFrameMetrics(page, png) {
     const regions = [
       { name: "lower-left", x: 0.05, y: 0.56, width: 0.38, height: 0.26 },
       { name: "lower-right", x: 0.57, y: 0.56, width: 0.38, height: 0.26 },
-      { name: "bottom-center", x: 0.25, y: 0.72, width: 0.5, height: 0.18 },
     ];
     let luminanceTotal = 0;
     let bright = 0;
@@ -193,8 +192,8 @@ function assertFrameFloor(metrics, name, meanFloor, coverageFloor) {
     && region.brightCoverage >= coverageFloor * 0.45
   ));
   assert.ok(
-    populatedRegions.length >= 2,
-    `${name} has visible structure in at least two label-free regions`,
+    populatedRegions.length === metrics.regions.length,
+    `${name} has visible structure in both label- and dock-free side regions`,
   );
 }
 
