@@ -797,7 +797,10 @@ async function dragCamera(page, deltaX, deltaY) {
 async function auditFarSkyDirections(context) {
   const page = await context.newPage();
   const errors = captureErrors(page);
-  await openReady(page, "?look=growing");
+  // Virgo keeps the spherical far-density layer fully opaque while shrinking
+  // the named Local Group sprites enough that the two off-center audit tiles
+  // measure the backdrop instead of a rotated Magellanic Cloud foreground.
+  await openReady(page, "?look=virgo");
   if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
     await page.locator("#play-button").click();
   }
