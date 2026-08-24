@@ -3,9 +3,20 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONFIG, pinchZoomDistance, wheelZoomMultiplier } from "../js/config.js";
+import {
+  CONFIG,
+  isShortcutTargetInteractive,
+  pinchZoomDistance,
+  wheelZoomMultiplier,
+} from "../js/config.js";
 import { visualOrbit } from "../js/bodies.js";
-import { equatorialToGalactic } from "../js/sky.js";
+import {
+  CELESTIAL_RENDER_THRESHOLD,
+  ANDROMEDA,
+  equatorialToGalactic,
+  equatorialToScene,
+  galacticToScene,
+} from "../js/sky.js";
 import {
   CMB_SHELL,
   GALACTIC_CENTER,
@@ -13,16 +24,17 @@ import {
   LOCAL_GROUP,
   MILKY_WAY,
   NEIGHBORS,
-  OBSERVABLE_UNIVERSE,
-  SPIRAL_ARMS,
+  PARTICLE_HORIZON,
+  POST_VIRGO_CLUSTERS,
   SUN_GALACTIC,
   VIRGO_CLUSTER,
   findLocalGroupMember,
   findNeighbor,
-  findSpiralArm,
   localGroupFamily,
 } from "../js/galaxy-catalog.js";
 import {
+  FAR_GALAXY_SKY_MODEL,
+  attachFarGalaxySky,
   armPointKpc,
   farthestNeighborhoodDistance,
   farthestUniverseDistance,
@@ -30,42 +42,56 @@ import {
   farthestWebDistance,
   galacticCenterScenePosition,
   celestialSkyOpacity,
+  constellationsAvailable,
   extraZoomCameraDistance,
   extraZoomCameraNear,
   farGalaxySkyRadius,
+  generateFarGalaxySkySamples,
   galaxyOpacity,
   heliocentricGalactic,
+  localWebOpacity,
   localGroupCameraAim,
   localGroupMemberOpacity,
   neighborBodyOpacity,
   milkyWayBelowCameraAim,
+  milkyWayEdgeCameraAim,
   milkyWayNameOpacity,
   solarBadgeOpacity,
+  solarTrailMarkerMapPosition,
+  solarTrailMarkerScenePosition,
+  solarSystemHandoffSceneOffset,
   milkyWayInteriorCameraAim,
+  milkyWayCameraAim,
   lookAngleTo,
   milkyWayDiskDiameter,
   milkyWayDiskOpacity,
   milkyWayToScene,
   milkyWayUnitsPerKpc,
+  cmbDisplayOpacity,
   cmbSkyOpacity,
-  deepFieldOpacity,
+  cosmicStructureLuminanceGain,
   farGalaxySkyOpacity,
   nearClusterOpacity,
   neighborhoodCameraAim,
   neighborApparentSize,
   neighborOpacity,
+  neighborLabelScenePosition,
+  neighborLabelWorldSize,
   neighborScenePosition,
   orbitLineOpacity,
   orreryScale,
   scaleLayer,
+  semanticLabelOpacities,
+  semanticLabelRow,
+  semanticLabelScale,
   skyBandBrightness,
   skyStarBrightness,
   skyStaysOn,
   solarDebrisOpacity,
   solarOpacity,
-  spiralRadiusKpc,
   sunScenePosition,
   universeOpacity,
+  virgoLabelOpacity,
   virgoOpacity,
   virgoScenePosition,
   visualMilkyWay,
@@ -78,6 +104,66 @@ import {
 } from "../js/galaxy.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+function unit(vector) {
+  const length = Math.hypot(vector.x, vector.y, vector.z) || 1;
+  return { x: vector.x / length, y: vector.y / length, z: vector.z / length };
+}
+
+function dot(a, b) {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+function aimDirection(aim) {
+  const cosE = Math.cos(aim.elevation);
+  return {
+    x: cosE * Math.sin(aim.azimuth),
+    y: Math.sin(aim.elevation),
+    z: cosE * Math.cos(aim.azimuth),
+  };
+}
+
+function cameraPosition(aim, distance) {
+  const direction = aimDirection(aim);
+  return {
+    x: direction.x * distance,
+    y: direction.y * distance,
+    z: direction.z * distance,
+  };
+}
+
+function cross(a, b) {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
+  };
+}
+
+function projectedSpriteRect(aim, distance, position, size) {
+  const camera = cameraPosition(aim, distance);
+  const forward = unit({ x: -camera.x, y: -camera.y, z: -camera.z });
+  const right = unit(cross(forward, { x: 0, y: 1, z: 0 }));
+  const up = cross(right, forward);
+  const relative = {
+    x: position.x - camera.x,
+    y: position.y - camera.y,
+    z: position.z - camera.z,
+  };
+  const depth = dot(relative, forward);
+  const focal = 1 / Math.tan((52 * Math.PI) / 180 / 2);
+  return {
+    x: (dot(relative, right) / depth) * focal,
+    y: (dot(relative, up) / depth) * focal,
+    halfWidth: (size.width / 2 / depth) * focal,
+    halfHeight: (size.height / 2 / depth) * focal,
+  };
+}
+
+function projectedSpritesOverlap(first, second) {
+  return Math.abs(first.x - second.x) < first.halfWidth + second.halfWidth
+    && Math.abs(first.y - second.y) < first.halfHeight + second.halfHeight;
+}
 
 test("Milky Way catalog keeps the thin disk and a thicker visual map", () => {
   assert.equal(MILKY_WAY.heightKpc, 0.3);
@@ -97,11 +183,6 @@ test("Sun sits about 8 kpc from the Galactic Center in the Orion Arm", () => {
   assert.equal(GALACTIC_CENTER.distanceKpc, SUN_GALACTIC.rKpc);
   assert.ok(Math.abs(GALACTIC_CENTER.lDeg) < 1e-9);
   assert.ok(Math.abs(GALACTIC_CENTER.bDeg) < 1e-9);
-  const orion = findSpiralArm("orion");
-  assert.equal(orion.name, "Orion Arm");
-  assert.ok(orion.rKinkKpc > 8.2 && orion.rKinkKpc < 8.4);
-  const atSun = spiralRadiusKpc(orion, 0);
-  assert.ok(Math.abs(atSun - SUN_GALACTIC.rKpc) < 0.5, "Orion Arm passes near the Sun");
 });
 
 test("nearby galaxies keep SIMBAD positions and published distances", () => {
@@ -158,6 +239,62 @@ test("neighborhood and Local Group looks keep Andromeda beside the Milky Way", (
     );
     assert.ok(lookAngleTo(aim, distance, lmc) < halfFov - 0.06, `${name} LMC`);
     assert.ok(lookAngleTo(aim, distance, smc) < halfFov - 0.06, `${name} SMC`);
+  }
+});
+
+test("Magellanic Cloud labels stay clear in every named camera seat", () => {
+  const lmc = findNeighbor("lmc");
+  const smc = findNeighbor("smc");
+  const growingDistance = CONFIG.handoffViewDistance
+    + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.9;
+  const looks = [
+    [milkyWayCameraAim(), extraZoomCameraDistance(growingDistance), "growing"],
+    [milkyWayCameraAim(), CONFIG.mwViewDistance, "disk"],
+    [milkyWayEdgeCameraAim(), CONFIG.mwViewDistance, "mwedge"],
+    [milkyWayBelowCameraAim(), CONFIG.mwViewDistance, "mwbelow"],
+    [neighborhoodCameraAim(), CONFIG.neighborhoodViewDistance, "neighborhood"],
+    [localGroupCameraAim(), CONFIG.localGroupViewDistance, "localgroup"],
+  ];
+  for (const [aim, distance, name] of looks) {
+    const lmcRect = projectedSpriteRect(
+      aim,
+      distance,
+      neighborLabelScenePosition(lmc),
+      neighborLabelWorldSize(lmc),
+    );
+    const smcRect = projectedSpriteRect(
+      aim,
+      distance,
+      neighborLabelScenePosition(smc),
+      neighborLabelWorldSize(smc),
+    );
+    assert.equal(
+      projectedSpritesOverlap(lmcRect, smcRect),
+      false,
+      `${name} keeps the complete LMC and SMC label sprites separate`,
+    );
+
+    // The generated irregular-galaxy textures have transparent outer bounds;
+    // this rectangle represents the bright central quarter reviewers must see.
+    const cores = [lmc, smc].map((neighbor) => {
+      const size = neighborApparentSize(neighbor);
+      return projectedSpriteRect(
+        aim,
+        distance,
+        neighborScenePosition(neighbor),
+        { width: size * 0.25, height: size * 0.68 * 0.25 },
+      );
+    });
+    const labels = [[lmcRect, "LMC"], [smcRect, "SMC"]];
+    for (const [label, labelName] of labels) {
+      for (const [core, coreName] of [[cores[0], "LMC"], [cores[1], "SMC"]]) {
+        assert.equal(
+          projectedSpritesOverlap(label, core),
+          false,
+          `${name} keeps the ${labelName} label off the ${coreName} bright core`,
+        );
+      }
+    }
   }
 });
 
@@ -341,6 +478,15 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   assert.ok(virgoOpacity(CONFIG.localGroupViewDistance) < 0.5);
   assert.equal(virgoOpacity(CONFIG.virgoViewDistance), 1);
+  assert.equal(
+    virgoLabelOpacity(CONFIG.localGroupViewDistance),
+    0,
+    "the distant Virgo name cannot leave a clipped fragment in the Local Group seat",
+  );
+  assert.ok(
+    virgoLabelOpacity((CONFIG.localGroupViewDistance + CONFIG.virgoViewDistance) / 2) > 0,
+  );
+  assert.equal(virgoLabelOpacity(CONFIG.virgoViewDistance), 1);
   assert.equal(nearClusterOpacity(CONFIG.localGroupViewDistance), 0);
   assert.equal(
     nearClusterOpacity(CONFIG.virgoViewDistance),
@@ -349,62 +495,111 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   assert.ok(
     nearClusterOpacity(CONFIG.virgoViewDistance + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.42) > 0.95,
-    "clusters are in by the pre-web look",
+    "catalog cluster anchors lead the pre-web handoff",
   );
   assert.equal(webOpacity(CONFIG.virgoViewDistance), 0);
-  assert.equal(
-    webOpacity(CONFIG.virgoViewDistance + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.55),
-    0,
-    "Virgo lingers before the web takes over",
-  );
   assert.ok(
-    deepFieldOpacity(CONFIG.virgoViewDistance + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.55) > 0.7,
-    "galaxy images densify after Virgo before filaments",
+    webOpacity(CONFIG.virgoViewDistance + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.55) > 0.4,
+    "2MRS galaxies arrive gradually after the catalog anchors",
   );
-  assert.equal(deepFieldOpacity(CONFIG.virgoViewDistance), 0);
-  assert.equal(deepFieldOpacity(CONFIG.webViewDistance), 0);
   assert.equal(webOpacity(CONFIG.webViewDistance), 1);
   assert.equal(
-    universeOpacity(CONFIG.webViewDistance),
+    localWebOpacity(CONFIG.webViewDistance),
     1,
-    "web look uses the volume-filling web, not the local home-hub ball",
+    "web seat is the measured 2MRS volume",
   );
   assert.equal(
-    universeOpacity(CONFIG.webViewDistance + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.2),
-    1,
-    "the filled web stays up until the last outside sphere",
+    universeOpacity(CONFIG.webViewDistance),
+    0,
+    "outer illustrative density waits until after the 2MRS seat",
   );
-  assert.equal(universeOpacity(CONFIG.universeViewDistance), 1);
+  const outerTransition = CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.2;
+  assert.equal(
+    localWebOpacity(outerTransition),
+    1,
+    "2MRS stays fully visible while the camera remains inside its display volume",
+  );
+  assert.ok(
+    universeOpacity(outerTransition) > 0 && universeOpacity(outerTransition) < 1,
+    "outer density crossfades in after the measured volume",
+  );
+  const readabilityTransition = CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.35;
+  assert.ok(
+    localWebOpacity(readabilityTransition) + universeOpacity(readabilityTransition) > 1.35,
+    "measured and illustrative volumes overlap through the sparse outer handoff",
+  );
+  const measuredBoundary = CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.74;
+  assert.equal(
+    localWebOpacity(measuredBoundary),
+    1,
+    "2MRS stays fully visible while the front-facing CMB is still invisible",
+  );
+  const cmbStrongTransition = CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.82;
+  assert.ok(
+    localWebOpacity(cmbStrongTransition) > 0.95,
+    "the measured inner context yields only as a genuinely visible CMB grows",
+  );
+  assert.equal(localWebOpacity(CONFIG.universeViewDistance), 0);
+  assert.ok(
+    Math.abs(
+      universeOpacity(CONFIG.universeViewDistance)
+      * cosmicStructureLuminanceGain(CONFIG.universeViewDistance)
+      - 0.75,
+    ) < 1e-12,
+    "the compensated outer web keeps its approved final contribution",
+  );
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
   assert.equal(
     farGalaxySkyOpacity(CONFIG.handoffViewDistance),
     1,
-    "galaxy-image sky is already up in the tail",
+    "unresolved density sky is already up in the tail",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.handoffViewDistance + (CONFIG.mwViewDistance - CONFIG.handoffViewDistance) * 0.90),
     1,
-    "galaxy-image sky is the extra-zoom background while the disk is growing",
+    "unresolved density sky is the extra-zoom background while the disk is growing",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.mwViewDistance),
     1,
-    "distant galaxy-image sky stays up on the full-disk frame",
+    "distant density sky stays up on the full-disk frame",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.neighborhoodViewDistance),
     1,
-    "distant galaxy-image sky stays up through the neighborhood",
+    "distant density sky stays up through the neighborhood",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.virgoViewDistance),
     1,
-    "distant galaxy-image sky stays up at Virgo",
+    "distant density sky stays up at Virgo",
   );
+  const clusterHandoff = CONFIG.virgoViewDistance
+    + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.28;
+  assert.ok(
+    farGalaxySkyOpacity(clusterHandoff) > 0.75,
+    "the distant sky overlaps the still-growing measured web",
+  );
+  assert.ok(
+    webOpacity(clusterHandoff) > 0.15,
+    "measured 2MRS points are already present during the sky crossfade",
+  );
+  for (let i = 0; i <= 100; i += 1) {
+    const distance = CONFIG.virgoViewDistance
+      + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * (i / 100);
+    assert.ok(
+      farGalaxySkyOpacity(distance) + webOpacity(distance) >= 0.78,
+      `Virgo-to-web background coverage never collapses (${distance})`,
+    );
+  }
   assert.equal(
     farGalaxySkyOpacity(CONFIG.localGroupViewDistance),
     1,
-    "distant galaxy-image sky stays up at Local Group",
+    "distant density sky stays up at Local Group",
   );
   assert.equal(
     farGalaxySkyOpacity(CONFIG.webViewDistance),
@@ -427,14 +622,15 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     "microwave waits until after the web",
   );
   assert.equal(cmbSkyOpacity(CONFIG.universeViewDistance), 1);
+  assert.equal(cmbDisplayOpacity(CONFIG.universeViewDistance), 1.05);
   assert.equal(
     farGalaxySkyOpacity(CONFIG.universeViewDistance),
     0,
     "far-galaxy sky yields to the CMB sphere outside",
   );
   assert.ok(
-    CONFIG.webViewDistance < farthestUniverseDistance() * 0.92,
-    "web look sits inside the volume-filling web, not outside a ball",
+    CONFIG.webViewDistance < farthestWebDistance(),
+    "web look sits inside the measured 2MRS volume, not outside a ball",
   );
   assert.ok(
     farthestUniverseDistance() > CONFIG.webViewDistance,
@@ -450,7 +646,105 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
 });
 
-test("trail marks: one white Solar System particle, no lingering Sun badge", async () => {
+test("cosmic structure brightens by semantic stage while the CMB waits for shell exit", () => {
+  const preWeb = CONFIG.virgoViewDistance
+    + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.55;
+  assert.equal(cosmicStructureLuminanceGain(CONFIG.virgoViewDistance), 1);
+  assert.ok(cosmicStructureLuminanceGain(preWeb) > 1);
+  assert.ok(
+    cosmicStructureLuminanceGain(CONFIG.webViewDistance)
+      > cosmicStructureLuminanceGain(preWeb),
+  );
+
+  let inside = CONFIG.webViewDistance;
+  let outside = CONFIG.universeViewDistance;
+  const shell = farthestUniverseDistance();
+  for (let i = 0; i < 80; i += 1) {
+    const middle = (inside + outside) / 2;
+    if (extraZoomCameraDistance(middle) <= shell) inside = middle;
+    else outside = middle;
+  }
+  assert.equal(cmbSkyOpacity(inside), 0, "CMB stays invisible from inside its sphere");
+  assert.ok(cmbSkyOpacity(outside) < 1e-20, "CMB begins continuously after shell exit");
+  assert.equal(localWebOpacity(inside), 1, "the measured web cannot fade into nothing");
+  assert.ok(
+    Math.abs(universeOpacity(inside) - 1) < 1e-12,
+    "the mature outer density is not attenuated by an invisible CMB",
+  );
+
+  let previousCmb = 0;
+  let previousGain = cosmicStructureLuminanceGain(CONFIG.virgoViewDistance);
+  for (let i = 1; i <= 200; i += 1) {
+    const distance = CONFIG.virgoViewDistance
+      + (CONFIG.universeViewDistance - CONFIG.virgoViewDistance) * (i / 200);
+    const cmb = cmbSkyOpacity(distance);
+    const gain = cosmicStructureLuminanceGain(distance);
+    assert.ok(cmb >= previousCmb, `CMB opacity is monotonic at ${distance}`);
+    assert.ok(gain >= previousGain, `point luminance gain is monotonic at ${distance}`);
+    assert.ok(gain <= 1.5 + 1e-12, `point luminance gain stays bounded at ${distance}`);
+    previousCmb = cmb;
+    previousGain = gain;
+  }
+});
+
+test("semantic labels roll up from galaxies to superclusters, then clear for the web", () => {
+  assert.ok(semanticLabelScale("catalog") < semanticLabelScale("group"));
+  assert.ok(semanticLabelScale("group") < semanticLabelScale("structure"));
+  assert.ok(semanticLabelScale("structure") < semanticLabelScale("scope"));
+  assert.notEqual(
+    semanticLabelRow("virgoSupercluster"),
+    semanticLabelRow("laniakea"),
+    "overlapping supercluster titles occupy separate rows",
+  );
+
+  const neighborhood = semanticLabelOpacities(CONFIG.neighborhoodViewDistance);
+  const localGroup = semanticLabelOpacities(CONFIG.localGroupViewDistance);
+  const virgo = semanticLabelOpacities(CONFIG.virgoViewDistance);
+  const span = CONFIG.webViewDistance - CONFIG.virgoViewDistance;
+  const laniakea = semanticLabelOpacities(CONFIG.virgoViewDistance + span * 0.3);
+  const web = semanticLabelOpacities(CONFIG.webViewDistance);
+  const universe = semanticLabelOpacities(CONFIG.universeViewDistance);
+
+  assert.equal(neighborhood.galaxies, 1);
+  assert.equal(neighborhood.localGroup, 0);
+  assert.equal(localGroup.localGroup, 1);
+  assert.equal(localGroup.galaxies, 0);
+  assert.equal(virgo.virgoSupercluster, 1);
+  assert.equal(virgo.localGroup, 1);
+  assert.equal(virgo.galaxies, 0);
+  assert.equal(laniakea.laniakea, 1);
+  assert.ok(laniakea.virgoSupercluster > 0, "supercluster labels crossfade without a gap");
+  const semanticKeys = ["galaxies", "localGroup", "virgoSupercluster", "laniakea"];
+  assert.deepEqual(Object.keys(web).sort(), semanticKeys.sort());
+  assert.ok(Object.values(web).every((opacity) => opacity === 0));
+  assert.ok(Object.values(universe).every((opacity) => opacity === 0));
+
+  for (let i = 0; i <= 100; i += 1) {
+    const distance = CONFIG.neighborhoodViewDistance
+      + (CONFIG.localGroupViewDistance - CONFIG.neighborhoodViewDistance) * (i / 100);
+    const labels = semanticLabelOpacities(distance);
+    assert.ok(
+      Math.max(labels.galaxies, labels.localGroup) >= 0.5 - 1e-12,
+      `galaxy names crossfade into Local Group without a dim label gap (${distance})`,
+    );
+  }
+
+  const finalHierarchyDistance = CONFIG.virgoViewDistance + span * 0.675;
+  for (let i = 0; i <= 180; i += 1) {
+    const distance = CONFIG.neighborhoodViewDistance
+      + (finalHierarchyDistance - CONFIG.neighborhoodViewDistance) * (i / 180);
+    const labels = semanticLabelOpacities(distance);
+    const dominant = Math.max(
+      labels.galaxies,
+      labels.localGroup,
+      labels.virgoSupercluster,
+      labels.laniakea,
+    );
+    assert.ok(dominant >= 0.48, `a dominant semantic label remains through ${distance}`);
+  }
+});
+
+test("trail marks: one display-offset Solar System particle, no lingering Sun badge", async () => {
   const galaxySource = await readFile(path.join(root, "js/galaxy.js"), "utf8");
   assert.match(galaxySource, /"Solar System"/, "the trail badge names the Solar System");
   assert.doesNotMatch(
@@ -459,10 +753,28 @@ test("trail marks: one white Solar System particle, no lingering Sun badge", asy
     "no bare Sun badge survives at trail / disk scale",
   );
   assert.match(galaxySource, /solar-seat-star/, "one seat particle marks the Sun's spot");
+  const sun = sunScenePosition();
+  const seat = solarTrailMarkerMapPosition();
+  assert.deepEqual(sun, { x: 0, y: 0, z: 0 }, "the scientific Solar origin stays fixed");
+  assert.equal(SUN_GALACTIC.zKpc, 0.0208, "the catalog Solar height stays published");
+  assert.deepEqual(
+    seat,
+    { x: -0.5, y: 2.5, z: 0 },
+    "the trail pin uses only the approved map-local display offset",
+  );
+  assert.ok(
+    Math.hypot(seat.x - sun.x, seat.y - sun.y, seat.z - sun.z) < 4,
+    "the trail-only marker offset stays visually local",
+  );
   assert.match(
     galaxySource,
-    /"solar-seat-star",\s*new Float32Array\(\[sun\.x, sun\.y, sun\.z\]\),\s*new Float32Array\(\[1, 1, 1\]\)/,
-    "the seat particle is a single white point at the Sun's seat",
+    /"solar-seat-star",\s*new Float32Array\(\[seatAt\.x, seatAt\.y, seatAt\.z\]\),\s*new Float32Array\(\[1, 1, 1\]\)/,
+    "the seat particle is a single white point at the shared display seat",
+  );
+  assert.match(
+    galaxySource,
+    /labelSprite\(THREE, "Solar System", seatAt, 0\.9, true\)/,
+    "the dot and screen-fixed badge share one display position",
   );
   assert.doesNotMatch(galaxySource, /solar-seat-ring|seatGlowMap/, "not a ring, not a glow halo");
   // The badge dies strictly earlier than the old (1 - neighborOpacity)
@@ -473,6 +785,36 @@ test("trail marks: one white Solar System particle, no lingering Sun badge", asy
   assert.equal(solarBadgeOpacity(start + span * 0.5), 0);
   assert.equal(solarBadgeOpacity(start + span * 0.88), 0);
   assert.ok(neighborOpacity(start + span * 0.94) > 0, "names take over after the badge is gone");
+});
+
+test("the shrinking Sun reaches the final trail seat before both layers crossfade", () => {
+  const blendStart = CONFIG.solarMaxDistance
+    + (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance) * 0.7;
+  const marker = solarTrailMarkerScenePosition();
+  assert.deepEqual(solarSystemHandoffSceneOffset(CONFIG.solarMaxDistance), { x: 0, y: 0, z: 0 });
+  assert.deepEqual(solarSystemHandoffSceneOffset(blendStart), marker);
+  assert.deepEqual(solarSystemHandoffSceneOffset(CONFIG.handoffViewDistance), marker);
+  let previous = 0;
+  const markerLength = Math.hypot(marker.x, marker.y, marker.z);
+  for (let step = 0; step <= 100; step += 1) {
+    const distance = CONFIG.solarMaxDistance
+      + (blendStart - CONFIG.solarMaxDistance) * (step / 100);
+    const offset = solarSystemHandoffSceneOffset(distance);
+    const length = Math.hypot(offset.x, offset.y, offset.z);
+    assert.ok(length + 1e-12 >= previous, `handoff offset is monotonic at ${distance}`);
+    assert.ok(length <= markerLength + 1e-12);
+    previous = length;
+  }
+  for (let step = 0; step <= 100; step += 1) {
+    const distance = blendStart
+      + (CONFIG.handoffViewDistance - blendStart) * (step / 100);
+    assert.deepEqual(
+      solarSystemHandoffSceneOffset(distance),
+      marker,
+      `Sun and marker coincide throughout the visible crossfade (${distance})`,
+    );
+  }
+  assert.deepEqual(sunScenePosition(), { x: 0, y: 0, z: 0 });
 });
 
 test("extra-zoom shrinks the orrery to a Sun pin before the MW disk", () => {
@@ -540,8 +882,10 @@ test("solar skybox stays at constant brightness and crossfades into the MW", () 
   );
   assert.equal(skyStarBrightness(CONFIG.mwViewDistance), 0);
   const interior = milkyWayInteriorCameraAim();
-  assert.ok(interior.elevation < 0.12, "first extra-zoom look stays in the disk tail");
-  assert.ok(interior.elevation > 0, "interior look is not from under the plane");
+  const galacticNorth = galacticToScene(0, 0, 1);
+  const interiorLatitude = dot(aimDirection(interior), galacticNorth);
+  assert.ok(interiorLatitude < Math.sin(0.12), "first extra-zoom look stays in the disk tail");
+  assert.ok(interiorLatitude > 0, "interior look is not from under the Galactic plane");
   assert.equal(extraZoomCameraDistance(CONFIG.cameraDistance), CONFIG.cameraDistance);
   // Regression (zoom invert / bounce): the camera dive down to the arm
   // seat finishes before the crossfade begins, while the MW is still off
@@ -590,6 +934,38 @@ test("solar skybox stays at constant brightness and crossfades into the MW", () 
   assert.ok(extraZoomCameraNear(CONFIG.handoffViewDistance) < 0.3);
   assert.ok(extraZoomCameraNear(CONFIG.cameraDistance) > extraZoomCameraNear(CONFIG.handoffViewDistance));
   assert.equal(extraZoomCameraDistance(CONFIG.mwViewDistance), CONFIG.mwViewDistance);
+  for (let d = CONFIG.mwViewDistance; d <= CONFIG.webViewDistance; d += 7919) {
+    assert.equal(
+      extraZoomCameraDistance(d),
+      d,
+      `all established camera seats through the measured-web look stay unchanged (${d})`,
+    );
+  }
+  const cmbStart = CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.68;
+  assert.ok(
+    extraZoomCameraDistance(cmbStart) < farthestWebDistance(),
+    "camera remains inside the measured density until the CMB transition",
+  );
+  const lateDistance = (fraction) => CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * fraction;
+  assert.ok(
+    extraZoomCameraDistance(lateDistance(0.74)) < farthestWebDistance(),
+    "camera still sees the measured volume at the start of the CMB crossfade",
+  );
+  assert.ok(
+    extraZoomCameraDistance(lateDistance(0.78)) < farthestUniverseDistance() * 0.92,
+    "camera remains among the illustrative density while the CMB becomes visible",
+  );
+  assert.ok(
+    extraZoomCameraDistance(lateDistance(0.8)) > farthestUniverseDistance(),
+    "camera clears the display shell only after the CMB has materially arrived",
+  );
+  assert.equal(
+    extraZoomCameraDistance(CONFIG.universeViewDistance),
+    CONFIG.universeViewDistance,
+    "final camera still finishes outside the observable shell",
+  );
   assert.ok(
     farGalaxySkyRadius() > CONFIG.neighborhoodViewDistance * 8,
     "far-galaxy shell is far past the neighborhood camera",
@@ -598,17 +974,128 @@ test("solar skybox stays at constant brightness and crossfades into the MW", () 
   assert.ok(farGalaxySkyRadius() < CONFIG.cameraFar);
 });
 
-test("pinch-out zooms out and mouse wheel stays as it is", () => {
-  assert.ok(pinchZoomDistance(1000, 40, 80) > 1000, "pinch-out increases camera distance");
-  assert.ok(pinchZoomDistance(1000, 40, 20) < 1000, "pinch-in decreases camera distance");
-  assert.equal(pinchZoomDistance(1000, 40, 80), 2000);
-  assert.equal(pinchZoomDistance(1000, 40, 20), 500);
-  assert.ok(wheelZoomMultiplier(100, false) > 1, "positive mouse wheel zooms out");
-  assert.ok(wheelZoomMultiplier(100, true) < 1, "touch pinch-out wheel is inverted to zoom out");
-  assert.ok(wheelZoomMultiplier(-100, true) > 1, "iOS pinch-out (negative delta) zooms out");
+test("constellation availability is the celestial render threshold", () => {
+  assert.equal(CELESTIAL_RENDER_THRESHOLD, 0.04);
+  assert.equal(constellationsAvailable(2524), true);
+  assert.equal(constellationsAvailable(2700), true);
+  assert.equal(constellationsAvailable(2750), true);
+  assert.equal(constellationsAvailable(2766), true);
+  assert.equal(constellationsAvailable(2767), false);
+  assert.equal(constellationsAvailable(2790), false);
+  assert.equal(constellationsAvailable(CONFIG.handoffViewDistance), false);
+  for (let distance = CONFIG.solarMaxDistance; distance <= CONFIG.handoffViewDistance; distance += 1) {
+    assert.equal(
+      constellationsAvailable(distance),
+      celestialSkyOpacity(distance) > CELESTIAL_RENDER_THRESHOLD,
+    );
+  }
 });
 
-test("camera far plane clears the neighborhood and spiral math stays Reid-like", () => {
+test("far-galaxy backdrop is deterministic spherical density without cube faces", async () => {
+  const radius = 1000;
+  const first = generateFarGalaxySkySamples(radius);
+  const second = generateFarGalaxySkySamples(radius);
+  assert.equal(first.positions.length, FAR_GALAXY_SKY_MODEL.count * 3);
+  assert.equal(first.corePositions.length, FAR_GALAXY_SKY_MODEL.coreCount * 3);
+  assert.deepEqual(first.positions, second.positions);
+  assert.deepEqual(first.colors, second.colors);
+  assert.deepEqual(first.corePositions, second.corePositions);
+  const octants = new Array(8).fill(0);
+  for (let i = 0; i < first.positions.length; i += 3) {
+    const x = first.positions[i];
+    const y = first.positions[i + 1];
+    const z = first.positions[i + 2];
+    const length = Math.hypot(x, y, z);
+    assert.ok(Number.isFinite(length));
+    assert.ok(length >= radius * 0.985 - 1e-3 && length <= radius + 1e-3);
+    const octant = (x >= 0 ? 4 : 0) | (y >= 0 ? 2 : 0) | (z >= 0 ? 1 : 0);
+    octants[octant] += 1;
+  }
+  assert.ok(octants.every((count) => count > FAR_GALAXY_SKY_MODEL.count * 0.06));
+
+  // Sample viewport-sized spherical caps directly from the generated layer.
+  // This isolates the backdrop from named foreground galaxies in browser
+  // frames while guarding against face, pole, or oversized angular voids.
+  const capCounts = [];
+  const capDotFloor = Math.cos((25 * Math.PI) / 180);
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  for (let sample = 0; sample < 256; sample += 1) {
+    const y = 1 - 2 * ((sample + 0.5) / 256);
+    const radial = Math.sqrt(Math.max(0, 1 - y * y));
+    const angle = sample * goldenAngle;
+    const direction = {
+      x: Math.cos(angle) * radial,
+      y,
+      z: Math.sin(angle) * radial,
+    };
+    let count = 0;
+    for (let i = 0; i < first.positions.length; i += 3) {
+      const length = Math.hypot(
+        first.positions[i],
+        first.positions[i + 1],
+        first.positions[i + 2],
+      );
+      const alignment = (
+        first.positions[i] * direction.x
+        + first.positions[i + 1] * direction.y
+        + first.positions[i + 2] * direction.z
+      ) / length;
+      if (alignment >= capDotFloor) count += 1;
+    }
+    capCounts.push(count);
+  }
+  assert.ok(Math.min(...capCounts) > 0, "every viewport-sized spherical cap contains density");
+  assert.ok(
+    Math.max(...capCounts) / Math.min(...capCounts) < 3,
+    "far-galaxy density stays distributed across equal-solid-angle views",
+  );
+  const source = await readFile(path.join(root, "js/galaxy.js"), "utf8");
+  assert.doesNotMatch(source, /CubeTexture|samplerCube|textureCube|paintFarGalaxySkyFace/);
+  assert.match(source, /far-galaxy-density/);
+  assert.match(source, /far-galaxy-cluster-cores/);
+  assert.match(source, /sizeAttenuation:\s*attenuation/);
+});
+
+test("far-galaxy sky remains camera-attached and tolerates an absent layer", () => {
+  let copiedPosition;
+  const sky = {
+    position: {
+      copy(position) {
+        copiedPosition = position;
+      },
+    },
+  };
+  const group = {
+    userData: {
+      visibilityCache: {
+        nodes: new Map([["far-galaxy-sky", sky]]),
+      },
+    },
+  };
+  const camera = { position: { x: 12, y: -7, z: 31 } };
+  attachFarGalaxySky(group, camera);
+  assert.equal(copiedPosition, camera.position);
+  assert.doesNotThrow(() => attachFarGalaxySky(undefined, camera));
+  assert.doesNotThrow(() => attachFarGalaxySky(group, undefined));
+});
+
+test("pinch direction, wheel direction, and shortcut targets follow native behavior", () => {
+  assert.ok(pinchZoomDistance(1000, 40, 80) < 1000, "pinch-out decreases camera distance");
+  assert.ok(pinchZoomDistance(1000, 40, 20) > 1000, "pinch-in increases camera distance");
+  assert.equal(pinchZoomDistance(1000, 40, 80), 500);
+  assert.equal(pinchZoomDistance(1000, 40, 20), 2000);
+  assert.ok(wheelZoomMultiplier(100) > 1, "positive wheel delta zooms out");
+  assert.ok(wheelZoomMultiplier(-100) < 1, "negative browser-pinch delta zooms in");
+
+  for (const tagName of ["BUTTON", "A", "INPUT", "SELECT", "TEXTAREA"]) {
+    assert.equal(isShortcutTargetInteractive({ tagName }), true);
+  }
+  assert.equal(isShortcutTargetInteractive({ tagName: "DIV", isContentEditable: true }), true);
+  assert.equal(isShortcutTargetInteractive({ tagName: "SPAN", parentElement: { tagName: "BUTTON" } }), true);
+  assert.equal(isShortcutTargetInteractive({ tagName: "CANVAS" }), false);
+});
+
+test("camera far plane clears the neighborhood and galactic coordinates stay coherent", () => {
   const farthest = Math.max(
     farthestNeighborhoodDistance(),
     farthestVirgoDistance(),
@@ -617,9 +1104,6 @@ test("camera far plane clears the neighborhood and spiral math stays Reid-like",
   );
   assert.ok(CONFIG.cameraFar > CONFIG.maxDistance);
   assert.ok(CONFIG.cameraFar > farthest + CONFIG.maxDistance * 0.25);
-  assert.equal(SPIRAL_ARMS.length, 6);
-  const orion = findSpiralArm("orion");
-  assert.equal(spiralRadiusKpc(orion, orion.betaKinkDeg), orion.rKinkKpc);
   const sunHel = armPointKpc(SUN_GALACTIC.rKpc, 0, SUN_GALACTIC.zKpc);
   assert.ok(Math.hypot(sunHel.x, sunHel.y, sunHel.z) < 1e-9);
   const gcHel = heliocentricGalactic(0, 0, SUN_GALACTIC.rKpc);
@@ -632,13 +1116,63 @@ test("camera far plane clears the neighborhood and spiral math stays Reid-like",
   assert.equal(sun.y, 0);
   assert.equal(sun.z, 0);
   const gc = galacticCenterScenePosition();
-  assert.ok(gc.x > 0);
-  assert.ok(Math.abs(gc.z) < visualMilkyWay(0.1));
+  const expectedGc = galacticToScene(
+    GALACTIC_CENTER.distanceKpc,
+    0,
+    -SUN_GALACTIC.zKpc,
+  );
+  assert.ok(dot(unit(gc), unit(expectedGc)) > 1 - 1e-12);
   const m31 = neighborScenePosition(findNeighbor("m31"));
   const lmc = neighborScenePosition(findNeighbor("lmc"));
   assert.ok(Math.hypot(m31.x, m31.y, m31.z) > Math.hypot(lmc.x, lmc.y, lmc.z));
   const mapped = milkyWayToScene(SUN_GALACTIC.rKpc, 0, 0);
-  assert.ok(Math.abs(mapped.x - visualMilkyWay(SUN_GALACTIC.rKpc)) < 1e-6);
+  assert.ok(Math.abs(Math.hypot(mapped.x, mapped.y, mapped.z) - visualMilkyWay(SUN_GALACTIC.rKpc)) < 1e-6);
+});
+
+test("catalog galaxies keep one celestial direction across the scale handoff", () => {
+  const rows = [
+    ...NEIGHBORS.map((item) => [item, neighborScenePosition(item)]),
+    [VIRGO_CLUSTER, virgoScenePosition()],
+  ];
+  for (const [item, scene] of rows) {
+    const equatorial = equatorialToScene(item.raDeg, item.decDeg);
+    assert.ok(
+      dot(unit(scene), equatorial) > 0.999999999,
+      `${item.id} must use its J2000 sky direction`,
+    );
+  }
+
+  const m31 = neighborScenePosition(findNeighbor("m31"));
+  const solarM31 = equatorialToScene(ANDROMEDA.raDeg, ANDROMEDA.decDeg);
+  assert.ok(
+    dot(unit(m31), solarM31) > 0.999999999,
+    "M31 cannot jump when the solar sky yields to the physical galaxy map",
+  );
+  const handoffAim = milkyWayInteriorCameraAim();
+  const handoffRadius = extraZoomCameraDistance(CONFIG.handoffViewDistance);
+  const handoffDirection = aimDirection(handoffAim);
+  const fromCamera = unit({
+    x: m31.x - handoffDirection.x * handoffRadius,
+    y: m31.y - handoffDirection.y * handoffRadius,
+    z: m31.z - handoffDirection.z * handoffRadius,
+  });
+  assert.ok(
+    dot(fromCamera, solarM31) > Math.cos(0.12 * Math.PI / 180),
+    "the parked handoff camera adds less than 0.12 degrees of M31 parallax",
+  );
+
+  for (let i = 0; i < rows.length; i += 1) {
+    for (let j = i + 1; j < rows.length; j += 1) {
+      const [a, aScene] = rows[i];
+      const [b, bScene] = rows[j];
+      const aGalactic = unit(heliocentricGalactic(a.lDeg, a.bDeg, 1));
+      const bGalactic = unit(heliocentricGalactic(b.lDeg, b.bDeg, 1));
+      assert.ok(
+        Math.abs(dot(unit(aScene), unit(bScene)) - dot(aGalactic, bGalactic)) < 1e-12,
+        `${a.id}/${b.id} pairwise angle is preserved`,
+      );
+    }
+  }
 });
 
 test("Local Group extras keep McConnachie distances and SIMBAD positions", () => {
@@ -687,49 +1221,73 @@ test("Virgo Cluster keeps the published 16.5 Mpc M87 position", () => {
   const at = virgoScenePosition();
   const len = Math.hypot(at.x, at.y, at.z);
   assert.ok(Math.abs(len - visualVirgo(16500)) < 1e-6);
-  assert.ok(at.y > 0, "Virgo sits at high galactic latitude, +Y in this map");
+  assert.ok(dot(unit(at), galacticToScene(0, 0, 1)) > 0, "Virgo stays north of the Galactic plane");
   assert.ok(len > farthestNeighborhoodDistance());
   assert.ok(CONFIG.cameraFar > farthestVirgoDistance() + CONFIG.maxDistance * 0.25);
 });
 
-test("cosmic web keeps Laniakea published size and drops named supercluster pins", async () => {
+test("post-Virgo map uses measured cluster anchors and no invented web links", async () => {
   assert.equal(LANIAKEA.name, "Laniakea");
-  assert.equal(LANIAKEA.also, "Virgo Supercluster");
+  assert.equal(LANIAKEA.contains, "Local (Virgo) Supercluster");
   assert.equal(LANIAKEA.home, true);
   assert.equal(LANIAKEA.diameterMpc, 160);
+  assert.equal(POST_VIRGO_CLUSTERS.length, 7);
+  assert.equal(new Set(POST_VIRGO_CLUSTERS.map((cluster) => cluster.id)).size, 7);
+  assert.ok(POST_VIRGO_CLUSTERS.every((cluster) => cluster.distanceMpc > VIRGO_CLUSTER.distanceMpc));
+  assert.ok(POST_VIRGO_CLUSTERS.every((cluster) => cluster.distanceMpc <= 100));
+  assert.ok(POST_VIRGO_CLUSTERS.some((cluster) => cluster.name === "Coma Cluster"));
+  for (const cluster of POST_VIRGO_CLUSTERS) {
+    const galactic = equatorialToGalactic(cluster.raDeg, cluster.decDeg);
+    const longitudeDelta = Math.abs(((galactic.lDeg - cluster.lDeg + 540) % 360) - 180);
+    assert.ok(longitudeDelta < 0.08, `${cluster.name} galactic longitude`);
+    assert.ok(Math.abs(galactic.bDeg - cluster.bDeg) < 0.08, `${cluster.name} galactic latitude`);
+  }
   const catalogSource = await readFile(path.join(root, "js/galaxy-catalog.js"), "utf8");
   const galaxySource = await readFile(path.join(root, "js/galaxy.js"), "utf8");
   assert.doesNotMatch(catalogSource, /SUPERCLUSTERS/);
   assert.doesNotMatch(catalogSource, /Perseus-Pisces/);
-  assert.doesNotMatch(catalogSource, /\bComa\b/);
   assert.doesNotMatch(catalogSource, /Shapley/);
   assert.doesNotMatch(galaxySource, /You are here/);
   assert.doesNotMatch(galaxySource, /solar-circle/);
   assert.doesNotMatch(galaxySource, /Perseus-Pisces/);
+  assert.doesNotMatch(galaxySource, /pushFilament|collectWebHubs|createWebVolume/);
+  assert.doesNotMatch(galaxySource, /createDeepField|deep-field|deepFieldOpacity/);
+  assert.match(galaxySource, /createMeasuredWeb/);
+  assert.match(galaxySource, /createPostVirgoClusters/);
+  assert.match(galaxySource, /createOuterDensity/);
+  assert.match(galaxySource, /2mrs-galaxies/);
+  assert.match(galaxySource, /catalog-cluster-anchors/);
+  assert.match(galaxySource, /illustrative-outer-density/);
   assert.match(galaxySource, /cosmic-web/);
   assert.match(galaxySource, /cmb-shell/);
   assert.match(galaxySource, /export function createGalaxyLayer/);
+  assert.match(galaxySource, /map\.name = "galactic-frame"/);
+  assert.match(galaxySource, /orientMapFrame\(THREE, map\)/);
+  assert.match(galaxySource, /visibilityCache/);
+  assert.match(galaxySource, /cache\.opacity === opacity && cache\.distance === distance/);
   assert.match(galaxySource, /far-galaxy-sky/);
   assert.match(galaxySource, /near-clusters/);
   assert.match(galaxySource, /mw-disk-edge/);
   assert.match(galaxySource, /mw-halo/);
   assert.match(galaxySource, /Large Magellanic Cloud|neighbor\.name/);
   assert.match(galaxySource, /createFarGalaxySky/);
-  assert.match(galaxySource, /createDeepField/);
-  assert.match(galaxySource, /deep-field/);
   assert.match(galaxySource, /CanvasTexture/);
   assert.match(galaxySource, /toneMapped:\s*false/);
   assert.match(galaxySource, /AdditiveBlending/);
   assert.match(galaxySource, /SKY_ASSETS\.andromeda/);
   assert.match(galaxySource, /quietAndromedaMap|andromeda\.png/);
-  assert.doesNotMatch(galaxySource, /if \(pole < 0\.28\) continue/);
   assert.match(galaxySource, /cameraFar \* 0\.42/);
-  assert.match(
+  assert.match(galaxySource, /generateFarGalaxySkySamples/);
+  assert.match(galaxySource, /generateCosmicDensity/);
+  assert.match(galaxySource, /far-galaxy-density/);
+  assert.match(galaxySource, /far-galaxy-cluster-cores/);
+  assert.doesNotMatch(galaxySource, /CubeTexture|samplerCube|textureCube/);
+  assert.match(galaxySource, /orientMapFrame\(THREE, sky\)/);
+  assert.doesNotMatch(
     galaxySource,
-    /function farGalaxySkyMap/,
-    "the sky is the restored galaxy-image skybox texture, not sprites or points",
+    /function farGalaxySkyMap|const width = 2048|const height = 1024/,
+    "the far sky has no equirectangular pole singularity",
   );
-  assert.match(galaxySource, /side:\s*THREE\.BackSide/);
   assert.doesNotMatch(
     galaxySource,
     /const size = 68000/,
@@ -737,22 +1295,10 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   );
   assert.doesNotMatch(galaxySource, /farGalaxySkyRadius\(\) \* 0\.045/);
   assert.doesNotMatch(galaxySource, /t: 0\.16/);
-  assert.match(
-    galaxySource,
-    /collectWebHubs\(seedRandom\(88421\), radius, 168, true\)/,
-    "pre-web galaxies sit on the cosmic-web hub positions",
-  );
-  assert.match(
-    galaxySource,
-    /hubs = collectWebHubs\(rand, radius, hubCount, includeVirgo, includeHome\)/,
-    "the web volume uses the same hub collector",
-  );
   assert.match(galaxySource, /createFarGalaxySky\(THREE, group\)/);
-  assert.match(galaxySource, /far-galaxy-shell/);
-  assert.doesNotMatch(galaxySource, /fillSpherePoints/);
+  assert.doesNotMatch(galaxySource, /far-galaxy-shell/);
   assert.doesNotMatch(galaxySource, /far-galaxy-blobs/);
   assert.match(galaxySource, /brightenLoadedMap/);
-  assert.match(galaxySource, /deepFieldOpacity/);
   assert.doesNotMatch(galaxySource, /kind === "andromeda"/);
   assert.doesNotMatch(galaxySource, /lineWidth = 13/);
   assert.doesNotMatch(galaxySource, /smc: galaxySprite/);
@@ -778,12 +1324,7 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(
     galaxySource,
     /const family = 1 - web;/,
-    "MW and catalog neighbors yield only to the volume-filling web",
-  );
-  assert.match(
-    galaxySource,
-    /sprite\.position\.set\(hub\.x, hub\.y, hub\.z\)/,
-    "one separated pre-web galaxy per hub, no scattered clumps",
+    "MW and catalog neighbors yield monotonically to measured galaxies",
   );
   assert.doesNotMatch(galaxySource, /const members = 2 \+/);
   assert.match(galaxySource, /extraZoomCameraNear/);
@@ -793,18 +1334,43 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.match(galaxySource, /toneMapped:\s*false/);
   assert.match(galaxySource, /unlitSprite|toneMapped:\s*false/);
   assert.doesNotMatch(galaxySource, /hubCount:\s*20\b/);
-  assert.match(galaxySource, /includeHome:\s*false/);
   assert.match(galaxySource, /depthTest:\s*false/);
   assert.match(galaxySource, /fog:\s*false/);
   assert.match(galaxySource, /name = "cmb-sphere"/);
-  assert.match(galaxySource, /side:\s*THREE\.DoubleSide/);
+  const cmbSource = galaxySource.slice(
+    galaxySource.indexOf("function createCmbShell"),
+    galaxySource.indexOf("/** Distant camera-attached density sky radius."),
+  );
+  assert.match(cmbSource, /map:\s*loadMap\(THREE, CMB_SHELL\.map\)/);
+  assert.match(cmbSource, /opacity:\s*CMB_TEXTURE_OPACITY/);
+  assert.match(cmbSource, /side:\s*THREE\.FrontSide/);
+  assert.match(galaxySource, /const CMB_TEXTURE_OPACITY = 0\.4;/);
+  assert.doesNotMatch(
+    cmbSource,
+    /color:|blending:|AdditiveBlending|DoubleSide|forceSinglePass|horizonRimMap|observable-horizon-rim/,
+    "the CMB stays untinted, normally blended, front-facing, and free of an artificial rim",
+  );
+  assert.doesNotMatch(
+    galaxySource,
+    /horizonRimMap|observable-horizon-rim/,
+    "the removed blue boundary has no dead renderer left behind",
+  );
+  const scopeLabelSource = galaxySource.slice(
+    galaxySource.indexOf("function createScaleLabels"),
+    galaxySource.indexOf("function pinSprite"),
+  );
+  assert.match(scopeLabelSource, /virgo-supercluster-label/);
+  assert.match(scopeLabelSource, /laniakea-label/);
+  assert.doesNotMatch(scopeLabelSource, /cosmic-web-label|observable-universe-label/);
+  assert.doesNotMatch(
+    galaxySource,
+    /"cosmic-web-label"|"observable-universe-label"/,
+    "web and universe remain scientific scale states without screen badges",
+  );
   assert.match(galaxySource, /function handoffBlendStart/);
   assert.doesNotMatch(galaxySource, /far-galaxy-glow/);
-  assert.match(
-    galaxySource,
-    /export function universeOpacity\(distance\) \{\s*return webOpacity\(distance\);/,
-  );
-  assert.doesNotMatch(galaxySource, /Math\.max\(web, universe/);
+  assert.match(galaxySource, /outerDensityBlend/);
+  assert.match(galaxySource, /localWebOpacity/);
   const m31 = findNeighbor("m31");
   assert.ok(
     neighborApparentSize(m31) < milkyWayDiskDiameter(),
@@ -816,12 +1382,13 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   );
   assert.ok(
     farthestUniverseDistance() * 0.92 > CONFIG.webViewDistance,
-    "the filled web surrounds the web camera",
+    "the outer density surrounds the web camera",
   );
   assert.doesNotMatch(galaxySource, /BoxGeometry/);
   assert.equal(visualWeb(CONFIG.webRadiusMpc), CONFIG.webScale * CONFIG.webRadiusMpc ** CONFIG.webPower);
   assert.ok(visualWeb(80) > visualWeb(16.5));
-  assert.ok(farthestWebDistance() >= visualWeb(CONFIG.webRadiusMpc));
+  assert.equal(CONFIG.webRadiusMpc, 300);
+  assert.equal(farthestWebDistance(), visualWeb(300));
   const virgoHub = webHubScenePosition({
     lDeg: VIRGO_CLUSTER.lDeg,
     bDeg: VIRGO_CLUSTER.bDeg,
@@ -831,18 +1398,20 @@ test("cosmic web keeps Laniakea published size and drops named supercluster pins
   assert.notEqual(visualWeb(16.5), visualVirgo(16500));
 });
 
-test("observable universe keeps the Planck 2018 comoving radius", () => {
-  assert.equal(OBSERVABLE_UNIVERSE.comovingRadiusGly, 46.5);
-  assert.equal(OBSERVABLE_UNIVERSE.comovingRadiusGpc, 14.25);
-  assert.equal(OBSERVABLE_UNIVERSE.lyPerGpc, 3.26156);
-  const fromGpc = OBSERVABLE_UNIVERSE.comovingRadiusGpc * OBSERVABLE_UNIVERSE.lyPerGpc;
+test("particle horizon and the artistically co-located CMB shell stay distinct", () => {
+  assert.equal(PARTICLE_HORIZON.name, "Particle horizon");
+  assert.equal(PARTICLE_HORIZON.comovingRadiusGly, 46.5);
+  assert.equal(PARTICLE_HORIZON.comovingRadiusGpc, 14.25);
+  assert.equal(PARTICLE_HORIZON.lyPerGpc, 3.26156);
+  const fromGpc = PARTICLE_HORIZON.comovingRadiusGpc * PARTICLE_HORIZON.lyPerGpc;
   assert.ok(Math.abs(fromGpc - 46.5) < 0.03);
   assert.equal(
-    visualUniverse(OBSERVABLE_UNIVERSE.comovingRadiusGpc),
+    visualUniverse(PARTICLE_HORIZON.comovingRadiusGpc),
     CONFIG.universeScale * 14.25 ** CONFIG.universePower,
   );
-  assert.equal(CMB_SHELL.name, "CMB");
-  assert.equal(CMB_SHELL.comovingRadiusGpc, OBSERVABLE_UNIVERSE.comovingRadiusGpc);
+  assert.equal(CMB_SHELL.name, "Illustrative CMB shell");
+  assert.equal(CMB_SHELL.displayRadiusGpc, PARTICLE_HORIZON.comovingRadiusGpc);
+  assert.equal(CMB_SHELL.physicalRelation, "inside-particle-horizon");
   assert.equal(CMB_SHELL.map, "assets/sky/cmb.jpg");
   assert.ok(farthestUniverseDistance() > farthestWebDistance());
   assert.ok(CONFIG.cameraFar > farthestUniverseDistance() + CONFIG.maxDistance * 0.25);

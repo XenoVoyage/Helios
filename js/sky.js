@@ -19,13 +19,62 @@ export { ANDROMEDA, CONSTELLATION_LINES, MAJOR_CONSTELLATIONS, STAR_NAMES, STARS
 const DEG = Math.PI / 180;
 const TAU = Math.PI * 2;
 
+export const CELESTIAL_RENDER_THRESHOLD = 0.04;
+export const CONSTELLATION_MODES = Object.freeze({
+  off: "off",
+  major: "major",
+  all: "all",
+});
+export const CONSTELLATION_LAYOUT = Object.freeze({
+  minBudget: 4,
+  maxBudget: 18,
+  pixelsPerLabel: 65000,
+  edgePadding: 12,
+  enterPadding: 8,
+  collisionGap: 8,
+});
+export const CONSTELLATION_LABEL_FALLBACK_HIPS = Object.freeze({
+  Men: Object.freeze([29271]),
+  Mic: Object.freeze([102831]),
+});
+
 /** IAU 2006 mean obliquity of the ecliptic at J2000, degrees. */
 export const OBLIQUITY_J2000_DEG = 23.43927944;
+const OBLIQUITY_J2000_RAD = OBLIQUITY_J2000_DEG * DEG;
+const COS_OBLIQUITY_J2000 = Math.cos(OBLIQUITY_J2000_RAD);
+const SIN_OBLIQUITY_J2000 = Math.sin(OBLIQUITY_J2000_RAD);
 
 /** IAU galactic pole (J2000), used to orient the Milky Way texture. */
 export const GALACTIC_NGP_RA_DEG = 192.85948;
 export const GALACTIC_NGP_DEC_DEG = 27.12825;
 export const GALACTIC_NCP_LON_DEG = 122.93192;
+const GALACTIC_NGP_RA_RAD = GALACTIC_NGP_RA_DEG * DEG;
+const GALACTIC_NGP_DEC_RAD = GALACTIC_NGP_DEC_DEG * DEG;
+const GALACTIC_NCP_LON_RAD = GALACTIC_NCP_LON_DEG * DEG;
+
+const GALACTIC_EQUATORIAL_BASIS = (() => {
+  const sinAG = Math.sin(GALACTIC_NGP_RA_RAD);
+  const cosAG = Math.cos(GALACTIC_NGP_RA_RAD);
+  const sinDG = Math.sin(GALACTIC_NGP_DEC_RAD);
+  const cosDG = Math.cos(GALACTIC_NGP_DEC_RAD);
+  const sinL = Math.sin(GALACTIC_NCP_LON_RAD);
+  const cosL = Math.cos(GALACTIC_NCP_LON_RAD);
+  const meridian = { x: -sinDG * cosAG, y: -sinDG * sinAG, z: cosDG };
+  const east = { x: -sinAG, y: cosAG, z: 0 };
+  return Object.freeze({
+    x: Object.freeze({
+      x: cosL * meridian.x + sinL * east.x,
+      y: cosL * meridian.y + sinL * east.y,
+      z: cosL * meridian.z + sinL * east.z,
+    }),
+    y: Object.freeze({
+      x: sinL * meridian.x - cosL * east.x,
+      y: sinL * meridian.y - cosL * east.y,
+      z: sinL * meridian.z - cosL * east.z,
+    }),
+    z: Object.freeze({ x: cosDG * cosAG, y: cosDG * sinAG, z: sinDG }),
+  });
+})();
 
 /** Cassiopeia / Andromeda / MW crossing, used by ?look=sky. */
 export const EARTH_SKY_LOOK = Object.freeze({ raDeg: 16, decDeg: 49 });
@@ -111,25 +160,44 @@ export function equatorialUnit(raDeg, decDeg) {
 }
 
 /**
- * Equatorial J2000 to the scene frame used by keplerOffset:
+ * Equatorial J2000 vector to the scene frame used by keplerOffset:
  * +X vernal equinox, +Y ecliptic north, right-handed.
  */
-export function equatorialToScene(raDeg, decDeg) {
-  const eq = equatorialUnit(raDeg, decDeg);
-  const cosE = Math.cos(OBLIQUITY_J2000_DEG * DEG);
-  const sinE = Math.sin(OBLIQUITY_J2000_DEG * DEG);
+export function equatorialVectorToScene(eq) {
   const xEc = eq.x;
-  const yEc = eq.y * cosE + eq.z * sinE;
-  const zEc = -eq.y * sinE + eq.z * cosE;
+  const yEc = eq.y * COS_OBLIQUITY_J2000 + eq.z * SIN_OBLIQUITY_J2000;
+  const zEc = -eq.y * SIN_OBLIQUITY_J2000 + eq.z * COS_OBLIQUITY_J2000;
   return { x: xEc, y: zEc, z: -yEc };
+}
+
+/** Equatorial J2000 sky position in the scene frame. */
+export function equatorialToScene(raDeg, decDeg) {
+  return equatorialVectorToScene(equatorialUnit(raDeg, decDeg));
+}
+
+/**
+ * IAU Galactic cartesian to the same J2000 ecliptic scene frame.
+ *
+ * The three equatorial basis vectors are the exact inverse of
+ * equatorialToGalactic below. Keeping this transform beside that owner
+ * prevents the solar sky and extra-zoom map from inventing separate axes.
+ * Magnitude is preserved, so callers may pass unit vectors or distances.
+ */
+export function galacticToScene(x, y, z) {
+  const basis = GALACTIC_EQUATORIAL_BASIS;
+  return equatorialVectorToScene({
+    x: x * basis.x.x + y * basis.y.x + z * basis.z.x,
+    y: x * basis.x.y + y * basis.y.y + z * basis.z.y,
+    z: x * basis.x.z + y * basis.y.z + z * basis.z.z,
+  });
 }
 
 export function equatorialToGalactic(raDeg, decDeg) {
   const ra = raDeg * DEG;
   const dec = decDeg * DEG;
-  const aG = GALACTIC_NGP_RA_DEG * DEG;
-  const dG = GALACTIC_NGP_DEC_DEG * DEG;
-  const lNCP = GALACTIC_NCP_LON_DEG * DEG;
+  const aG = GALACTIC_NGP_RA_RAD;
+  const dG = GALACTIC_NGP_DEC_RAD;
+  const lNCP = GALACTIC_NCP_LON_RAD;
   const sinD = Math.sin(dec);
   const cosD = Math.cos(dec);
   const sinDG = Math.sin(dG);
@@ -211,6 +279,32 @@ function centroidScene(hips, radius) {
   return { x: (x / len) * radius, y: (y / len) * radius, z: (z / len) * radius };
 }
 
+export function normalizeConstellationMode(mode) {
+  if (mode === true) return CONSTELLATION_MODES.major;
+  if (mode === false) return CONSTELLATION_MODES.off;
+  const normalized = String(mode ?? "").toLowerCase();
+  return Object.values(CONSTELLATION_MODES).includes(normalized)
+    ? normalized
+    : CONSTELLATION_MODES.major;
+}
+
+export function celestialLayerRenderable(fade) {
+  return Number.isFinite(fade) && fade > CELESTIAL_RENDER_THRESHOLD;
+}
+
+export function constellationAnchorHips(id) {
+  const constellation = findConstellation(id);
+  if (!constellation) return [];
+  // Preserve the existing path weighting exactly: repeated junction stars
+  // contributed repeatedly to the original ten Major-label centroids.
+  const hips = constellation.paths.flat().filter((hip) => starsByHip.has(hip));
+  return hips.length ? hips : [...(CONSTELLATION_LABEL_FALLBACK_HIPS[id] ?? [])];
+}
+
+export function constellationAnchor(id, radius = 1) {
+  return centroidScene(constellationAnchorHips(id), radius);
+}
+
 function starSprite(THREE) {
   const canvas = document.createElement("canvas");
   canvas.width = 64;
@@ -259,10 +353,10 @@ function createMilkyWay(THREE, radius) {
       varying vec3 vDir;
       const float PI = 3.141592653589793;
       const float TAU = 6.283185307179586;
-      const float EPS = 0.4090928042223289;
-      const float NGP_RA = 3.366032882493748;
-      const float NGP_DEC = 0.473477302980151;
-      const float NCP_L = 2.1455668513703367;
+      const float EPS = ${OBLIQUITY_J2000_RAD};
+      const float NGP_RA = ${GALACTIC_NGP_RA_RAD};
+      const float NGP_DEC = ${GALACTIC_NGP_DEC_RAD};
+      const float NCP_L = ${GALACTIC_NCP_LON_RAD};
       void main() {
         vec3 dir = normalize(vDir);
         vec3 ecl = vec3(dir.x, -dir.z, dir.y);
@@ -505,38 +599,46 @@ export function constellationLabelPixelHeight(
   return CONSTELLATION_LABEL.scaleY / visible * viewportHeight;
 }
 
-function makeLabelMap(THREE, text) {
-  const width = CONSTELLATION_LABEL.canvasWidth;
-  const height = CONSTELLATION_LABEL.canvasHeight;
+function makeLabelMap(THREE, text, resolution = 1) {
+  const width = Math.round(CONSTELLATION_LABEL.canvasWidth * resolution);
+  const height = Math.round(CONSTELLATION_LABEL.canvasHeight * resolution);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, width, height);
-  ctx.font = `700 ${CONSTELLATION_LABEL.fontPx}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.font = `700 ${CONSTELLATION_LABEL.fontPx * resolution}px ui-sans-serif, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
-  ctx.lineWidth = 12;
+  ctx.lineWidth = 12 * resolution;
   ctx.strokeStyle = "rgba(2, 5, 12, 0.88)";
   ctx.fillStyle = "rgba(214, 244, 250, 0.96)";
   ctx.strokeText(text, width / 2, height / 2);
   ctx.fillText(text, width / 2, height / 2);
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace;
+  map.userData.inkWidthRatio = clamp(
+    (ctx.measureText(text).width + 32 * resolution) / width,
+    0.18,
+    0.96,
+  );
   return map;
 }
 
 function createConstellationLabels(THREE, radius) {
   const group = new THREE.Group();
   group.name = "constellation-labels";
-  for (const constellation of CONSTELLATION_LINES) {
-    if (!MAJOR_CONSTELLATIONS.includes(constellation.id)) continue;
-    const hips = constellation.paths.flat();
-    const at = centroidScene(hips, radius);
+  group.userData.layoutWorkspace = createConstellationLabelWorkspace();
+  group.userData.layoutKey = "";
+  for (let catalogRank = 0; catalogRank < CONSTELLATION_LINES.length; catalogRank += 1) {
+    const constellation = CONSTELLATION_LINES[catalogRank];
+    const majorRank = MAJOR_CONSTELLATIONS.indexOf(constellation.id);
+    const at = constellationAnchor(constellation.id, radius);
     if (!at) continue;
+    const map = makeLabelMap(THREE, constellation.name, majorRank >= 0 ? 1 : 0.5);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: makeLabelMap(THREE, constellation.name),
+      map,
       transparent: true,
       depthWrite: false,
       opacity: 0.94,
@@ -545,16 +647,220 @@ function createConstellationLabels(THREE, radius) {
     sprite.position.set(at.x, at.y, at.z);
     sprite.scale.set(CONSTELLATION_LABEL.scaleX, CONSTELLATION_LABEL.scaleY, 1);
     sprite.frustumCulled = false;
+    sprite.visible = majorRank >= 0;
+    sprite.name = `constellation-label-${constellation.id}`;
+    sprite.userData.constellationId = constellation.id;
+    sprite.userData.constellationName = constellation.name;
+    sprite.userData.majorRank = majorRank;
+    sprite.userData.catalogRank = catalogRank;
+    sprite.userData.inkWidthRatio = map.userData.inkWidthRatio;
+    sprite.userData.world = new THREE.Vector3();
+    sprite.userData.cameraSpace = new THREE.Vector3();
+    sprite.userData.projected = new THREE.Vector3();
+    sprite.userData.layoutCandidate = {
+      id: constellation.id,
+      name: constellation.name,
+      majorRank,
+      catalogRank,
+      retained: false,
+      eligible: false,
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+    };
     group.add(sprite);
   }
   return group;
 }
 
-export function setConstellationsVisible(sky, visible) {
+export function constellationLabelBudget(width, height, topInset = 64, bottomInset = 72) {
+  const usableHeight = Math.max(1, height - topInset - bottomInset);
+  return clamp(
+    Math.floor(width * usableHeight / CONSTELLATION_LAYOUT.pixelsPerLabel),
+    CONSTELLATION_LAYOUT.minBudget,
+    CONSTELLATION_LAYOUT.maxBudget,
+  );
+}
+
+function rectanglesOverlap(a, b, gap) {
+  return a.left < b.right + gap
+    && a.right > b.left - gap
+    && a.top < b.bottom + gap
+    && a.bottom > b.top - gap;
+}
+
+function createConstellationLabelRect() {
+  return { left: 0, right: 0, top: 0, bottom: 0 };
+}
+
+/** Reusable CPU-only storage for the per-frame All-label layout. */
+export function createConstellationLabelWorkspace(
+  rectCapacity = CONSTELLATION_LAYOUT.maxBudget,
+) {
+  const rects = [];
+  for (let index = 0; index < rectCapacity; index += 1) {
+    rects.push(createConstellationLabelRect());
+  }
+  return {
+    candidates: [],
+    ordered: [],
+    accepted: [],
+    rects,
+    retained: new Set(),
+    selected: new Set(),
+    options: { width: 0, height: 0, topInset: 64, bottomInset: 72 },
+    viewport: { width: null, height: null, topInset: null, bottomInset: null },
+  };
+}
+
+/**
+ * Pure deterministic label packing used by the All mode and unit tests.
+ * Existing two-argument callers receive independent output. A supplied
+ * workspace reuses its arrays and rectangle pool until the next call.
+ */
+export function selectConstellationLabelIds(candidates, {
+  width,
+  height,
+  topInset = 64,
+  bottomInset = 72,
+  budget = constellationLabelBudget(width, height, topInset, bottomInset),
+} = {}, workspace = null) {
+  const storage = workspace ?? createConstellationLabelWorkspace();
+  const { ordered, accepted, rects } = storage;
+  ordered.length = 0;
+  accepted.length = 0;
+  if (!(width > 0) || !(height > 0) || budget <= 0) return accepted;
+  for (const candidate of candidates) ordered.push(candidate);
+  ordered.sort((a, b) => {
+    const aMajor = a.majorRank >= 0;
+    const bMajor = b.majorRank >= 0;
+    if (aMajor !== bMajor) return aMajor ? -1 : 1;
+    if (aMajor && a.majorRank !== b.majorRank) return a.majorRank - b.majorRank;
+    if (a.retained !== b.retained) return a.retained ? -1 : 1;
+    if (a.catalogRank !== b.catalogRank) return a.catalogRank - b.catalogRank;
+    return String(a.id).localeCompare(String(b.id));
+  });
+  for (const candidate of ordered) {
+    if (!candidate.eligible || accepted.length >= budget) continue;
+    const halfWidth = candidate.width / 2;
+    const halfHeight = candidate.height / 2;
+    const inset = CONSTELLATION_LAYOUT.edgePadding
+      + (candidate.majorRank >= 0 || candidate.retained ? 0 : CONSTELLATION_LAYOUT.enterPadding);
+    const rectIndex = accepted.length;
+    let rect = rects[rectIndex];
+    if (!rect) {
+      rect = createConstellationLabelRect();
+      rects.push(rect);
+    }
+    rect.left = candidate.x - halfWidth;
+    rect.right = candidate.x + halfWidth;
+    rect.top = candidate.y - halfHeight;
+    rect.bottom = candidate.y + halfHeight;
+    if (rect.left < inset || rect.right > width - inset) continue;
+    if (rect.top < topInset + inset || rect.bottom > height - bottomInset - inset) continue;
+    let overlaps = false;
+    for (let index = 0; index < rectIndex; index += 1) {
+      if (rectanglesOverlap(rect, rects[index], CONSTELLATION_LAYOUT.collisionGap)) {
+        overlaps = true;
+        break;
+      }
+    }
+    if (overlaps) continue;
+    accepted.push(candidate.id);
+  }
+  return accepted;
+}
+
+export function setConstellationMode(sky, mode, available = true) {
+  if (!sky) return;
+  const normalized = normalizeConstellationMode(mode);
+  sky.userData.constellationMode = normalized;
+  const canRender = Boolean(available);
   const lines = sky.getObjectByName("constellation-lines");
   const labels = sky.getObjectByName("constellation-labels");
-  if (lines) lines.visible = visible;
-  if (labels) labels.visible = visible;
+  const figuresVisible = canRender && normalized !== CONSTELLATION_MODES.off;
+  if (lines) lines.visible = figuresVisible;
+  if (!labels) return;
+  labels.visible = figuresVisible;
+  const layoutKey = `${normalized}:${canRender}`;
+  if (labels.userData.layoutKey === layoutKey) return;
+  labels.userData.layoutKey = layoutKey;
+  labels.userData.layoutWorkspace?.retained.clear();
+  labels.userData.layoutWorkspace?.selected.clear();
+  for (const sprite of labels.children) {
+    sprite.visible = figuresVisible
+      && normalized === CONSTELLATION_MODES.major
+      && sprite.userData.majorRank >= 0;
+  }
+}
+
+/** Backward-compatible boolean entrypoint; new UI uses setConstellationMode. */
+export function setConstellationsVisible(sky, visible) {
+  setConstellationMode(sky, visible ? CONSTELLATION_MODES.major : CONSTELLATION_MODES.off);
+}
+
+/** Project and pack All-mode names after the camera matrix is current. */
+export function updateConstellationLabels(sky, camera, {
+  width,
+  height,
+  topInset = 64,
+  bottomInset = 72,
+} = {}) {
+  const labels = sky?.getObjectByName("constellation-labels");
+  if (!labels?.visible || !camera) return [];
+  const mode = normalizeConstellationMode(sky.userData.constellationMode);
+  if (mode !== CONSTELLATION_MODES.all) return [];
+  const workspace = labels.userData.layoutWorkspace;
+  const { viewport, retained, selected, options } = workspace;
+  if (viewport.width !== width
+    || viewport.height !== height
+    || viewport.topInset !== topInset
+    || viewport.bottomInset !== bottomInset) {
+    viewport.width = width;
+    viewport.height = height;
+    viewport.topInset = topInset;
+    viewport.bottomInset = bottomInset;
+    retained.clear();
+  }
+  const fov = camera.fov * DEG;
+  const candidates = workspace.candidates;
+  candidates.length = 0;
+  for (const sprite of labels.children) {
+    const data = sprite.userData;
+    const candidate = data.layoutCandidate;
+    sprite.getWorldPosition(data.world);
+    data.cameraSpace.copy(data.world).applyMatrix4(camera.matrixWorldInverse);
+    data.projected.copy(data.world).project(camera);
+    const depth = -data.cameraSpace.z;
+    const pixelsPerWorld = depth > 0
+      ? height / (2 * depth * Math.tan(fov / 2))
+      : 0;
+    candidate.retained = retained.has(candidate.id);
+    candidate.eligible = depth > camera.near
+      && data.projected.z > -1 && data.projected.z < 1
+      && Number.isFinite(pixelsPerWorld);
+    candidate.x = (data.projected.x * 0.5 + 0.5) * width;
+    candidate.y = (-data.projected.y * 0.5 + 0.5) * height;
+    candidate.width = sprite.scale.x * pixelsPerWorld * data.inkWidthRatio;
+    candidate.height = sprite.scale.y * pixelsPerWorld * 0.58;
+    candidates.push(candidate);
+  }
+  options.width = width;
+  options.height = height;
+  options.topInset = topInset;
+  options.bottomInset = bottomInset;
+  const selectedIds = selectConstellationLabelIds(candidates, options, workspace);
+  selected.clear();
+  for (const id of selectedIds) selected.add(id);
+  for (const sprite of labels.children) {
+    sprite.visible = selected.has(sprite.userData.constellationId);
+  }
+  retained.clear();
+  for (const id of selectedIds) {
+    if (!MAJOR_CONSTELLATIONS.includes(id)) retained.add(id);
+  }
+  return selectedIds;
 }
 
 export function setSkyBandBrightness(sky, brightness) {
@@ -575,12 +881,12 @@ export function setStarBrightness(sky, brightness) {
 export function setCelestialFade(sky, fade) {
   if (!sky) return;
   const factor = Math.min(1, Math.max(0, fade));
-  sky.visible = factor > 0.04;
+  sky.visible = celestialLayerRenderable(factor);
   const band = sky.getObjectByName("milky-way");
   if (band?.material?.uniforms?.fade) band.material.uniforms.fade.value = factor;
   const stars = sky.getObjectByName("stars");
   if (stars?.material?.uniforms?.fade) stars.material.uniforms.fade.value = factor;
-  if (factor <= 0.04) {
+  if (!celestialLayerRenderable(factor)) {
     const lines = sky.getObjectByName("constellation-lines");
     const labels = sky.getObjectByName("constellation-labels");
     if (lines) lines.visible = false;
