@@ -9,7 +9,7 @@ An interactive 3D orrery of the solar system.
 
 [![Overview of the Helios orrery: Sun, planets, asteroid belt, and the outer Kuiper field.](docs/assets/helios-overview.webp)](https://xenovoyage.github.io/Helios/)
 
-![Saturn focused, with Titan sitting just outside the rings.](docs/assets/helios-titan-rings.webp)
+![Saturn focused from the front side of the ring plane, with Titan beyond the rings.](docs/assets/helios-titan-rings.webp)
 
 ![Constellation names readable at overview, with Sagittarius and Scorpius labeled.](docs/assets/helios-constellations.webp)
 
@@ -33,7 +33,7 @@ An interactive 3D orrery of the solar system.
 
 ![The flux-limited 2MRS galaxy distribution in redshift space, shown as points without invented connections.](docs/assets/helios-web.webp)
 
-![Schematic outside-camera view: a translucent illustrative CMB shell around a bounded, explicitly non-survey outer density.](docs/assets/helios-universe.webp)
+![Schematic outside-camera view of the warm illustrative CMB shell at the particle-horizon display radius.](docs/assets/helios-universe.webp)
 
 Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch-out zooms in; pinch-in zooms out. Play, pause, and change the speed of time from the bar at the bottom. Close the body card with the X or by tapping empty space. Zoom out past the solar overview and the orrery shrinks to a Sun among the stars. The Hipparcos sky, IAU figures, and Gaia band stay at constant brightness through the solar cap, so the first extra-zoom frame is already inside the Milky Way tail. The moment the camera leaves that tail, that solar sky and the Constellations control go off. The control offers Off, Major (the ten familiar default names), and All; All packs eligible names inside the viewport with a responsive collision budget. Extra-zoom sky from the tail through Virgo is a camera-centered spherical point-density illustration with unresolved bright concentrations and dark gaps. It has no cube faces, named generated objects, or claimed survey coordinates. The full disk, neighborhood, Local Group, and Virgo are catalog neighbors against that field, not a scatter of invented nearby galaxies. After Virgo, seven measured group anchors lead into 42,927 public 2MRS galaxy directions with approximate redshift distances; there are no invented web connections. Beyond the survey's 300 Mpc display cap, a small first-party density illustration provides continuity to the Planck-style CMB shell. That shell is deliberately drawn at the particle-horizon display radius. Leaving it is only an outside-camera/scale metaphor, not a physically possible observer. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
 
