@@ -1927,7 +1927,7 @@ function createFarGalaxySky(THREE, group) {
     samples.positions,
     samples.colors,
     2.5,
-    0.7,
+    0.82,
     false,
     THREE.NormalBlending,
   );
