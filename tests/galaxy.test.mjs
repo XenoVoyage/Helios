@@ -61,7 +61,9 @@ import {
   milkyWayDiskOpacity,
   milkyWayToScene,
   milkyWayUnitsPerKpc,
+  cmbDisplayOpacity,
   cmbSkyOpacity,
+  cosmicStructureLuminanceGain,
   farGalaxySkyOpacity,
   nearClusterOpacity,
   neighborhoodCameraAim,
@@ -524,21 +526,25 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   );
   const measuredBoundary = CONFIG.webViewDistance
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.74;
-  assert.ok(
-    localWebOpacity(measuredBoundary) > 0 && localWebOpacity(measuredBoundary) < 1,
-    "2MRS fades smoothly as the camera reaches the measured display boundary",
+  assert.equal(
+    localWebOpacity(measuredBoundary),
+    1,
+    "2MRS stays fully visible while the front-facing CMB is still invisible",
   );
   const cmbStrongTransition = CONFIG.webViewDistance
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.82;
-  assert.equal(
-    localWebOpacity(cmbStrongTransition),
-    0,
-    "the measured inner context yields when the CMB veil becomes strong",
+  assert.ok(
+    localWebOpacity(cmbStrongTransition) > 0.95,
+    "the measured inner context yields only as a genuinely visible CMB grows",
   );
   assert.equal(localWebOpacity(CONFIG.universeViewDistance), 0);
   assert.ok(
-    Math.abs(universeOpacity(CONFIG.universeViewDistance) - 0.75) < 1e-12,
-    "the point-built outer web remains visible behind the texture-dominant CMB shell",
+    Math.abs(
+      universeOpacity(CONFIG.universeViewDistance)
+      * cosmicStructureLuminanceGain(CONFIG.universeViewDistance)
+      - 0.75,
+    ) < 1e-12,
+    "the compensated outer web keeps its approved final contribution",
   );
   assert.equal(nearClusterOpacity(CONFIG.webViewDistance), 0);
   assert.equal(
@@ -610,6 +616,7 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     "microwave waits until after the web",
   );
   assert.equal(cmbSkyOpacity(CONFIG.universeViewDistance), 1);
+  assert.equal(cmbDisplayOpacity(CONFIG.universeViewDistance), 1.05);
   assert.equal(
     farGalaxySkyOpacity(CONFIG.universeViewDistance),
     0,
@@ -631,6 +638,47 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
     CONFIG.maxDistance > farthestUniverseDistance(),
     "camera can leave the observable sphere",
   );
+});
+
+test("cosmic structure brightens by semantic stage while the CMB waits for shell exit", () => {
+  const preWeb = CONFIG.virgoViewDistance
+    + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * 0.55;
+  assert.equal(cosmicStructureLuminanceGain(CONFIG.virgoViewDistance), 1);
+  assert.ok(cosmicStructureLuminanceGain(preWeb) > 1);
+  assert.ok(
+    cosmicStructureLuminanceGain(CONFIG.webViewDistance)
+      > cosmicStructureLuminanceGain(preWeb),
+  );
+
+  let inside = CONFIG.webViewDistance;
+  let outside = CONFIG.universeViewDistance;
+  const shell = farthestUniverseDistance();
+  for (let i = 0; i < 80; i += 1) {
+    const middle = (inside + outside) / 2;
+    if (extraZoomCameraDistance(middle) <= shell) inside = middle;
+    else outside = middle;
+  }
+  assert.equal(cmbSkyOpacity(inside), 0, "CMB stays invisible from inside its sphere");
+  assert.ok(cmbSkyOpacity(outside) < 1e-20, "CMB begins continuously after shell exit");
+  assert.equal(localWebOpacity(inside), 1, "the measured web cannot fade into nothing");
+  assert.ok(
+    Math.abs(universeOpacity(inside) - 1) < 1e-12,
+    "the mature outer density is not attenuated by an invisible CMB",
+  );
+
+  let previousCmb = 0;
+  let previousGain = cosmicStructureLuminanceGain(CONFIG.virgoViewDistance);
+  for (let i = 1; i <= 200; i += 1) {
+    const distance = CONFIG.virgoViewDistance
+      + (CONFIG.universeViewDistance - CONFIG.virgoViewDistance) * (i / 200);
+    const cmb = cmbSkyOpacity(distance);
+    const gain = cosmicStructureLuminanceGain(distance);
+    assert.ok(cmb >= previousCmb, `CMB opacity is monotonic at ${distance}`);
+    assert.ok(gain >= previousGain, `point luminance gain is monotonic at ${distance}`);
+    assert.ok(gain <= 1.5 + 1e-12, `point luminance gain stays bounded at ${distance}`);
+    previousCmb = cmb;
+    previousGain = gain;
+  }
 });
 
 test("semantic labels roll up from galaxies to superclusters, then clear for the web", () => {

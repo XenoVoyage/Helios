@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { bodyOrientationBasis, findBody } from "../js/bodies.js";
 import { CONFIG, wheelZoomMultiplier } from "../js/config.js";
+import { cmbSkyOpacity } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -15,6 +16,7 @@ const port = Number(process.env.BROWSER_SMOKE_PORT || 4175);
 const base = `http://127.0.0.1:${port}/Helios/`;
 const screenshotDir = process.env.HELIOS_SCREENSHOT_DIR;
 const BRIGHT_LUMINANCE = 12;
+const DARK_LUMINANCE = 6;
 const TRANSITION_MEAN_LUMINANCE_FLOOR = 5.5;
 const TRANSITION_BRIGHT_COVERAGE_FLOOR = 0.006;
 const FAR_SKY_MEAN_LUMINANCE_FLOOR = 4.5;
@@ -110,7 +112,7 @@ async function saveScreenshot(page, name, options = {}) {
 }
 
 async function distributedFrameMetrics(page, png) {
-  return page.evaluate(async ({ source, brightLuminance }) => {
+  return page.evaluate(async ({ source, brightLuminance, darkLuminance }) => {
     const image = new Image();
     const ready = new Promise((resolve, reject) => {
       image.addEventListener("load", resolve, { once: true });
@@ -132,7 +134,9 @@ async function distributedFrameMetrics(page, png) {
       { name: "lower-right", x: 0.57, y: 0.56, width: 0.38, height: 0.26 },
     ];
     let luminanceTotal = 0;
+    let brightLuminanceTotal = 0;
     let bright = 0;
+    let dark = 0;
     let samples = 0;
     const regionMetrics = [];
 
@@ -143,7 +147,9 @@ async function distributedFrameMetrics(page, png) {
       const height = Math.max(1, Math.floor(surface.height * region.height));
       const pixels = context.getImageData(x, y, width, height).data;
       let regionLuminance = 0;
+      let regionBrightLuminance = 0;
       let regionBright = 0;
+      let regionDark = 0;
       let regionSamples = 0;
       // A two-pixel stride keeps the audit inexpensive without averaging away
       // point-built galaxies or filaments.
@@ -154,29 +160,43 @@ async function distributedFrameMetrics(page, png) {
             + pixels[offset + 1] * 0.7152
             + pixels[offset + 2] * 0.0722;
           regionLuminance += luminance;
-          if (luminance >= brightLuminance) regionBright += 1;
+          if (luminance >= brightLuminance) {
+            regionBrightLuminance += luminance;
+            regionBright += 1;
+          }
+          if (luminance < darkLuminance) regionDark += 1;
           regionSamples += 1;
         }
       }
       luminanceTotal += regionLuminance;
+      brightLuminanceTotal += regionBrightLuminance;
       bright += regionBright;
+      dark += regionDark;
       samples += regionSamples;
       regionMetrics.push({
         name: region.name,
         meanLuminance: regionLuminance / regionSamples,
+        brightMeanLuminance: regionBright
+          ? regionBrightLuminance / regionBright
+          : 0,
         brightCoverage: regionBright / regionSamples,
+        darkCoverage: regionDark / regionSamples,
       });
     }
 
     return {
       meanLuminance: luminanceTotal / samples,
+      brightMeanLuminance: bright ? brightLuminanceTotal / bright : 0,
+      brightEnergy: brightLuminanceTotal / samples,
       brightCoverage: bright / samples,
+      darkCoverage: dark / samples,
       samples,
       regions: regionMetrics,
     };
   }, {
     source: png.toString("base64"),
     brightLuminance: BRIGHT_LUMINANCE,
+    darkLuminance: DARK_LUMINANCE,
   });
 }
 
@@ -318,7 +338,10 @@ async function auditedCanvasFrame(
   await saveScreenshot(page, name);
   console.log(
     `${name}: mean=${metrics.meanLuminance.toFixed(3)}, `
+      + `bright-mean=${metrics.brightMeanLuminance.toFixed(3)}, `
+      + `bright-energy=${metrics.brightEnergy.toFixed(3)}, `
       + `coverage=${(metrics.brightCoverage * 100).toFixed(3)}%, `
+      + `dark=${(metrics.darkCoverage * 100).toFixed(3)}%, `
       + `side-means=${metrics.regions.map((region) => region.meanLuminance.toFixed(3)).join("/")}, `
       + `side-coverage=${metrics.regions.map((region) => (
         `${(region.brightCoverage * 100).toFixed(3)}%`
@@ -398,7 +421,7 @@ async function auditScaleTransitions(context) {
       TRANSITION_BRIGHT_COVERAGE_FLOOR,
       { deferFloor: true },
     );
-    observations.push({ name: stop.name, ...frame.metrics });
+    observations.push({ name: stop.name, distance: stop.distance, ...frame.metrics });
   }
 
   assert.equal(observations.length, stops.length, "every transition distance is audited");
@@ -421,6 +444,44 @@ async function auditScaleTransitions(context) {
     );
   }
   const webObservations = observations.slice(virgoToWeb.length);
+  const preCmbWeb = webObservations.filter((item) => cmbSkyOpacity(item.distance) === 0);
+  assert.ok(preCmbWeb.length >= 3, "multiple mature-web frames precede the visible CMB");
+  const firstStructuredWeb = preCmbWeb[0];
+  const matureStructuredWeb = preCmbWeb.at(-1);
+  assert.ok(
+    matureStructuredWeb.meanLuminance >= firstStructuredWeb.meanLuminance,
+    "the mature point-built web does not get darker before the CMB is visible",
+  );
+  assert.ok(
+    matureStructuredWeb.brightEnergy >= firstStructuredWeb.brightEnergy * 1.05,
+    "bright knots and filaments strengthen through the mature web",
+  );
+  for (const observation of preCmbWeb) {
+    assert.ok(
+      observation.darkCoverage >= 0.75,
+      `${observation.name} preserves substantial black voids`,
+    );
+  }
+
+  const firstVisibleCmbIndex = webObservations.findIndex(
+    (item) => cmbSkyOpacity(item.distance) > 0,
+  );
+  assert.ok(firstVisibleCmbIndex > 0, "the audit brackets the actual CMB shell crossing");
+  const beforeCmb = webObservations[firstVisibleCmbIndex - 1];
+  const afterCmb = webObservations[firstVisibleCmbIndex];
+  assert.ok(
+    afterCmb.meanLuminance <= beforeCmb.meanLuminance * 1.8 + 1,
+    "crossing the front-facing CMB shell cannot create a full-frame flash",
+  );
+  assert.ok(
+    afterCmb.brightCoverage - beforeCmb.brightCoverage <= 0.35,
+    "CMB shell entry cannot erase the voids in one audited step",
+  );
+  assert.ok(
+    afterCmb.darkCoverage >= 0.55,
+    "dark voids remain visible immediately after CMB shell entry",
+  );
+
   const earlyMean = webObservations.slice(0, 3)
     .reduce((total, item) => total + item.meanLuminance, 0) / 3;
   const lateMean = webObservations.slice(-3)

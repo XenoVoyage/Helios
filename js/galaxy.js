@@ -80,6 +80,14 @@ const SCOPE_LABEL_ROW = Object.freeze({
 // seat. Scientific coordinates, the camera origin, and every catalog stay put.
 const SOLAR_TRAIL_MARKER_OFFSET = Object.freeze({ x: -0.5, y: 2.5, z: 0 });
 const CMB_TEXTURE_OPACITY = 0.4;
+const COSMIC_STRUCTURE_GAIN = Object.freeze({
+  measuredWeb: 0.28,
+  shellApproach: 0.17,
+  cmbOverlap: 0.05,
+});
+const CMB_WEB_OVERLAP_READY = 0.55;
+const CMB_ENDPOINT_LIFT_START = 0.9;
+const CMB_ENDPOINT_LIFT = 0.05;
 
 export { galacticToScene };
 
@@ -400,7 +408,7 @@ function windowOpacity(distance, enterStart, enterEnd, leaveStart, leaveEnd) {
   return 1 - smoothstep01((distance - leaveStart) / (leaveEnd - leaveStart));
 }
 
-function cmbTransitionStart() {
+function cameraPullStart() {
   return CONFIG.webViewDistance
     + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.68;
 }
@@ -549,23 +557,38 @@ function outerDensityBlend(distance) {
 /** Local density reaches full strength at the web seat, then yields outward. */
 export function localWebOpacity(distance) {
   if (distance <= CONFIG.webViewDistance) return webOpacity(distance);
-  // 2MRS is a finite 300 Mpc display volume. Keep that measured inner volume
-  // as nested context while the camera crosses its boundary, then yield once
-  // the CMB veil is strong enough to carry the outside view without a void.
-  const cameraDistance = extraZoomCameraDistance(distance);
-  const measuredRadius = farthestWebDistance();
-  const start = measuredRadius * 0.96;
-  const transitionSpan = CONFIG.universeViewDistance - CONFIG.webViewDistance;
-  const cmbStrongSeat = CONFIG.webViewDistance + transitionSpan * 0.82;
-  const end = extraZoomCameraDistance(cmbStrongSeat);
-  if (cameraDistance <= start) return 1;
-  if (cameraDistance >= end) return 0;
-  return 1 - smoothstep01((cameraDistance - start) / (end - start));
+  // Keep the bounded measured volume as nested context until the CMB is
+  // actually visible, then let that visible layer—not a slider stop—carry it.
+  return 1 - cmbSkyOpacity(distance);
 }
 
-/** Outer density remains legible through the translucent CMB display shell. */
+/** Point-only exposure: bright structures rise while untouched voids stay dark. */
+export function cosmicStructureLuminanceGain(distance) {
+  if (distance <= CONFIG.virgoViewDistance) return 1;
+  const measuredProgress = smoothstep01(
+    (distance - CONFIG.virgoViewDistance)
+    / (CONFIG.webViewDistance - CONFIG.virgoViewDistance),
+  );
+  const cameraDistance = extraZoomCameraDistance(distance);
+  const shellProgress = smoothstep01(
+    (cameraDistance - CONFIG.webViewDistance)
+    / (farthestUniverseDistance() - CONFIG.webViewDistance),
+  );
+  const cmbOverlap = smoothstep01(cmbSkyOpacity(distance) / CMB_WEB_OVERLAP_READY);
+  return 1
+    + measuredProgress * COSMIC_STRUCTURE_GAIN.measuredWeb
+    + shellProgress * COSMIC_STRUCTURE_GAIN.shellApproach
+    + cmbOverlap * COSMIC_STRUCTURE_GAIN.cmbOverlap;
+}
+
+/** Outer density stays strong until the visible CMB can carry the handoff. */
 export function universeOpacity(distance) {
-  return outerDensityBlend(distance) * (1 - cmbSkyOpacity(distance) * 0.25);
+  const cmb = cmbSkyOpacity(distance);
+  const luminance = cosmicStructureLuminanceGain(distance);
+  // At the final seat, compensate the point gain so the approved outer-web
+  // contribution remains 0.75 beneath the slightly lifted CMB texture.
+  const lateCompensation = 1 + (luminance - 1) * smoothstep01(cmb);
+  return outerDensityBlend(distance) * (1 - cmb * 0.25) / lateCompensation;
 }
 
 /**
@@ -582,14 +605,24 @@ export function farGalaxySkyOpacity(distance) {
   return 1 - smoothstep01((progress - 0.12) / 0.76);
 }
 
-/** Microwave sky waits until after a long web, then becomes the outer shell. */
+/** Microwave sky is invisible from inside and fades only after shell exit. */
 export function cmbSkyOpacity(distance) {
-  const start = cmbTransitionStart();
-  if (distance <= start) return 0;
   if (distance >= CONFIG.universeViewDistance) return 1;
+  const cameraDistance = extraZoomCameraDistance(distance);
+  const shellRadius = farthestUniverseDistance();
+  if (cameraDistance <= shellRadius) return 0;
   return smoothstep01(
-    (distance - start) / (CONFIG.universeViewDistance - start),
+    (cameraDistance - shellRadius) / (CONFIG.universeViewDistance - shellRadius),
   );
+}
+
+/** Preserve the approved CMB texture and add only a five-percent endpoint lift. */
+export function cmbDisplayOpacity(distance) {
+  const cmb = cmbSkyOpacity(distance);
+  const endpoint = smoothstep01(
+    (cmb - CMB_ENDPOINT_LIFT_START) / (1 - CMB_ENDPOINT_LIFT_START),
+  );
+  return cmb * (1 + endpoint * CMB_ENDPOINT_LIFT);
 }
 
 /** Catalog anchors lead the handoff, then fade before the web-only seat. */
@@ -676,7 +709,7 @@ export function extraZoomCameraDistance(distance) {
     // The slider continues through cosmological scale while the camera lingers
     // inside the populated density. It pulls outside the CMB shell only during
     // that shell's own crossfade, preventing an empty interval in between.
-    const cmbStart = cmbTransitionStart();
+    const cmbStart = cameraPullStart();
     const webInterior = farthestWebDistance() * 0.96;
     if (distance <= cmbStart) {
       const t = (distance - CONFIG.webViewDistance)
@@ -1913,6 +1946,13 @@ function createVisibilityCache(group) {
     if (material.opacity != null && material.userData.keepOpacity == null) {
       material.userData.keepOpacity = material.opacity;
     }
+    if (material.isPointsMaterial && material.color && !material.userData.keepPointColor) {
+      material.userData.keepPointColor = {
+        r: material.color.r,
+        g: material.color.g,
+        b: material.color.b,
+      };
+    }
   }
   const groups = new Map();
   for (const name of VISIBILITY_GROUPS) {
@@ -1973,6 +2013,14 @@ function fadeNamedGroup(cache, name, opacity, shown) {
   }
 }
 
+function setNamedPointLuminance(cache, name, gain) {
+  for (const material of cache.groups.get(name) ?? []) {
+    const base = material.userData.keepPointColor;
+    if (!material.isPointsMaterial || !base) continue;
+    material.color.setRGB(base.r * gain, base.g * gain, base.b * gain);
+  }
+}
+
 export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDistance) {
   if (!group) return;
   const cache = group.userData.visibilityCache;
@@ -1995,6 +2043,7 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
   const web = webOpacity(distance);
   const localWeb = localWebOpacity(distance);
   const universe = universeOpacity(distance);
+  const structureLuminance = cosmicStructureLuminanceGain(distance);
   const labels = semanticLabelOpacities(distance);
   // The real Milky Way and its catalog neighbors stay themselves through
   // Virgo; they only yield when the volume-filling web takes over.
@@ -2026,12 +2075,15 @@ export function setGalaxyLayerVisible(group, opacity, distance = CONFIG.mwViewDi
   );
   fadeNamedGroup(cache, "local-group-label", opacity, labels.localGroup * family);
   fadeNamedGroup(cache, "near-clusters", opacity, near);
+  setNamedPointLuminance(cache, "near-clusters", structureLuminance);
   fadeNamedGroup(cache, "virgo", opacity, virgoShown);
   fadeNamedGroup(cache, "virgo-label", opacity, virgoShown * clusterLabel);
   fadeNamedGroup(cache, "virgo-supercluster-label", opacity, labels.virgoSupercluster);
   fadeNamedGroup(cache, "laniakea-label", opacity, labels.laniakea);
   fadeNamedGroup(cache, "cosmic-web", opacity, localWeb);
+  setNamedPointLuminance(cache, "cosmic-web", structureLuminance);
   fadeNamedGroup(cache, "home-mark", opacity, localWeb);
   fadeNamedGroup(cache, "universe", opacity, universe);
-  fadeNamedGroup(cache, "cmb-shell", opacity, cmbSkyOpacity(distance));
+  setNamedPointLuminance(cache, "universe", structureLuminance);
+  fadeNamedGroup(cache, "cmb-shell", opacity, cmbDisplayOpacity(distance));
 }
