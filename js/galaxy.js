@@ -1926,7 +1926,7 @@ function createFarGalaxySky(THREE, group) {
     "far-galaxy-density",
     samples.positions,
     samples.colors,
-    3.4,
+    3.7,
     1,
     false,
     THREE.NormalBlending,
