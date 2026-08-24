@@ -611,9 +611,13 @@ export function cmbSkyOpacity(distance) {
   const cameraDistance = extraZoomCameraDistance(distance);
   const shellRadius = farthestUniverseDistance();
   if (cameraDistance <= shellRadius) return 0;
+  // Ease the first visible microwave texture more gently than the camera
+  // pull. Point-built structure therefore keeps readable dark voids while
+  // the newly exposed sphere is still larger than the viewport, then the
+  // unchanged CMB texture catches up smoothly toward its final seat.
   return smoothstep01(
     (cameraDistance - shellRadius) / (CONFIG.universeViewDistance - shellRadius),
-  );
+  ) ** 2;
 }
 
 /** Preserve the approved CMB texture and add only a five-percent endpoint lift. */

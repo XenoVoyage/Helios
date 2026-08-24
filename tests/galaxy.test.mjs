@@ -750,7 +750,12 @@ test("trail marks: one display-offset Solar System particle, no lingering Sun ba
   const sun = sunScenePosition();
   const seat = solarTrailMarkerMapPosition();
   assert.deepEqual(sun, { x: 0, y: 0, z: 0 }, "the scientific Solar origin stays fixed");
-  assert.equal(seat.z, sun.z, "the display marker does not leave the local arm plane");
+  assert.equal(SUN_GALACTIC.zKpc, 0.0208, "the catalog Solar height stays published");
+  assert.deepEqual(
+    seat,
+    { x: -0.5, y: 2.5, z: 0 },
+    "the trail pin uses only the approved map-local display offset",
+  );
   assert.ok(
     Math.hypot(seat.x - sun.x, seat.y - sun.y, seat.z - sun.z) < 4,
     "the trail-only marker offset stays visually local",

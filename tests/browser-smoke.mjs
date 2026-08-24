@@ -463,24 +463,42 @@ async function auditScaleTransitions(context) {
     );
   }
 
-  const firstVisibleCmbIndex = webObservations.findIndex(
-    (item) => cmbSkyOpacity(item.distance) > 0,
+  const firstPerceptibleCmbIndex = webObservations.findIndex(
+    (item) => cmbSkyOpacity(item.distance) >= 0.01,
   );
-  assert.ok(firstVisibleCmbIndex > 0, "the audit brackets the actual CMB shell crossing");
-  const beforeCmb = webObservations[firstVisibleCmbIndex - 1];
-  const afterCmb = webObservations[firstVisibleCmbIndex];
+  assert.ok(
+    firstPerceptibleCmbIndex > 0,
+    "the audit brackets the first perceptible CMB stage",
+  );
+  const beforeCmb = webObservations[firstPerceptibleCmbIndex - 1];
+  const afterCmb = webObservations[firstPerceptibleCmbIndex];
   assert.ok(
     afterCmb.meanLuminance <= beforeCmb.meanLuminance * 1.8 + 1,
-    "crossing the front-facing CMB shell cannot create a full-frame flash",
+    "the first perceptible CMB stage cannot create a full-frame flash",
   );
   assert.ok(
     afterCmb.brightCoverage - beforeCmb.brightCoverage <= 0.35,
-    "CMB shell entry cannot erase the voids in one audited step",
+    "the first perceptible CMB stage cannot erase the voids in one audited step",
   );
   assert.ok(
     afterCmb.darkCoverage >= 0.55,
-    "dark voids remain visible immediately after CMB shell entry",
+    "dark voids remain visible at the first perceptible CMB stage",
   );
+  const emergingCmbWeb = webObservations.filter((item) => {
+    const cmb = cmbSkyOpacity(item.distance);
+    return cmb > 0 && cmb <= 0.05;
+  });
+  assert.ok(emergingCmbWeb.length >= 2, "multiple frames audit the emerging CMB");
+  for (const observation of emergingCmbWeb) {
+    assert.ok(
+      observation.darkCoverage >= 0.55,
+      `${observation.name} retains voids while the CMB is still emerging`,
+    );
+    assert.ok(
+      observation.brightCoverage <= 0.45,
+      `${observation.name} cannot become a full-field veil while the CMB is still emerging`,
+    );
+  }
 
   const earlyMean = webObservations.slice(0, 3)
     .reduce((total, item) => total + item.meanLuminance, 0) / 3;
