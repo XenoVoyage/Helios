@@ -76,6 +76,9 @@ const SCOPE_LABEL_ROW = Object.freeze({
   virgoSupercluster: 0.24,
   laniakea: 0.12,
 });
+// Display-only nudge into the illustrated Orion-arm ridge at the close trail
+// seat. Scientific coordinates, the camera origin, and every catalog stay put.
+const SOLAR_TRAIL_MARKER_OFFSET = Object.freeze({ x: -0.5, y: 2.5, z: 0 });
 const CMB_TEXTURE_OPACITY = 0.4;
 
 export { galacticToScene };
@@ -255,6 +258,16 @@ function orientMapFrame(THREE, object) {
 
 export function sunScenePosition() {
   return { x: 0, y: 0, z: 0 };
+}
+
+/** Map-local UI seat used only by the short-lived Milky Way trail marker. */
+export function solarTrailMarkerMapPosition() {
+  const sun = sunScenePosition();
+  return {
+    x: sun.x + SOLAR_TRAIL_MARKER_OFFSET.x,
+    y: sun.y + SOLAR_TRAIL_MARKER_OFFSET.y,
+    z: sun.z + SOLAR_TRAIL_MARKER_OFFSET.z,
+  };
 }
 
 /** Galactocentric (R, β) to heliocentric galactic cartesian, kpc. */
@@ -1485,14 +1498,14 @@ function createNeighbors(THREE, group, maps) {
  * disk, timed like the neighbors.
  */
 function createMilkyWayMarks(THREE, group) {
-  const sun = sunScenePosition();
+  const seatAt = solarTrailMarkerMapPosition();
   const seat = new THREE.Group();
   seat.name = "solar-seat";
   addPoints(
     THREE,
     seat,
     "solar-seat-star",
-    new Float32Array([sun.x, sun.y, sun.z]),
+    new Float32Array([seatAt.x, seatAt.y, seatAt.z]),
     new Float32Array([1, 1, 1]),
     3.2,
     0.95,
@@ -1503,7 +1516,7 @@ function createMilkyWayMarks(THREE, group) {
 
   const badge = new THREE.Group();
   badge.name = "solar-badge";
-  const pill = labelSprite(THREE, "Solar System", sun, 0.9, true);
+  const pill = labelSprite(THREE, "Solar System", seatAt, 0.9, true);
   // Anchor below center so the pill floats above the seat particle.
   pill.center.set(0.5, -0.6);
   badge.add(pill);

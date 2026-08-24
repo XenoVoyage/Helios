@@ -53,6 +53,7 @@ import {
   milkyWayEdgeCameraAim,
   milkyWayNameOpacity,
   solarBadgeOpacity,
+  solarTrailMarkerMapPosition,
   milkyWayInteriorCameraAim,
   milkyWayCameraAim,
   lookAngleTo,
@@ -689,7 +690,7 @@ test("semantic labels roll up from galaxies to superclusters, then clear for the
   }
 });
 
-test("trail marks: one white Solar System particle, no lingering Sun badge", async () => {
+test("trail marks: one display-offset Solar System particle, no lingering Sun badge", async () => {
   const galaxySource = await readFile(path.join(root, "js/galaxy.js"), "utf8");
   assert.match(galaxySource, /"Solar System"/, "the trail badge names the Solar System");
   assert.doesNotMatch(
@@ -698,10 +699,23 @@ test("trail marks: one white Solar System particle, no lingering Sun badge", asy
     "no bare Sun badge survives at trail / disk scale",
   );
   assert.match(galaxySource, /solar-seat-star/, "one seat particle marks the Sun's spot");
+  const sun = sunScenePosition();
+  const seat = solarTrailMarkerMapPosition();
+  assert.deepEqual(sun, { x: 0, y: 0, z: 0 }, "the scientific Solar origin stays fixed");
+  assert.equal(seat.z, sun.z, "the display marker does not leave the local arm plane");
+  assert.ok(
+    Math.hypot(seat.x - sun.x, seat.y - sun.y, seat.z - sun.z) < 4,
+    "the trail-only marker offset stays visually local",
+  );
   assert.match(
     galaxySource,
-    /"solar-seat-star",\s*new Float32Array\(\[sun\.x, sun\.y, sun\.z\]\),\s*new Float32Array\(\[1, 1, 1\]\)/,
-    "the seat particle is a single white point at the Sun's seat",
+    /"solar-seat-star",\s*new Float32Array\(\[seatAt\.x, seatAt\.y, seatAt\.z\]\),\s*new Float32Array\(\[1, 1, 1\]\)/,
+    "the seat particle is a single white point at the shared display seat",
+  );
+  assert.match(
+    galaxySource,
+    /labelSprite\(THREE, "Solar System", seatAt, 0\.9, true\)/,
+    "the dot and screen-fixed badge share one display position",
   );
   assert.doesNotMatch(galaxySource, /solar-seat-ring|seatGlowMap/, "not a ring, not a glow halo");
   // The badge dies strictly earlier than the old (1 - neighborOpacity)
