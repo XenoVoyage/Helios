@@ -86,7 +86,7 @@ const SOLAR_TRAIL_MARKER_OFFSET = Object.freeze({ x: -0.5, y: 2.5, z: 0 });
 export const FAR_GALAXY_SKY_MODEL = Object.freeze({
   count: 14004,
   coreCount: 420,
-  voidCount: 36,
+  voidCount: 64,
   seed: 0x51a7b026,
   verticalScale: 1,
   warmth: 0.18,
