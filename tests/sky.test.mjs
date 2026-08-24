@@ -13,6 +13,7 @@ import {
 import {
   CELESTIAL_RENDER_THRESHOLD,
   CONSTELLATION_LABEL_FALLBACK_HIPS,
+  CONSTELLATION_LAYOUT,
   CONSTELLATION_MODES,
   CONSTELLATION_STAR_BOOST,
   GALACTIC_NGP_DEC_DEG,
@@ -23,6 +24,7 @@ import {
   constellationHasStar,
   constellationLabelBudget,
   constellationLabelPixelHeight,
+  createConstellationLabelWorkspace,
   equatorialToGalactic,
   equatorialToScene,
   findConstellation,
@@ -35,6 +37,7 @@ import {
   selectConstellationLabelIds,
   setConstellationMode,
   sizeFromMag,
+  updateConstellationLabels,
 } from "../js/sky.js";
 
 function dot(a, b) {
@@ -297,6 +300,104 @@ test("All-mode label packing is deterministic, clipped, prioritized, and collisi
     ["a", "b"],
     "the centralized budget is enforced",
   );
+});
+
+test("All-mode live layout reuses candidate, packing, rectangle, and Set storage", () => {
+  let viewShift = 0;
+  const vector = () => ({
+    x: 0,
+    y: 0,
+    z: 0,
+    copy(other) {
+      this.x = other.x;
+      this.y = other.y;
+      this.z = other.z;
+      return this;
+    },
+    applyMatrix4() { return this; },
+    project() {
+      this.x += viewShift;
+      this.z = 0;
+      return this;
+    },
+  });
+  const sprite = (id, x, majorRank, catalogRank) => ({
+    visible: false,
+    scale: { x: 1, y: 0.4 },
+    getWorldPosition(target) {
+      target.x = x;
+      target.y = 0;
+      target.z = -10;
+      return target;
+    },
+    userData: {
+      constellationId: id,
+      inkWidthRatio: 0.8,
+      world: vector(),
+      cameraSpace: vector(),
+      projected: vector(),
+      layoutCandidate: {
+        id,
+        majorRank,
+        catalogRank,
+        retained: false,
+        eligible: false,
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+      },
+    },
+  });
+  const workspace = createConstellationLabelWorkspace();
+  const references = {
+    candidates: workspace.candidates,
+    ordered: workspace.ordered,
+    accepted: workspace.accepted,
+    rects: workspace.rects,
+    firstRect: workspace.rects[0],
+    retained: workspace.retained,
+    selected: workspace.selected,
+    options: workspace.options,
+    viewport: workspace.viewport,
+  };
+  const labels = {
+    visible: true,
+    userData: { layoutWorkspace: workspace },
+    children: [
+      sprite("Ori", -0.5, 0, 0),
+      sprite("Men", 0.5, -1, 50),
+    ],
+  };
+  const sky = {
+    userData: { constellationMode: CONSTELLATION_MODES.all },
+    getObjectByName(name) {
+      return name === "constellation-labels" ? labels : null;
+    },
+  };
+  const camera = { fov: 52, near: 0.1, matrixWorldInverse: {} };
+  const viewport = { width: 800, height: 400, topInset: 40, bottomInset: 60 };
+
+  const first = updateConstellationLabels(sky, camera, viewport);
+  assert.strictEqual(first, references.accepted);
+  assert.deepEqual(first, ["Ori", "Men"]);
+  assert.deepEqual([...workspace.retained], ["Men"]);
+  assert.deepEqual([...workspace.selected], ["Ori", "Men"]);
+  const rectCount = workspace.rects.length;
+
+  for (let frame = 1; frame <= 256; frame += 1) {
+    viewShift = frame % 2 === 0 ? 0.012 : -0.012;
+    const current = updateConstellationLabels(sky, camera, viewport);
+    assert.strictEqual(current, first, "the accepted result array is the live reusable buffer");
+    for (const [name, reference] of Object.entries(references)) {
+      if (name === "firstRect") continue;
+      assert.strictEqual(workspace[name], reference, `${name} storage keeps its identity`);
+    }
+    assert.strictEqual(workspace.rects[0], references.firstRect, "rectangle objects are reused");
+    assert.equal(workspace.rects.length, rectCount, "the bounded live layout grows no rectangle pool");
+    assert.deepEqual(current, ["Ori", "Men"], "camera motion preserves deterministic selection");
+  }
+  assert.equal(workspace.rects.length, CONSTELLATION_LAYOUT.maxBudget);
 });
 
 test("faint backdrop stars densify the solar sky without touching the catalog", async () => {

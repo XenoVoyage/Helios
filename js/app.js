@@ -76,6 +76,7 @@ const world = new THREE.Vector3();
 const projected = new THREE.Vector3();
 const focusPoint = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
+const constellationViewport = { width: 0, height: 0, topInset: 64, bottomInset: 72 };
 
 const state = {
   days: 0,
@@ -1012,12 +1013,10 @@ function paintScaleLayer() {
 function updateLabels() {
   camera.updateMatrixWorld(true);
   if (celestial) celestial.updateMatrixWorld(true);
-  updateConstellationLabels(celestial, camera, {
-    width: window.innerWidth,
-    height: window.innerHeight,
-    topInset: 64,
-    bottomInset: dockClearance + 8,
-  });
+  constellationViewport.width = window.innerWidth;
+  constellationViewport.height = window.innerHeight;
+  constellationViewport.bottomInset = dockClearance + 8;
+  updateConstellationLabels(celestial, camera, constellationViewport);
   if (earthSkyLook) {
     for (const node of nodes.values()) node.label.hidden = true;
     return;

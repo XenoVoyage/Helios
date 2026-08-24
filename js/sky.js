@@ -629,7 +629,7 @@ function makeLabelMap(THREE, text, resolution = 1) {
 function createConstellationLabels(THREE, radius) {
   const group = new THREE.Group();
   group.name = "constellation-labels";
-  group.userData.previousAllIds = [];
+  group.userData.layoutWorkspace = createConstellationLabelWorkspace();
   group.userData.layoutKey = "";
   for (let catalogRank = 0; catalogRank < CONSTELLATION_LINES.length; catalogRank += 1) {
     const constellation = CONSTELLATION_LINES[catalogRank];
@@ -690,16 +690,49 @@ function rectanglesOverlap(a, b, gap) {
     && a.bottom > b.top - gap;
 }
 
-/** Pure deterministic label packing used by the All mode and unit tests. */
+function createConstellationLabelRect() {
+  return { left: 0, right: 0, top: 0, bottom: 0 };
+}
+
+/** Reusable CPU-only storage for the per-frame All-label layout. */
+export function createConstellationLabelWorkspace(
+  rectCapacity = CONSTELLATION_LAYOUT.maxBudget,
+) {
+  const rects = [];
+  for (let index = 0; index < rectCapacity; index += 1) {
+    rects.push(createConstellationLabelRect());
+  }
+  return {
+    candidates: [],
+    ordered: [],
+    accepted: [],
+    rects,
+    retained: new Set(),
+    selected: new Set(),
+    options: { width: 0, height: 0, topInset: 64, bottomInset: 72 },
+    viewport: { width: null, height: null, topInset: null, bottomInset: null },
+  };
+}
+
+/**
+ * Pure deterministic label packing used by the All mode and unit tests.
+ * Existing two-argument callers receive independent output. A supplied
+ * workspace reuses its arrays and rectangle pool until the next call.
+ */
 export function selectConstellationLabelIds(candidates, {
   width,
   height,
   topInset = 64,
   bottomInset = 72,
   budget = constellationLabelBudget(width, height, topInset, bottomInset),
-} = {}) {
-  if (!(width > 0) || !(height > 0) || budget <= 0) return [];
-  const ordered = [...candidates].sort((a, b) => {
+} = {}, workspace = null) {
+  const storage = workspace ?? createConstellationLabelWorkspace();
+  const { ordered, accepted, rects } = storage;
+  ordered.length = 0;
+  accepted.length = 0;
+  if (!(width > 0) || !(height > 0) || budget <= 0) return accepted;
+  for (const candidate of candidates) ordered.push(candidate);
+  ordered.sort((a, b) => {
     const aMajor = a.majorRank >= 0;
     const bMajor = b.majorRank >= 0;
     if (aMajor !== bMajor) return aMajor ? -1 : 1;
@@ -708,27 +741,33 @@ export function selectConstellationLabelIds(candidates, {
     if (a.catalogRank !== b.catalogRank) return a.catalogRank - b.catalogRank;
     return String(a.id).localeCompare(String(b.id));
   });
-  const accepted = [];
-  const rects = [];
   for (const candidate of ordered) {
     if (!candidate.eligible || accepted.length >= budget) continue;
     const halfWidth = candidate.width / 2;
     const halfHeight = candidate.height / 2;
     const inset = CONSTELLATION_LAYOUT.edgePadding
       + (candidate.majorRank >= 0 || candidate.retained ? 0 : CONSTELLATION_LAYOUT.enterPadding);
-    const rect = {
-      left: candidate.x - halfWidth,
-      right: candidate.x + halfWidth,
-      top: candidate.y - halfHeight,
-      bottom: candidate.y + halfHeight,
-    };
+    const rectIndex = accepted.length;
+    let rect = rects[rectIndex];
+    if (!rect) {
+      rect = createConstellationLabelRect();
+      rects.push(rect);
+    }
+    rect.left = candidate.x - halfWidth;
+    rect.right = candidate.x + halfWidth;
+    rect.top = candidate.y - halfHeight;
+    rect.bottom = candidate.y + halfHeight;
     if (rect.left < inset || rect.right > width - inset) continue;
     if (rect.top < topInset + inset || rect.bottom > height - bottomInset - inset) continue;
-    if (rects.some((other) => rectanglesOverlap(rect, other, CONSTELLATION_LAYOUT.collisionGap))) {
-      continue;
+    let overlaps = false;
+    for (let index = 0; index < rectIndex; index += 1) {
+      if (rectanglesOverlap(rect, rects[index], CONSTELLATION_LAYOUT.collisionGap)) {
+        overlaps = true;
+        break;
+      }
     }
+    if (overlaps) continue;
     accepted.push(candidate.id);
-    rects.push(rect);
   }
   return accepted;
 }
@@ -747,7 +786,8 @@ export function setConstellationMode(sky, mode, available = true) {
   const layoutKey = `${normalized}:${canRender}`;
   if (labels.userData.layoutKey === layoutKey) return;
   labels.userData.layoutKey = layoutKey;
-  labels.userData.previousAllIds = [];
+  labels.userData.layoutWorkspace?.retained.clear();
+  labels.userData.layoutWorkspace?.selected.clear();
   for (const sprite of labels.children) {
     sprite.visible = figuresVisible
       && normalized === CONSTELLATION_MODES.major
@@ -771,14 +811,21 @@ export function updateConstellationLabels(sky, camera, {
   if (!labels?.visible || !camera) return [];
   const mode = normalizeConstellationMode(sky.userData.constellationMode);
   if (mode !== CONSTELLATION_MODES.all) return [];
-  const viewportKey = `${width}x${height}:${topInset}:${bottomInset}`;
-  if (labels.userData.viewportKey !== viewportKey) {
-    labels.userData.viewportKey = viewportKey;
-    labels.userData.previousAllIds = [];
+  const workspace = labels.userData.layoutWorkspace;
+  const { viewport, retained, selected, options } = workspace;
+  if (viewport.width !== width
+    || viewport.height !== height
+    || viewport.topInset !== topInset
+    || viewport.bottomInset !== bottomInset) {
+    viewport.width = width;
+    viewport.height = height;
+    viewport.topInset = topInset;
+    viewport.bottomInset = bottomInset;
+    retained.clear();
   }
-  const retained = new Set(labels.userData.previousAllIds);
   const fov = camera.fov * DEG;
-  const candidates = [];
+  const candidates = workspace.candidates;
+  candidates.length = 0;
   for (const sprite of labels.children) {
     const data = sprite.userData;
     const candidate = data.layoutCandidate;
@@ -799,19 +846,20 @@ export function updateConstellationLabels(sky, camera, {
     candidate.height = sprite.scale.y * pixelsPerWorld * 0.58;
     candidates.push(candidate);
   }
-  const selectedIds = selectConstellationLabelIds(candidates, {
-    width,
-    height,
-    topInset,
-    bottomInset,
-  });
-  const selected = new Set(selectedIds);
+  options.width = width;
+  options.height = height;
+  options.topInset = topInset;
+  options.bottomInset = bottomInset;
+  const selectedIds = selectConstellationLabelIds(candidates, options, workspace);
+  selected.clear();
+  for (const id of selectedIds) selected.add(id);
   for (const sprite of labels.children) {
     sprite.visible = selected.has(sprite.userData.constellationId);
   }
-  labels.userData.previousAllIds = selectedIds.filter((id) => (
-    !MAJOR_CONSTELLATIONS.includes(id)
-  ));
+  retained.clear();
+  for (const id of selectedIds) {
+    if (!MAJOR_CONSTELLATIONS.includes(id)) retained.add(id);
+  }
   return selectedIds;
 }
 

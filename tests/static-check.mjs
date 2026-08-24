@@ -209,6 +209,7 @@ assert.match(sky, /CONSTELLATION_MODES/);
 assert.match(sky, /CONSTELLATION_LABEL_FALLBACK_HIPS/);
 assert.match(sky, /selectConstellationLabelIds/);
 assert.match(sky, /updateConstellationLabels/);
+assert.match(sky, /createConstellationLabelWorkspace/);
 const constellationUpdater = sky.slice(
   sky.indexOf("export function updateConstellationLabels"),
   sky.indexOf("export function setSkyBandBrightness"),
@@ -217,6 +218,25 @@ assert.doesNotMatch(
   constellationUpdater,
   /createElement\("canvas"\)|new THREE\.(CanvasTexture|SpriteMaterial|Sprite)/,
   "the per-frame All-label updater allocates no render resources",
+);
+assert.doesNotMatch(
+  constellationUpdater,
+  /new Set\(|const candidates = \[\]|\.filter\(/,
+  "the live All-label updater reuses CPU working storage instead of replacing it",
+);
+for (const buffer of ["candidates", "retained", "selected"]) {
+  assert.match(
+    constellationUpdater,
+    new RegExp(`${buffer}\\.(?:length = 0|clear\\(\\))`),
+    `${buffer} working storage is cleared in place`,
+  );
+}
+assert.match(app, /const constellationViewport = \{[^}]+\}/);
+assert.match(app, /updateConstellationLabels\(celestial, camera, constellationViewport\)/);
+assert.doesNotMatch(
+  app.slice(app.indexOf("function updateLabels"), app.indexOf("function animate")),
+  /updateConstellationLabels\([^;]+\{\s*width:/,
+  "the animation hot path reuses its viewport options object",
 );
 assert.match(sky, /toneMapped:\s*false/);
 assert.match(css, /\.labels[\s\S]*z-index:\s*1/);
