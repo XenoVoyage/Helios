@@ -797,9 +797,9 @@ async function dragCamera(page, deltaX, deltaY) {
 async function auditFarSkyDirections(context) {
   const page = await context.newPage();
   const errors = captureErrors(page);
-  // Virgo keeps the spherical far-density layer fully opaque while shrinking
-  // the named Local Group sprites enough that the two off-center audit tiles
-  // measure the backdrop instead of a rotated Magellanic Cloud foreground.
+  // Virgo keeps the spherical far-density layer fully opaque. Per-view floors
+  // and side tiles exercise the rendered backdrop, while the pure spherical-
+  // cap unit test isolates its angular distribution from named foregrounds.
   await openReady(page, "?look=virgo");
   if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
     await page.locator("#play-button").click();
@@ -863,14 +863,9 @@ async function auditFarSkyDirections(context) {
   const directionMetrics = [forward, quarterYaw, yaw, high, low, diagonal]
     .map((frame) => frame.metrics);
   const means = directionMetrics.map((metrics) => metrics.meanLuminance);
-  const coverages = directionMetrics.map((metrics) => metrics.brightCoverage);
   assert.ok(
     Math.max(...means) / Math.min(...means) < 2.5,
     "equal-angle far-sky views have no cube-corner density spike",
-  );
-  assert.ok(
-    Math.max(...coverages) / Math.min(...coverages) < 3,
-    "far-sky point coverage stays distributed across spherical directions",
   );
   assert.ok(
     directionMetrics.every((metrics) => metrics.darkCoverage > 0.7),

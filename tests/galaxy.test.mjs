@@ -1012,6 +1012,43 @@ test("far-galaxy backdrop is deterministic spherical density without cube faces"
     octants[octant] += 1;
   }
   assert.ok(octants.every((count) => count > FAR_GALAXY_SKY_MODEL.count * 0.06));
+
+  // Sample viewport-sized spherical caps directly from the generated layer.
+  // This isolates the backdrop from named foreground galaxies in browser
+  // frames while guarding against face, pole, or oversized angular voids.
+  const capCounts = [];
+  const capDotFloor = Math.cos((25 * Math.PI) / 180);
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  for (let sample = 0; sample < 256; sample += 1) {
+    const y = 1 - 2 * ((sample + 0.5) / 256);
+    const radial = Math.sqrt(Math.max(0, 1 - y * y));
+    const angle = sample * goldenAngle;
+    const direction = {
+      x: Math.cos(angle) * radial,
+      y,
+      z: Math.sin(angle) * radial,
+    };
+    let count = 0;
+    for (let i = 0; i < first.positions.length; i += 3) {
+      const length = Math.hypot(
+        first.positions[i],
+        first.positions[i + 1],
+        first.positions[i + 2],
+      );
+      const alignment = (
+        first.positions[i] * direction.x
+        + first.positions[i + 1] * direction.y
+        + first.positions[i + 2] * direction.z
+      ) / length;
+      if (alignment >= capDotFloor) count += 1;
+    }
+    capCounts.push(count);
+  }
+  assert.ok(Math.min(...capCounts) > 0, "every viewport-sized spherical cap contains density");
+  assert.ok(
+    Math.max(...capCounts) / Math.min(...capCounts) < 3,
+    "far-galaxy density stays distributed across equal-solid-angle views",
+  );
   const source = await readFile(path.join(root, "js/galaxy.js"), "utf8");
   assert.doesNotMatch(source, /CubeTexture|samplerCube|textureCube|paintFarGalaxySkyFace/);
   assert.match(source, /far-galaxy-density/);
