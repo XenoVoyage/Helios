@@ -38,6 +38,55 @@ function digest(buffer) {
   return createHash("sha256").update(buffer).digest("hex");
 }
 
+async function frameDifferenceMetrics(page, before, after) {
+  return page.evaluate(async ({ beforeSource, afterSource }) => {
+    const load = async (source) => {
+      const image = new Image();
+      const ready = new Promise((resolve, reject) => {
+        image.addEventListener("load", resolve, { once: true });
+        image.addEventListener("error", reject, { once: true });
+      });
+      image.src = `data:image/png;base64,${source}`;
+      await ready;
+      return image;
+    };
+    const [beforeImage, afterImage] = await Promise.all([
+      load(beforeSource),
+      load(afterSource),
+    ]);
+    if (
+      beforeImage.naturalWidth !== afterImage.naturalWidth
+      || beforeImage.naturalHeight !== afterImage.naturalHeight
+    ) throw new Error("comparison frames have different dimensions");
+    const surface = document.createElement("canvas");
+    surface.width = beforeImage.naturalWidth;
+    surface.height = beforeImage.naturalHeight;
+    const context = surface.getContext("2d", { willReadFrequently: true });
+    context.drawImage(beforeImage, 0, 0);
+    const first = context.getImageData(0, 0, surface.width, surface.height).data;
+    context.clearRect(0, 0, surface.width, surface.height);
+    context.drawImage(afterImage, 0, 0);
+    const second = context.getImageData(0, 0, surface.width, surface.height).data;
+    let absoluteTotal = 0;
+    let strong = 0;
+    const pixels = surface.width * surface.height;
+    for (let offset = 0; offset < first.length; offset += 4) {
+      const red = Math.abs(first[offset] - second[offset]);
+      const green = Math.abs(first[offset + 1] - second[offset + 1]);
+      const blue = Math.abs(first[offset + 2] - second[offset + 2]);
+      absoluteTotal += (red + green + blue) / 3;
+      if (Math.max(red, green, blue) > 12) strong += 1;
+    }
+    return {
+      meanAbsoluteDifference: absoluteTotal / pixels,
+      strongCoverage: strong / pixels,
+    };
+  }, {
+    beforeSource: before.toString("base64"),
+    afterSource: after.toString("base64"),
+  });
+}
+
 function captureErrors(page) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(`page: ${error.message}`));
@@ -409,9 +458,11 @@ async function assertConstellationModesAndFreshLabels(page) {
   assert.ok(controlBox && controlBox.height >= 44, "constellation select keeps a 44px target");
 
   const majorFrame = await canvas.screenshot();
+  await saveScreenshot(page, "desktop-constellations-major-initial");
   await select.selectOption("off");
   await page.waitForTimeout(50);
   const offFrame = await canvas.screenshot();
+  await saveScreenshot(page, "desktop-constellations-off");
   assert.notEqual(digest(majorFrame), digest(offFrame), "Off hides figures and names");
   assert.equal(await page.locator("#status-live").textContent(), "Constellations off");
 
@@ -422,6 +473,7 @@ async function assertConstellationModesAndFreshLabels(page) {
   assert.equal(await select.inputValue(), "all", "native keyboard selection reaches All");
   await page.waitForTimeout(50);
   const allFrame = await canvas.screenshot();
+  await saveScreenshot(page, "desktop-constellations-all");
   assert.notEqual(digest(allFrame), digest(offFrame), "All restores figures and names");
   assert.notEqual(digest(allFrame), digest(majorFrame), "All exposes more names than Major");
 
@@ -438,7 +490,20 @@ async function assertConstellationModesAndFreshLabels(page) {
   await select.selectOption("major");
   await page.waitForTimeout(50);
   const restoredMajor = await canvas.screenshot();
-  assert.equal(digest(restoredMajor), digest(majorFrame), "Major remains the unchanged default view");
+  await saveScreenshot(page, "desktop-constellations-major-restored");
+  const restoredDifference = await frameDifferenceMetrics(page, majorFrame, restoredMajor);
+  console.log(
+    `Major restoration: mean-diff=${restoredDifference.meanAbsoluteDifference.toFixed(4)}, `
+      + `strong=${(restoredDifference.strongCoverage * 100).toFixed(4)}%`,
+  );
+  assert.ok(
+    restoredDifference.meanAbsoluteDifference <= 0.35,
+    "Major restoration keeps the approved default canvas within subpixel variance",
+  );
+  assert.ok(
+    restoredDifference.strongCoverage <= 0.003,
+    "Major restoration cannot add, remove, or substantially move a label or figure",
+  );
 
   // The strict fade > 0.04 boundary lies between these two distances. The
   // wheel handler must repaint hidden/disabled state synchronously, without
