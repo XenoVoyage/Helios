@@ -87,6 +87,21 @@ async function frameDifferenceMetrics(page, before, after) {
   });
 }
 
+async function stableCanvasFrame(page, canvas) {
+  let before = await canvas.screenshot();
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    await page.waitForTimeout(100);
+    const after = await canvas.screenshot();
+    const difference = await frameDifferenceMetrics(page, before, after);
+    if (
+      difference.meanAbsoluteDifference <= 0.08
+      && difference.strongCoverage <= 0.0005
+    ) return after;
+    before = after;
+  }
+  throw new Error("rendered canvas did not settle before visual comparison");
+}
+
 function captureErrors(page) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(`page: ${error.message}`));
@@ -457,7 +472,8 @@ async function assertConstellationModesAndFreshLabels(page) {
   const controlBox = await select.boundingBox();
   assert.ok(controlBox && controlBox.height >= 44, "constellation select keeps a 44px target");
 
-  const majorFrame = await canvas.screenshot();
+  await page.evaluate(() => document.activeElement?.blur());
+  const majorFrame = await stableCanvasFrame(page, canvas);
   await saveScreenshot(page, "desktop-constellations-major-initial");
   await select.selectOption("off");
   await page.waitForTimeout(50);
@@ -489,7 +505,8 @@ async function assertConstellationModesAndFreshLabels(page) {
 
   await select.selectOption("major");
   await page.waitForTimeout(50);
-  const restoredMajor = await canvas.screenshot();
+  await page.evaluate(() => document.activeElement?.blur());
+  const restoredMajor = await stableCanvasFrame(page, canvas);
   await saveScreenshot(page, "desktop-constellations-major-restored");
   const restoredDifference = await frameDifferenceMetrics(page, majorFrame, restoredMajor);
   console.log(
