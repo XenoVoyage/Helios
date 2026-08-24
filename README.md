@@ -17,11 +17,11 @@ An interactive 3D orrery of the solar system.
 
 ![Milky Way after extra zoom-out: already inside the bright Orion-arm trail at the Sun, not a distant plate.](docs/assets/helios-milky-way.webp)
 
-![Same tail, with the unlit galaxy-image sky already starting behind the arm.](docs/assets/helios-tail-sky.webp)
+![Same tail, with an unlit unresolved distant-density sky already starting behind the arm.](docs/assets/helios-tail-sky.webp)
 
-![Leaving the tail: the Milky Way disk growing on a distant galaxy-image sky. Catalog neighbors only; no invented nearby galaxies.](docs/assets/helios-growing.webp)
+![Leaving the tail: the Milky Way disk growing on a spherical distant-density sky. Catalog neighbors only; no invented nearby galaxies.](docs/assets/helios-growing.webp)
 
-![Full Milky Way disk with catalog neighbors against the distant galaxy-image sky.](docs/assets/helios-disk.webp)
+![Full Milky Way disk with catalog neighbors against the spherical distant-density sky.](docs/assets/helios-disk.webp)
 
 ![Nearby galaxies: Andromeda, Triangulum, and the Magellanic Clouds beside the disk.](docs/assets/helios-neighborhood.webp)
 
@@ -35,7 +35,7 @@ An interactive 3D orrery of the solar system.
 
 ![Schematic outside-camera view: a translucent illustrative CMB shell around a bounded, explicitly non-survey outer density.](docs/assets/helios-universe.webp)
 
-Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch-out zooms in; pinch-in zooms out. Play, pause, and change the speed of time from the bar at the bottom. Close the body card with the X or by tapping empty space. Zoom out past the solar overview and the orrery shrinks to a Sun among the stars. The Hipparcos sky, IAU figures, and Gaia band stay at constant brightness through the solar cap, so the first extra-zoom frame is already inside the Milky Way tail. The moment the camera leaves that tail, that solar sky and the Constellations control go off. Extra-zoom sky from the tail through Virgo is a camera-centered spherical galaxy-image field sampled from a six-face cubemap, without equirectangular pole distortion. The full disk, neighborhood, Local Group, and Virgo are catalog neighbors against that field, not a scatter of invented nearby galaxies. After Virgo, seven measured group anchors lead into 42,927 public 2MRS galaxy directions with approximate redshift distances; there are no invented web connections. Beyond the survey's 300 Mpc display cap, a small first-party density illustration provides continuity to the Planck-style CMB shell. That shell is deliberately drawn at the particle-horizon display radius. Leaving it is only an outside-camera/scale metaphor, not a physically possible observer. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
+Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch-out zooms in; pinch-in zooms out. Play, pause, and change the speed of time from the bar at the bottom. Close the body card with the X or by tapping empty space. Zoom out past the solar overview and the orrery shrinks to a Sun among the stars. The Hipparcos sky, IAU figures, and Gaia band stay at constant brightness through the solar cap, so the first extra-zoom frame is already inside the Milky Way tail. The moment the camera leaves that tail, that solar sky and the Constellations control go off. The control offers Off, Major (the ten familiar default names), and All; All packs eligible names inside the viewport with a responsive collision budget. Extra-zoom sky from the tail through Virgo is a camera-centered spherical point-density illustration with unresolved bright concentrations and dark gaps. It has no cube faces, named generated objects, or claimed survey coordinates. The full disk, neighborhood, Local Group, and Virgo are catalog neighbors against that field, not a scatter of invented nearby galaxies. After Virgo, seven measured group anchors lead into 42,927 public 2MRS galaxy directions with approximate redshift distances; there are no invented web connections. Beyond the survey's 300 Mpc display cap, a small first-party density illustration provides continuity to the Planck-style CMB shell. That shell is deliberately drawn at the particle-horizon display radius. Leaving it is only an outside-camera/scale metaphor, not a physically possible observer. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
 
 Helios is a local page: no accounts, no telemetry, and no CDN.
 
@@ -44,7 +44,7 @@ Helios is a local page: no accounts, no telemetry, and no CDN.
 | Detail | Summary |
 | --- | --- |
 | Worlds | Sun, 8 planets, the Moon, Phobos, Deimos, Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, and Ceres |
-| Sky | Hipparcos bright stars, an 88-constellation figure catalog, a Milky Way band, and Andromeda at M31 inside the solar system. Ten familiar constellation names are labeled deliberately so tags do not crowd planet controls. That sky remains constant through the solar cap and into the Milky Way tail, then turns off. After the tail a distant galaxy-image field stays up through Virgo behind catalog neighbors. Beyond Virgo, measured 2MRS galaxy points yield to an explicitly illustrative outer density and CMB shell. |
+| Sky | Hipparcos bright stars, an 88-constellation figure catalog, a Milky Way band, and Andromeda at M31 inside the solar system. Major mode preserves the ten familiar default names; All makes all 88 names eligible and applies viewport, collision, and responsive-budget filtering. That sky remains constant through the solar cap and into the Milky Way tail, then turns off. After the tail a seamless spherical distant-density illustration stays up through Virgo behind catalog neighbors. Beyond Virgo, measured 2MRS galaxy points yield to an explicitly illustrative outer density and CMB shell. |
 | Belts | Asteroid field between Mars and Jupiter; nominal Kuiper field from about 30–50 AU. Sparse points, not rock catalogs; Pluto's eccentric visual path crosses the field's drawn edges |
 | Time | Independent of visual scale. Default/minimum: 1 simulated hour per real second. Background time catches up on return; JavaScript's last valid date is the hard stop |
 | Play with | Mouse, keyboard, or touch |
@@ -74,7 +74,7 @@ The first two commands install the pinned test dependency and browser for a clea
 | Close card | Click empty space or X | Tap empty space or X |
 | Play / pause | Space or Pause | Pause |
 | Speed | `+` / `-` or the slider | − / + or the slider |
-| Constellations | Constellations toggle | Constellations toggle |
+| Constellations | Choose Off, Major, or All | Choose Off, Major, or All |
 | Overview | Escape or Reset view | Reset view / Overview |
 
 ## Credits

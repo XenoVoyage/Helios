@@ -22,13 +22,16 @@ import {
 } from "./bodies.js";
 import {
   attachSkyToCamera,
+  CONSTELLATION_MODES,
   createCelestialSphere,
   equatorialVectorToScene,
+  normalizeConstellationMode,
   placeCameraForSkyLook,
   setCelestialFade,
-  setConstellationsVisible,
+  setConstellationMode,
   setSkyBandBrightness,
   setStarBrightness,
+  updateConstellationLabels,
   wantsEarthSkyLook,
 } from "./sky.js";
 import {
@@ -39,6 +42,7 @@ import {
 import {
   attachFarGalaxySky,
   celestialSkyOpacity,
+  constellationsAvailable,
   createGalaxyLayer,
   galaxyOpacity,
   localGroupCameraAim,
@@ -56,7 +60,7 @@ import {
   scaleLayer,
   setGalaxyLayerVisible,
   skyBandBrightness,
-  skyStaysOn,
+  solarSystemHandoffSceneOffset,
   solarDebrisOpacity,
   solarOpacity,
   universeCameraAim,
@@ -79,7 +83,7 @@ const state = {
   daysPerSecond: CONFIG.defaultDaysPerSecond,
   focusedId: "sun",
   selectedId: null,
-  showConstellations: true,
+  constellationMode: CONSTELLATION_MODES.major,
   showOrbitHelper: false,
   showAxisHelper: false,
   showSpinHelper: false,
@@ -104,6 +108,7 @@ let orbitLines;
 let galaxy;
 let helpers;
 let dockObserver;
+let dockClearance = 72;
 let lastStamp = 0;
 let lastClockLabel = "";
 const earthSkyLook = wantsEarthSkyLook();
@@ -142,7 +147,8 @@ function boot() {
   ui.cardKind = $("card-kind");
   ui.cardMeta = $("card-meta");
   ui.cardClose = $("card-close");
-  ui.sky = $("sky-button");
+  ui.skyControl = $("sky-control");
+  ui.sky = $("sky-mode");
   ui.helperOrbit = $("helper-orbit");
   ui.helperAxis = $("helper-axis");
   ui.helperSpin = $("helper-spin");
@@ -156,7 +162,7 @@ function boot() {
   const galaxyLook = earthSkyLook ? null : requestedGalaxyLook();
   paintSpeed();
   paintClock();
-  paintSkyButton();
+  paintSkyControl();
   paintCard();
 
   try {
@@ -541,7 +547,7 @@ function bindInput() {
   });
   ui.reset.addEventListener("click", resetView);
   ui.cardClose.addEventListener("click", clearSelection);
-  ui.sky.addEventListener("click", toggleConstellations);
+  ui.sky.addEventListener("change", changeConstellationMode);
   ui.helperOrbit.addEventListener("click", () => toggleHelper("showOrbitHelper"));
   ui.helperAxis.addEventListener("click", () => toggleHelper("showAxisHelper"));
   ui.helperSpin.addEventListener("click", () => toggleHelper("showSpinHelper"));
@@ -647,6 +653,7 @@ function zoomTo(distance) {
     paintCard();
   }
   state.distance = next;
+  paintConstellations();
 }
 
 function canvasFocus() {
@@ -680,6 +687,7 @@ function selectBody(id) {
   state.selectedId = id;
   const ideal = Math.max(node.radius * 7.5, 5.5);
   state.distance = clamp(ideal, CONFIG.minDistance, CONFIG.maxDistance);
+  paintConstellations();
   bindSelectionHelpers();
   paintCard();
   say(`Focused ${node.body.name}`);
@@ -699,14 +707,18 @@ function resetView() {
   state.elevation = CONFIG.cameraElevation;
   state.distance = CONFIG.cameraDistance;
   paintCard();
+  paintConstellations();
   say("Returned to the overview");
 }
 
-function toggleConstellations() {
-  if (!skyStaysOn(state.distance)) return;
-  state.showConstellations = !state.showConstellations;
+function changeConstellationMode() {
+  if (!constellationsAvailable(state.distance)) {
+    paintConstellations();
+    return;
+  }
+  state.constellationMode = normalizeConstellationMode(ui.sky.value);
   paintConstellations();
-  say(state.showConstellations ? "Constellations on" : "Constellations off");
+  say(`Constellations ${state.constellationMode}`);
 }
 
 function toggleHelper(key) {
@@ -769,17 +781,21 @@ function paintClock() {
   ui.clock.textContent = label;
 }
 
-function paintSkyButton() {
-  const inSolar = skyStaysOn(state.distance);
-  ui.sky.textContent = "Constellations";
-  ui.sky.hidden = !inSolar;
-  ui.sky.setAttribute("aria-pressed", String(state.showConstellations));
+function paintSkyControl() {
+  const available = constellationsAvailable(state.distance);
+  if (!available && document.activeElement === ui.sky) canvasFocus();
+  ui.skyControl.hidden = !available;
+  ui.sky.disabled = !available;
+  ui.sky.value = state.constellationMode;
 }
 
 function paintConstellations() {
-  const inSolar = skyStaysOn(state.distance);
-  paintSkyButton();
-  if (celestial) setConstellationsVisible(celestial, inSolar && state.showConstellations);
+  const available = constellationsAvailable(state.distance);
+  paintSkyControl();
+  if (celestial) {
+    celestial.userData.constellationMode = state.constellationMode;
+    setConstellationMode(celestial, state.constellationMode, available);
+  }
 }
 
 function paintHelperButtons() {
@@ -840,6 +856,7 @@ function resize() {
 function paintDockClearance() {
   const height = Math.ceil(ui.dock.getBoundingClientRect().height);
   if (height > 0) {
+    dockClearance = height;
     document.documentElement.style.setProperty("--dock-clearance", `${height}px`);
   }
 }
@@ -950,7 +967,14 @@ function paintScaleLayer() {
   if (galactic > 0) ensureGalaxyLayer();
   const shrink = orreryScale(state.distance);
   const sun = nodes.get("sun");
-  if (sun) sun.pivot.scale.setScalar(shrink);
+  if (sun) {
+    sun.pivot.scale.setScalar(shrink);
+    const handoff = solarSystemHandoffSceneOffset(state.distance);
+    sun.pivot.position.set(handoff.x, handoff.y, handoff.z);
+    asteroidBelt.position.set(handoff.x, handoff.y, handoff.z);
+    kuiperBelt.position.set(handoff.x, handoff.y, handoff.z);
+    orbitLines.position.set(handoff.x, handoff.y, handoff.z);
+  }
   asteroidBelt.scale.setScalar(shrink);
   kuiperBelt.scale.setScalar(shrink);
   orbitLines.scale.setScalar(shrink);
@@ -986,6 +1010,14 @@ function paintScaleLayer() {
 }
 
 function updateLabels() {
+  camera.updateMatrixWorld(true);
+  if (celestial) celestial.updateMatrixWorld(true);
+  updateConstellationLabels(celestial, camera, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    topInset: 64,
+    bottomInset: dockClearance + 8,
+  });
   if (earthSkyLook) {
     for (const node of nodes.values()) node.label.hidden = true;
     return;

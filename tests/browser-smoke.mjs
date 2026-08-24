@@ -375,6 +375,179 @@ async function zoomBetweenAuditDistances(page, from, to) {
   await page.waitForTimeout(350);
 }
 
+async function dispatchWheelZoom(page, from, to) {
+  const deltaY = Math.log(to / from) / 0.0016;
+  await page.locator("#viewport").evaluate((canvas, delta) => {
+    canvas.dispatchEvent(new WheelEvent("wheel", {
+      deltaY: delta,
+      bubbles: true,
+      cancelable: true,
+    }));
+  }, deltaY);
+}
+
+async function assertConstellationModesAndFreshLabels(page) {
+  const select = page.locator("#sky-mode");
+  const control = page.locator("#sky-control");
+  const canvas = page.locator("#viewport");
+  await page.locator("#reset-button").click();
+  if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
+    await page.locator("#play-button").click();
+  }
+  // The preceding 20-body focus sweep leaves the camera easing from Ceres
+  // back to the Sun. Let that intentional interpolation finish before using
+  // byte-identical screenshots to lock the unchanged Major baseline.
+  await page.waitForTimeout(2_500);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
+    requestAnimationFrame(resolve);
+  })));
+  await control.waitFor();
+  assert.equal(await select.inputValue(), "major");
+  assert.equal(await select.isEnabled(), true);
+  assert.equal(await select.getAttribute("aria-pressed"), null);
+  const controlBox = await select.boundingBox();
+  assert.ok(controlBox && controlBox.height >= 44, "constellation select keeps a 44px target");
+
+  const majorFrame = await canvas.screenshot();
+  await select.selectOption("off");
+  await page.waitForTimeout(50);
+  const offFrame = await canvas.screenshot();
+  assert.notEqual(digest(majorFrame), digest(offFrame), "Off hides figures and names");
+  assert.equal(await page.locator("#status-live").textContent(), "Constellations off");
+
+  await select.focus();
+  await select.press("ArrowDown");
+  assert.equal(await select.inputValue(), "major", "native keyboard selection reaches Major");
+  await select.press("End");
+  assert.equal(await select.inputValue(), "all", "native keyboard selection reaches All");
+  await page.waitForTimeout(50);
+  const allFrame = await canvas.screenshot();
+  assert.notEqual(digest(allFrame), digest(offFrame), "All restores figures and names");
+  assert.notEqual(digest(allFrame), digest(majorFrame), "All exposes more names than Major");
+
+  const statusBeforeEscape = await page.locator("#status-live").textContent();
+  await select.focus();
+  await select.press("Escape");
+  assert.equal(await select.inputValue(), "all", "Escape preserves the native selection");
+  assert.equal(
+    await page.locator("#status-live").textContent(),
+    statusBeforeEscape,
+    "Escape on the select does not invoke the global overview shortcut",
+  );
+
+  await select.selectOption("major");
+  await page.waitForTimeout(50);
+  const restoredMajor = await canvas.screenshot();
+  assert.equal(digest(restoredMajor), digest(majorFrame), "Major remains the unchanged default view");
+
+  // The strict fade > 0.04 boundary lies between these two distances. The
+  // wheel handler must repaint hidden/disabled state synchronously, without
+  // waiting for the next animation frame.
+  await dispatchWheelZoom(page, CONFIG.cameraDistance, 2766);
+  assert.equal(await control.isHidden(), false);
+  assert.equal(await select.isEnabled(), true);
+  await select.selectOption("all");
+  await select.focus();
+  await dispatchWheelZoom(page, 2766, 2767);
+  const unavailable = await page.evaluate(() => ({
+    hidden: document.querySelector("#sky-control").hidden,
+    disabled: document.querySelector("#sky-mode").disabled,
+    value: document.querySelector("#sky-mode").value,
+    active: document.activeElement?.id,
+  }));
+  assert.deepEqual(unavailable, {
+    hidden: true,
+    disabled: true,
+    value: "all",
+    active: "viewport",
+  });
+  await dispatchWheelZoom(page, 2767, 2750);
+  assert.equal(await control.isHidden(), false);
+  assert.equal(await select.isEnabled(), true);
+  assert.equal(await select.inputValue(), "all", "All preference returns after re-entry");
+  await dispatchWheelZoom(page, 2750, CONFIG.handoffViewDistance);
+  await page.locator("#reset-button").click();
+  assert.equal(await select.inputValue(), "all", "Reset preserves the chosen mode");
+  await select.selectOption("major");
+
+  // A single wheel jump changes camera radius before one RAF. Both label
+  // samples must already use that fresh matrix; the former bug moved only on
+  // the second frame because projection lagged renderer.render().
+  await page.waitForTimeout(600);
+  const labelMotion = await page.evaluate((deltaY) => new Promise((resolve) => {
+    const canvasElement = document.querySelector("#viewport");
+    const label = [...document.querySelectorAll('.sky-label:not([hidden])')]
+      .find((item) => item.dataset.bodyId !== "sun");
+    if (!label) {
+      resolve(null);
+      return;
+    }
+    canvasElement.dispatchEvent(new WheelEvent("wheel", {
+      deltaY,
+      bubbles: true,
+      cancelable: true,
+    }));
+    requestAnimationFrame(() => {
+      const first = label.getBoundingClientRect();
+      requestAnimationFrame(() => {
+        const second = label.getBoundingClientRect();
+        resolve({
+          id: label.dataset.bodyId,
+          first: { x: first.x, y: first.y },
+          second: { x: second.x, y: second.y },
+          visible: !label.hidden,
+          firstSize: { width: first.width, height: first.height },
+          secondSize: { width: second.width, height: second.height },
+        });
+      });
+    });
+  }), Math.log(1400 / CONFIG.cameraDistance) / 0.0016);
+  assert.ok(labelMotion, "a non-Sun body label is visible for the lag regression");
+  assert.equal(labelMotion.visible, true, `${labelMotion.id} remains visible after the wheel jump`);
+  assert.ok(
+    labelMotion.firstSize.width > 0 && labelMotion.firstSize.height > 0
+      && labelMotion.secondSize.width > 0 && labelMotion.secondSize.height > 0,
+    `${labelMotion.id} has real rendered boxes in both sampled frames`,
+  );
+  assert.ok(
+    Math.hypot(
+      labelMotion.second.x - labelMotion.first.x,
+      labelMotion.second.y - labelMotion.first.y,
+    ) <= 0.25,
+    `${labelMotion.id} label uses the new camera matrix on the first frame`,
+  );
+  await page.locator("#reset-button").click();
+}
+
+async function auditSolarHandoff(context) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page);
+  if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
+    await page.locator("#play-button").click();
+  }
+  const blendStart = CONFIG.solarMaxDistance
+    + (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance) * 0.7;
+  const stops = [
+    { name: "desktop-solar-handoff-start", distance: blendStart },
+    {
+      name: "desktop-solar-handoff-mid",
+      distance: blendStart + (CONFIG.handoffViewDistance - blendStart) * 0.5,
+    },
+    { name: "desktop-solar-handoff-end", distance: CONFIG.handoffViewDistance - 10 },
+  ];
+  let distance = CONFIG.cameraDistance;
+  for (const stop of stops) {
+    await zoomBetweenAuditDistances(page, distance, stop.distance);
+    distance = stop.distance;
+    await assertRenderedCanvas(page);
+    await assertBodyLabelsHidden(page);
+    await saveScreenshot(page, stop.name);
+  }
+  assert.deepEqual(errors, [], "Solar-to-Milky-Way handoff has no browser errors");
+  await page.close();
+}
+
 async function auditScaleTransitions(context) {
   const page = await context.newPage();
   const errors = captureErrors(page);
@@ -601,7 +774,23 @@ async function auditFarSkyDirections(context) {
     FAR_SKY_MEAN_LUMINANCE_FLOOR,
     FAR_SKY_BRIGHT_COVERAGE_FLOOR,
   );
-  assert.notEqual(digest(low.png), digest(diagonal.png), "far sky changes toward a cube corner");
+  assert.notEqual(digest(low.png), digest(diagonal.png), "far sky changes toward a spherical diagonal");
+  const directionMetrics = [forward, quarterYaw, yaw, high, low, diagonal]
+    .map((frame) => frame.metrics);
+  const means = directionMetrics.map((metrics) => metrics.meanLuminance);
+  const coverages = directionMetrics.map((metrics) => metrics.brightCoverage);
+  assert.ok(
+    Math.max(...means) / Math.min(...means) < 2.5,
+    "equal-angle far-sky views have no cube-corner density spike",
+  );
+  assert.ok(
+    Math.max(...coverages) / Math.min(...coverages) < 3,
+    "far-sky point coverage stays distributed across spherical directions",
+  );
+  assert.ok(
+    directionMetrics.every((metrics) => metrics.darkCoverage > 0.7),
+    "the distant density preserves dark voids in every audited direction",
+  );
   assert.deepEqual(errors, [], "far-sky yaw and pitch audit has no browser errors");
   await page.close();
 }
@@ -695,7 +884,7 @@ async function assertZoomStress(page) {
   await page.locator("#status-live").filter({ hasText: "2MRS galaxy distribution" }).waitFor();
   await assertBodyLabelsHidden(page);
   await wheelFourSteps(-1_000);
-  await page.locator("#sky-button:not([hidden])").waitFor();
+  await page.locator("#sky-control:not([hidden])").waitFor();
 
   for (let cycle = 0; cycle < 3; cycle += 1) {
     await page.locator("#reset-button").click();
@@ -705,7 +894,7 @@ async function assertZoomStress(page) {
     try {
       await page.waitForFunction(
         () => document.documentElement.dataset.galaxyReady === "1"
-          && document.querySelector("#sky-button").hidden
+          && document.querySelector("#sky-control").hidden
           && [...document.querySelectorAll(".sky-label")].every((label) => label.hidden),
         null,
         { timeout: 5_000 },
@@ -713,7 +902,7 @@ async function assertZoomStress(page) {
     } catch (error) {
       const state = await page.evaluate(() => ({
         galaxyReady: document.documentElement.dataset.galaxyReady,
-        skyHidden: document.querySelector("#sky-button").hidden,
+        skyHidden: document.querySelector("#sky-control").hidden,
         labelCount: document.querySelectorAll(".sky-label").length,
         visibleLabels: [...document.querySelectorAll(".sky-label")]
           .filter((label) => !label.hidden).map((label) => label.textContent),
@@ -723,7 +912,7 @@ async function assertZoomStress(page) {
     }
     await assertBodyLabelsHidden(page);
     await wheelFourSteps(-1_000);
-    await page.locator("#sky-button:not([hidden])").waitFor();
+    await page.locator("#sky-control:not([hidden])").waitFor();
   }
 }
 
@@ -1026,6 +1215,7 @@ try {
   assert.equal(await desktopPage.locator("#body-card").getAttribute("hidden"), "");
 
   await assertBodySelectionSweep(desktopPage);
+  await assertConstellationModesAndFreshLabels(desktopPage);
   await assertZoomStress(desktopPage);
 
   const play = desktopPage.locator("#play-button");
@@ -1077,6 +1267,7 @@ try {
     assert.deepEqual(directErrors, [], `${look} has no browser errors`);
     await directPage.close();
   }
+  await auditSolarHandoff(desktop);
   await auditScaleTransitions(desktop);
   await auditFarSkyDirections(desktop);
   await captureEarthSolstice(desktop, "earth-june-solstice", "2000-06-21");
@@ -1096,6 +1287,23 @@ try {
   const credits = touchPage.locator("#version-label");
   await credits.waitFor();
   assert.equal(await credits.getAttribute("href"), "./PROVENANCE.md");
+  const touchSky = touchPage.locator("#sky-mode");
+  await touchSky.selectOption("all");
+  assert.equal(await touchSky.inputValue(), "all", "touch context selects All natively");
+  assert.equal(await touchPage.locator("#status-live").textContent(), "Constellations all");
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 390, height: 844 },
+    { width: 568, height: 320 },
+    { width: 844, height: 390 },
+  ]) {
+    await assertCardClearsDock(touchPage, viewport);
+    assert.equal(await touchPage.locator("#sky-control").isHidden(), false);
+    assert.equal(await touchSky.isEnabled(), true);
+    assert.equal(await touchSky.inputValue(), "all");
+  }
+  await touchPage.locator("#reset-button").click();
+  await touchPage.setViewportSize({ width: 390, height: 844 });
 
   const cdp = await touch.newCDPSession(touchPage);
   await cdp.send("Input.dispatchTouchEvent", {
@@ -1115,8 +1323,10 @@ try {
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await touchPage.waitForFunction(
     () => document.documentElement.dataset.galaxyReady === "1"
-      && document.querySelector("#sky-button").hidden,
+      && document.querySelector("#sky-control").hidden,
   );
+  assert.equal(await touchSky.inputValue(), "all", "touch preference survives sky unavailability");
+  assert.equal(await touchSky.isEnabled(), false, "unavailable touch control is disabled");
   await assertBodyLabelsHidden(touchPage);
 
   for (const viewport of [
@@ -1164,7 +1374,7 @@ try {
   await failurePage.goto(base, { waitUntil: "networkidle" });
   await failurePage.locator("#unsupported:not([hidden])").waitFor();
   const failureState = await failurePage.evaluate(() => {
-    const visibleFocusable = [...document.querySelectorAll("a, button, input, [tabindex]")]
+    const visibleFocusable = [...document.querySelectorAll("a, button, input, select, [tabindex]")]
       .filter((element) => !element.hidden && element.getClientRects().length > 0)
       .map((element) => element.id);
     const stage = document.querySelector("#stage");

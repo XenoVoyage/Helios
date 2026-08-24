@@ -81,7 +81,12 @@ assert.doesNotMatch(galaxy, remote);
 assert.doesNotMatch(galaxyCatalog, remote);
 assert.doesNotMatch(helpers, remote);
 assert.doesNotMatch(time, remote);
-assert.match(html, /id="sky-button"/);
+assert.match(html, /id="sky-control"/);
+assert.match(html, /<select id="sky-mode" aria-label="Constellations">/);
+assert.match(html, /value="off"[^>]*>Constellations: Off/);
+assert.match(html, /value="major"[^>]*selected>Constellations: Major/);
+assert.match(html, /value="all"[^>]*>Constellations: All/);
+assert.doesNotMatch(html, /id="sky-mode"[^>]*aria-pressed/);
 assert.match(html, /id="helper-orbit"/);
 assert.match(html, /id="helper-axis"/);
 assert.match(html, /id="helper-spin"/);
@@ -154,10 +159,12 @@ assert.match(app, /solarDebrisOpacity/);
 assert.match(app, /ensureGalaxyLayer/);
 assert.doesNotMatch(app, /warmExtraZoom|renderer\.compile/);
 assert.match(app, /paintConstellations/);
-assert.match(app, /ui\.sky\.hidden/);
-assert.match(app, /skyStaysOn/);
-assert.match(app, /const inSolar = skyStaysOn\(state\.distance\)/);
-assert.match(app, /setConstellationsVisible\(celestial, inSolar && state\.showConstellations\)/);
+assert.match(app, /ui\.skyControl\.hidden = !available/);
+assert.match(app, /ui\.sky\.disabled = !available/);
+assert.match(app, /constellationsAvailable\(state\.distance\)/);
+assert.match(app, /setConstellationMode\(celestial, state\.constellationMode, available\)/);
+assert.match(app, /ui\.sky\.addEventListener\("change", changeConstellationMode\)/);
+assert.doesNotMatch(app, /showConstellations|toggleConstellations|aria-pressed[^\n]*ui\.sky/);
 assert.match(app, /setCelestialFade/);
 assert.match(app, /setSkyBandBrightness/);
 assert.match(app, /attachFarGalaxySky/);
@@ -171,6 +178,17 @@ assert.match(app, /ui\.version\.hidden = true/);
 assert.match(app, /ui\.stage\.inert = true/);
 assert.match(app, /ResizeObserver/);
 assert.match(app, /hidePlanets = scaleLayer\(state\.distance\) !== "solar"/);
+assert.match(app, /camera\.updateMatrixWorld\(true\);[\s\S]*updateConstellationLabels/);
+assert.ok(
+  app.indexOf("camera.updateMatrixWorld(true);") < app.indexOf("projected.copy(world).project(camera)"),
+  "camera world matrices refresh before DOM body-label projection",
+);
+for (const rootName of ["sun.pivot", "asteroidBelt", "kuiperBelt", "orbitLines"]) {
+  assert.ok(
+    app.includes(`${rootName}.position.set(handoff.x, handoff.y, handoff.z);`),
+    `${rootName} follows the one shared Solar handoff offset`,
+  );
+}
 assert.match(html, /id="card-close"/);
 assert.match(html, /aria-label="Close"/);
 assert.doesNotMatch(html, /user-scalable=no|maximum-scale=1/);
@@ -186,10 +204,25 @@ assert.match(app, /extraZoomCameraDistance/);
 assert.match(app, /extraZoomCameraNear/);
 assert.match(sky, /setStarBrightness/);
 assert.match(sky, /setSkyBandBrightness/);
+assert.match(sky, /CELESTIAL_RENDER_THRESHOLD = 0\.04/);
+assert.match(sky, /CONSTELLATION_MODES/);
+assert.match(sky, /CONSTELLATION_LABEL_FALLBACK_HIPS/);
+assert.match(sky, /selectConstellationLabelIds/);
+assert.match(sky, /updateConstellationLabels/);
+const constellationUpdater = sky.slice(
+  sky.indexOf("export function updateConstellationLabels"),
+  sky.indexOf("export function setSkyBandBrightness"),
+);
+assert.doesNotMatch(
+  constellationUpdater,
+  /createElement\("canvas"\)|new THREE\.(CanvasTexture|SpriteMaterial|Sprite)/,
+  "the per-frame All-label updater allocates no render resources",
+);
 assert.match(sky, /toneMapped:\s*false/);
 assert.match(css, /\.labels[\s\S]*z-index:\s*1/);
-assert.match(css, /#sky-button/);
-assert.match(css, /#sky-button\[hidden\]/);
+assert.match(css, /\.constellation-control/);
+assert.match(css, /\.constellation-control\[hidden\]/);
+assert.match(css, /select:focus-visible/);
 assert.match(galaxy, /export function orreryScale/);
 assert.match(galaxy, /export function orbitLineOpacity/);
 assert.match(galaxy, /depthTest:\s*false/);
@@ -200,6 +233,9 @@ assert.match(galaxy, /visualUniverse/);
 assert.match(galaxy, /cmb-shell|cmb\.jpg/);
 assert.match(galaxy, /cosmic-web/);
 assert.match(galaxy, /far-galaxy-sky/);
+assert.match(galaxy, /generateFarGalaxySkySamples/);
+assert.match(galaxy, /far-galaxy-density/);
+assert.doesNotMatch(galaxy, /CubeTexture|samplerCube|textureCube/);
 assert.doesNotMatch(galaxy, /deep-field/);
 assert.match(galaxy, /2mrs-galaxies/);
 assert.match(cosmicWeb, /createTwoMrsSamples/);

@@ -206,15 +206,14 @@ h2 {
   margin-top: 10px;
 }
 
-.helper-toggles button[aria-pressed="true"],
-#sky-button[aria-pressed="true"] {
+.helper-toggles button[aria-pressed="true"] {
   border-color: var(--magenta);
   color: #f7d6ff;
   background: rgba(255, 87, 216, 0.12);
 }
 
 .helper-toggles button[hidden],
-#sky-button[hidden] {
+.constellation-control[hidden] {
   display: none;
 }
 
@@ -234,7 +233,8 @@ h2 {
 }
 
 button,
-input[type="range"] {
+input[type="range"],
+select {
   min-height: 44px;
   font: 600 14px/1 ui-sans-serif, system-ui, sans-serif;
 }
@@ -247,9 +247,19 @@ button {
   color: var(--cyan-strong);
 }
 
+select {
+  min-width: 168px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 87, 216, 0.62);
+  border-radius: 12px;
+  color: #f7d6ff;
+  background: rgba(255, 87, 216, 0.12);
+  color-scheme: dark;
+}
+
 #play-button,
 #reset-button,
-#sky-button {
+.constellation-control {
   position: relative;
   z-index: 2;
 }
@@ -259,12 +269,13 @@ button {
   min-width: 108px;
 }
 
-#sky-button {
+.constellation-control {
   flex-shrink: 0;
 }
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 #viewport:focus-visible,
 .sky-label:focus-visible {
   outline: 2px solid var(--cyan);

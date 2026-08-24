@@ -1,6 +1,6 @@
 /**
  * Extra-zoom map: a luminous 3D Milky Way, then catalog neighbors
- * (Andromeda, Local Group, Virgo) against a distant galaxy-image sky.
+ * (Andromeda, Local Group, Virgo) against an unresolved distant-density sky.
  * That sky starts in the tail and stays through Virgo. After Virgo,
  * measured cluster anchors approach at catalog distances, then yield to the
  * measured 2MRS galaxy distribution. A bounded first-party density
@@ -21,7 +21,11 @@ import {
   createTwoMrsSamples,
   generateCosmicDensity,
 } from "./cosmic-web.js";
-import { SKY_ASSETS, galacticToScene } from "./sky.js";
+import {
+  CELESTIAL_RENDER_THRESHOLD,
+  SKY_ASSETS,
+  galacticToScene,
+} from "./sky.js";
 import {
   CMB_SHELL,
   GALACTIC_CENTER,
@@ -77,8 +81,16 @@ const SCOPE_LABEL_ROW = Object.freeze({
   laniakea: 0.12,
 });
 // Display-only nudge into the illustrated Orion-arm ridge at the close trail
-// seat. Scientific coordinates, the camera origin, and every catalog stay put.
+// seat. Scientific coordinates, relative Solar geometry, and catalogs stay put.
 const SOLAR_TRAIL_MARKER_OFFSET = Object.freeze({ x: -0.5, y: 2.5, z: 0 });
+export const FAR_GALAXY_SKY_MODEL = Object.freeze({
+  count: 14004,
+  coreCount: 420,
+  voidCount: 36,
+  seed: 0x51a7b026,
+  verticalScale: 1,
+  warmth: 0.18,
+});
 const CMB_TEXTURE_OPACITY = 0.4;
 const COSMIC_STRUCTURE_GAIN = Object.freeze({
   measuredWeb: 0.28,
@@ -278,6 +290,11 @@ export function solarTrailMarkerMapPosition() {
   };
 }
 
+/** Scene-frame position of the display-only Solar trail marker. */
+export function solarTrailMarkerScenePosition() {
+  return mapToScene(solarTrailMarkerMapPosition());
+}
+
 /** Galactocentric (R, β) to heliocentric galactic cartesian, kpc. */
 export function armPointKpc(radiusKpc, betaDeg, zKpc = 0) {
   const beta = betaDeg * DEG;
@@ -292,6 +309,27 @@ export function armPointKpc(radiusKpc, betaDeg, zKpc = 0) {
 function handoffBlendStart() {
   return CONFIG.solarMaxDistance
     + (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance) * 0.7;
+}
+
+/**
+ * Translate only the already-collapsed post-Solar display root while the
+ * Milky Way is still invisible. The camera follows this root, so the Solar
+ * view is unchanged; when the crossfade begins, the fading Sun and the
+ * trail marker occupy the same scene point.
+ */
+export function solarSystemHandoffSceneOffset(distance) {
+  const marker = solarTrailMarkerScenePosition();
+  if (distance <= CONFIG.solarMaxDistance) return { x: 0, y: 0, z: 0 };
+  const ready = handoffBlendStart();
+  if (distance >= ready) return marker;
+  const blend = smoothstep01(
+    (distance - CONFIG.solarMaxDistance) / (ready - CONFIG.solarMaxDistance),
+  );
+  return {
+    x: marker.x * blend,
+    y: marker.y * blend,
+    z: marker.z * blend,
+  };
 }
 
 /** Gentle blend into the MW: fades in over the end of the transition. */
@@ -322,7 +360,7 @@ export function solarDebrisOpacity(distance) {
   );
 }
 
-/** Hipparcos / IAU stay through the solar cap. Extra-zoom uses the galaxy-image sky. */
+/** Hipparcos / IAU stay through the solar cap. Extra-zoom uses the density sky. */
 export function skyStaysOn(distance) {
   const layer = scaleLayer(distance);
   return layer === "solar" || layer === "transition";
@@ -343,6 +381,11 @@ export function milkyWayDiskOpacity(distance) {
  */
 export function celestialSkyOpacity(distance) {
   return 1 - galaxyOpacity(distance);
+}
+
+/** One canonical availability rule for constellation render, control, and input. */
+export function constellationsAvailable(distance) {
+  return celestialSkyOpacity(distance) > CELESTIAL_RENDER_THRESHOLD;
 }
 
 /** Skybox brightness is constant at every zoom; extra-zoom turns it off. */
@@ -592,7 +635,7 @@ export function universeOpacity(distance) {
 }
 
 /**
- * Distant galaxy-image sky starts in the tail and stays through Virgo.
+ * Distant unresolved-density sky starts in the tail and stays through Virgo.
  * It yields monotonically as the measured 2MRS point volume takes over.
  */
 export function farGalaxySkyOpacity(distance) {
@@ -1831,45 +1874,44 @@ function createCmbShell(THREE, group) {
   group.add(shell);
 }
 
-/** One deterministic square face of the distant-galaxy cube texture. */
-function paintFarGalaxySkyFace(size, seed) {
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#02050c";
-  ctx.fillRect(0, 0, size, size);
-  const rand = seedRandom(seed);
-  // Six faces preserve the former field budget: 14,004 faint sources and
-  // 420 galaxy slivers, but without an equirectangular pole singularity.
-  for (let i = 0; i < 2334; i += 1) {
-    const x = rand() * size;
-    const y = rand() * size;
-    const warm = rand();
-    stampSoft(
-      ctx,
-      x,
-      y,
-      0.7 + rand() * 2.2,
-      `rgba(${Math.floor(150 + 95 * warm)}, ${Math.floor(165 + 55 * warm)}, ${Math.floor(215 - 40 * warm)}, ${0.28 + rand() * 0.5})`,
-    );
-  }
-  for (let i = 0; i < 70; i += 1) {
-    const x = rand() * size;
-    const y = rand() * size;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(rand() * Math.PI);
-    ctx.scale(1, 0.3 + rand() * 0.28);
-    stampSoft(ctx, 0, 0, 3 + rand() * 4.5, "rgba(220, 200, 170, 0.4)");
-    ctx.restore();
-  }
-  return canvas;
-}
-
-/** Distant camera-attached galaxy-image sky. Transparent shell, not a lit ball. */
+/** Distant camera-attached density sky radius. */
 export function farGalaxySkyRadius() {
   return CONFIG.cameraFar * 0.42;
+}
+
+/**
+ * Deterministic unresolved distant structure on one true spherical shell.
+ * This is first-party visual context, not a measured catalog or a claim that
+ * a named cluster occupies any generated point.
+ */
+export function generateFarGalaxySkySamples(radius = farGalaxySkyRadius()) {
+  if (!(radius > 0)) throw new RangeError("far-galaxy sky radius must be positive");
+  const density = generateCosmicDensity(
+    FAR_GALAXY_SKY_MODEL,
+    radius * 0.985,
+    radius,
+  );
+  const corePositions = new Float32Array(FAR_GALAXY_SKY_MODEL.coreCount * 3);
+  const coreColors = new Float32Array(FAR_GALAXY_SKY_MODEL.coreCount * 3);
+  for (let core = 0; core < FAR_GALAXY_SKY_MODEL.coreCount; core += 1) {
+    const source = Math.floor(core * FAR_GALAXY_SKY_MODEL.count
+      / FAR_GALAXY_SKY_MODEL.coreCount) * 3;
+    const target = core * 3;
+    corePositions[target] = density.positions[source];
+    corePositions[target + 1] = density.positions[source + 1];
+    corePositions[target + 2] = density.positions[source + 2];
+    const warm = core % 5 === 0;
+    coreColors[target] = warm ? 1 : 0.78;
+    coreColors[target + 1] = warm ? 0.78 : 0.86;
+    coreColors[target + 2] = warm ? 0.58 : 1;
+  }
+  return {
+    positions: density.positions,
+    colors: density.colors,
+    corePositions,
+    coreColors,
+    attempts: density.attempts,
+  };
 }
 
 function createFarGalaxySky(THREE, group) {
@@ -1877,49 +1919,33 @@ function createFarGalaxySky(THREE, group) {
   sky.name = "far-galaxy-sky";
   orientMapFrame(THREE, sky);
   const radius = farGalaxySkyRadius();
-  const cube = new THREE.CubeTexture(
-    [0, 1, 2, 3, 4, 5].map((face) => paintFarGalaxySkyFace(512, 4608 + face * 131)),
+  const samples = generateFarGalaxySkySamples(radius);
+  const density = addPoints(
+    THREE,
+    sky,
+    "far-galaxy-density",
+    samples.positions,
+    samples.colors,
+    2.5,
+    0.7,
+    false,
+    THREE.NormalBlending,
   );
-  cube.colorSpace = THREE.SRGBColorSpace;
-  cube.needsUpdate = true;
-  const material = new THREE.ShaderMaterial({
-    uniforms: {
-      tCube: { value: cube },
-      opacity: { value: 0.88 },
-    },
-    vertexShader: `
-      varying vec3 vDirection;
-      void main() {
-        vDirection = position;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform samplerCube tCube;
-      uniform float opacity;
-      varying vec3 vDirection;
-      void main() {
-        vec4 texel = textureCube(tCube, normalize(vDirection));
-        gl_FragColor = vec4(texel.rgb, texel.a * opacity);
-        #include <colorspace_fragment>
-      }
-    `,
-    side: THREE.BackSide,
-    transparent: true,
-    opacity: 0.88,
-    depthWrite: false,
-    depthTest: false,
-    toneMapped: false,
-    fog: false,
-  });
-  const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(radius, 96, 64),
-    material,
+  const cores = addPoints(
+    THREE,
+    sky,
+    "far-galaxy-cluster-cores",
+    samples.corePositions,
+    samples.coreColors,
+    6.2,
+    0.46,
+    false,
+    THREE.AdditiveBlending,
   );
-  sphere.name = "far-galaxy-shell";
-  sphere.frustumCulled = false;
-  sky.add(sphere);
-  sky.renderOrder = -80;
+  for (const points of [density, cores]) {
+    points.material.depthTest = false;
+    points.renderOrder = -80;
+  }
   group.add(sky);
 }
 

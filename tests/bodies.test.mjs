@@ -24,6 +24,7 @@ import {
   visualRingRadius,
 } from "../js/bodies.js";
 import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
+import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
 
 const required = [
   "sun",
@@ -76,6 +77,37 @@ function angleDeg(a, b) {
 function angleDifference(a, b) {
   return Math.atan2(Math.sin(a - b), Math.cos(a - b));
 }
+
+test("Spin helper arrows follow the rendered Three.js Y-rotation direction", () => {
+  for (const id of ["earth", "venus"]) {
+    const body = findBody(id);
+    const helpers = createFocusHelpers(THREE);
+    const scene = new THREE.Scene();
+    const parentNode = { pivot: new THREE.Group(), tilt: new THREE.Group() };
+    const node = { pivot: new THREE.Group(), tilt: new THREE.Group() };
+    scene.add(parentNode.pivot);
+    parentNode.pivot.add(node.pivot);
+    node.pivot.add(node.tilt);
+    bindFocusHelpers(THREE, helpers, { body, node, parentNode, scene });
+
+    const arc = helpers.spin.children[0];
+    const positions = arc.geometry.getAttribute("position");
+    const first = new THREE.Vector3().fromBufferAttribute(positions, 0);
+    const second = new THREE.Vector3().fromBufferAttribute(positions, 1);
+    const actual = second.clone().sub(first).normalize();
+    const stepAngle = Math.PI * 1.55 / 48 * Math.sign(1 / renderedSpinPeriod(body));
+    const expectedPoint = first.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), stepAngle);
+    const expected = expectedPoint.sub(first).normalize();
+    assert.ok(actual.dot(expected) > 1 - 1e-9, `${body.name} arc matches rendered spin`);
+
+    const cone = helpers.spin.children[1];
+    const coneDirection = new THREE.Vector3(0, 1, 0).applyQuaternion(cone.quaternion).normalize();
+    const last = new THREE.Vector3().fromBufferAttribute(positions, positions.count - 1);
+    const beforeLast = new THREE.Vector3().fromBufferAttribute(positions, positions.count - 2);
+    const lastSegment = last.sub(beforeLast).normalize();
+    assert.ok(coneDirection.dot(lastSegment) > 0.99, `${body.name} arrowhead follows its arc`);
+  }
+});
 
 function sceneOrientationBasis(body) {
   const basis = bodyOrientationBasis(body);

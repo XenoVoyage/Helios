@@ -63,7 +63,14 @@
           <button id="faster-button" type="button" aria-label="Faster">+</button>
           <span id="speed-readout">1 h / sec</span>
         </div>
-        <button id="sky-button" type="button" aria-pressed="true">Constellations</button>
+        <label id="sky-control" class="constellation-control">
+          <span class="visually-hidden">Constellation display</span>
+          <select id="sky-mode" aria-label="Constellations">
+            <option value="off">Constellations: Off</option>
+            <option value="major" selected>Constellations: Major</option>
+            <option value="all">Constellations: All</option>
+          </select>
+        </label>
         <button id="reset-button" type="button">Reset view</button>
       </footer>
     </main>

@@ -11,10 +11,17 @@ import {
   STARS,
 } from "../js/sky-catalog.js";
 import {
+  CELESTIAL_RENDER_THRESHOLD,
+  CONSTELLATION_LABEL_FALLBACK_HIPS,
+  CONSTELLATION_MODES,
   CONSTELLATION_STAR_BOOST,
   GALACTIC_NGP_DEC_DEG,
   GALACTIC_NGP_RA_DEG,
+  celestialLayerRenderable,
+  constellationAnchor,
+  constellationAnchorHips,
   constellationHasStar,
+  constellationLabelBudget,
   constellationLabelPixelHeight,
   equatorialToGalactic,
   equatorialToScene,
@@ -24,6 +31,9 @@ import {
   galacticToScene,
   galacticToUv,
   isConstellationLineStar,
+  normalizeConstellationMode,
+  selectConstellationLabelIds,
+  setConstellationMode,
   sizeFromMag,
 } from "../js/sky.js";
 
@@ -151,6 +161,142 @@ test("constellation names stay readable at overview", () => {
   assert.ok(MAJOR_CONSTELLATIONS.every((id) => findConstellation(id)));
   assert.ok(constellationLabelPixelHeight() > 22);
   assert.ok(constellationLabelPixelHeight(800, 52) > 16);
+  for (const id of MAJOR_CONSTELLATIONS) {
+    const legacyHips = findConstellation(id).paths.flat().filter((hip) => findStarByHip(hip));
+    assert.deepEqual(
+      constellationAnchorHips(id),
+      legacyHips,
+      `${id} keeps the original duplicate-weighted Major anchor inputs`,
+    );
+  }
+});
+
+test("all 88 constellations have deterministic label anchors", () => {
+  assert.equal(new Set(CONSTELLATION_LINES.map((item) => item.id)).size, 88);
+  assert.deepEqual(CONSTELLATION_LABEL_FALLBACK_HIPS.Men, [29271]);
+  assert.deepEqual(CONSTELLATION_LABEL_FALLBACK_HIPS.Mic, [102831]);
+  for (const constellation of CONSTELLATION_LINES) {
+    const hips = constellationAnchorHips(constellation.id);
+    const anchor = constellationAnchor(constellation.id);
+    assert.ok(hips.length > 0, `${constellation.id} has an anchor star`);
+    assert.ok(anchor, `${constellation.id} has a scene anchor`);
+    assert.ok([anchor.x, anchor.y, anchor.z].every(Number.isFinite));
+    assert.ok(Math.abs(Math.hypot(anchor.x, anchor.y, anchor.z) - 1) < 1e-12);
+    if (!Object.hasOwn(CONSTELLATION_LABEL_FALLBACK_HIPS, constellation.id)) {
+      assert.ok(constellation.paths.flat().length > 0, `${constellation.id} uses its figure`);
+    }
+  }
+});
+
+test("constellation mode and celestial availability share explicit semantics", () => {
+  assert.equal(CELESTIAL_RENDER_THRESHOLD, 0.04);
+  assert.equal(celestialLayerRenderable(0.04), false);
+  assert.equal(celestialLayerRenderable(0.040001), true);
+  assert.equal(celestialLayerRenderable(Number.NaN), false);
+  assert.equal(normalizeConstellationMode(true), CONSTELLATION_MODES.major);
+  assert.equal(normalizeConstellationMode(false), CONSTELLATION_MODES.off);
+  for (const mode of Object.values(CONSTELLATION_MODES)) {
+    assert.equal(normalizeConstellationMode(mode), mode);
+  }
+  assert.equal(normalizeConstellationMode("unexpected"), CONSTELLATION_MODES.major);
+
+  const lines = { visible: true };
+  const labels = {
+    visible: true,
+    userData: {},
+    children: [
+      { visible: true, userData: { majorRank: 0 } },
+      { visible: true, userData: { majorRank: -1 } },
+    ],
+  };
+  const sky = {
+    userData: {},
+    getObjectByName(name) {
+      return name === "constellation-lines" ? lines : labels;
+    },
+  };
+  setConstellationMode(sky, CONSTELLATION_MODES.off, true);
+  assert.equal(lines.visible, false);
+  assert.equal(labels.visible, false);
+  assert.ok(labels.children.every((sprite) => !sprite.visible));
+  setConstellationMode(sky, CONSTELLATION_MODES.major, true);
+  assert.equal(lines.visible, true);
+  assert.equal(labels.visible, true);
+  assert.deepEqual(labels.children.map((sprite) => sprite.visible), [true, false]);
+  setConstellationMode(sky, CONSTELLATION_MODES.all, true);
+  assert.equal(lines.visible, true);
+  assert.equal(labels.visible, true);
+  assert.ok(labels.children.every((sprite) => !sprite.visible), "All defers names to packing");
+  setConstellationMode(sky, CONSTELLATION_MODES.all, false);
+  assert.equal(lines.visible, false);
+  assert.equal(labels.visible, false);
+  assert.equal(sky.userData.constellationMode, CONSTELLATION_MODES.all);
+});
+
+test("All-mode label budgets are responsive and bounded", () => {
+  assert.equal(constellationLabelBudget(1440, 900), 16);
+  assert.equal(constellationLabelBudget(390, 844), 4);
+  assert.equal(constellationLabelBudget(568, 320), 4);
+  assert.equal(constellationLabelBudget(844, 390), 4);
+  for (let width = 240; width <= 2560; width += 137) {
+    for (let height = 240; height <= 1440; height += 131) {
+      const budget = constellationLabelBudget(width, height);
+      assert.ok(budget >= 4 && budget <= 18);
+    }
+  }
+});
+
+test("All-mode label packing is deterministic, clipped, prioritized, and collision-free", () => {
+  const candidate = (id, x, y, {
+    majorRank = -1,
+    catalogRank = 0,
+    retained = false,
+    eligible = true,
+    width = 80,
+    height = 24,
+  } = {}) => ({
+    id, x, y, majorRank, catalogRank, retained, eligible, width, height,
+  });
+  const rows = [
+    candidate("minor-new", 200, 150, { catalogRank: 1 }),
+    candidate("major", 200, 150, { majorRank: 0, catalogRank: 7 }),
+    candidate("minor-retained", 330, 150, { catalogRank: 8, retained: true }),
+    candidate("minor-next", 460, 150, { catalogRank: 2 }),
+    candidate("behind", 600, 150, { catalogRank: 3, eligible: false }),
+    candidate("edge", 20, 150, { catalogRank: 4 }),
+  ];
+  const options = { width: 800, height: 400, topInset: 40, bottomInset: 60, budget: 3 };
+  const selected = selectConstellationLabelIds(rows, options);
+  assert.deepEqual(selected, ["major", "minor-retained", "minor-next"]);
+  assert.deepEqual(
+    selectConstellationLabelIds([...rows].reverse(), options),
+    selected,
+    "catalog ranking, not input order, controls the result",
+  );
+  assert.equal(selected.includes("minor-new"), false, "Major displaces a colliding minor");
+  assert.equal(selected.includes("behind"), false, "ineligible projections stay hidden");
+  assert.equal(selected.includes("edge"), false, "partially clipped labels stay hidden");
+
+  const retainedCollision = [
+    candidate("new-higher-catalog", 300, 150, { catalogRank: 0 }),
+    candidate("retained-lower-catalog", 300, 150, { catalogRank: 80, retained: true }),
+  ];
+  assert.deepEqual(
+    selectConstellationLabelIds(retainedCollision, options),
+    ["retained-lower-catalog"],
+    "a retained minor keeps its seat ahead of a newly entering colliding minor",
+  );
+
+  const spaced = [
+    candidate("a", 100, 120, { catalogRank: 0, width: 60 }),
+    candidate("b", 220, 120, { catalogRank: 1, width: 60 }),
+    candidate("c", 340, 120, { catalogRank: 2, width: 60 }),
+  ];
+  assert.deepEqual(
+    selectConstellationLabelIds(spaced, { width: 500, height: 300, topInset: 0, bottomInset: 0, budget: 2 }),
+    ["a", "b"],
+    "the centralized budget is enforced",
+  );
 });
 
 test("faint backdrop stars densify the solar sky without touching the catalog", async () => {
