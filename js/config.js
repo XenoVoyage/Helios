@@ -36,8 +36,8 @@ export const CONFIG = Object.freeze({
   // published radiusKm stays 1:1 in the catalog; only the display size
   // is floored, like every other visual-scale knob.
   moonMinRadius: 0.05,
-  defaultDaysPerSecond: 1 / 24,
-  minDaysPerSecond: 1 / 24,
+  defaultDaysPerSecond: 1 / 86400,
+  minDaysPerSecond: 1 / 86400,
   maxDaysPerSecond: 400,
   // Debris fields: sparse point clouds, not rock catalogs. One owner for both.
   beltCount: 2400,
@@ -106,6 +106,8 @@ export const CONFIG = Object.freeze({
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
   focusLerp: 6,
+  // Bounded texture-shaped scattered light for Saturn's strongly backlit rings.
+  saturnRingHighPhaseLight: 0.12,
 });
 
 /**
@@ -122,6 +124,14 @@ export function wheelZoomMultiplier(deltaY) {
   return Math.exp(deltaY * 0.0016);
 }
 
+/** Saturn ring-only high-phase cue; normal/front views remain exactly unlit. */
+export function saturnRingHighPhaseFactor(viewLightDot) {
+  if (viewLightDot >= -0.2) return 0;
+  if (viewLightDot <= -0.85) return 1;
+  const t = (-0.2 - viewLightDot) / 0.65;
+  return t * t * (3 - 2 * t);
+}
+
 /** Global canvas shortcuts must yield to native and editable controls. */
 export function isShortcutTargetInteractive(target) {
   for (let node = target; node; node = node.parentElement) {
@@ -132,12 +142,14 @@ export function isShortcutTargetInteractive(target) {
   return false;
 }
 
-/** Honest clock-rate label. Hours below 1 day/sec; days, months, years above. */
+/** Honest clock-rate label. Seconds, minutes, and hours remain distinguishable. */
 export function formatDaysPerSecond(daysPerSecond) {
   if (daysPerSecond >= 365) return `${(daysPerSecond / 365.25).toFixed(1)} yr`;
   if (daysPerSecond >= 30) return `${(daysPerSecond / 30.437).toFixed(1)} mo`;
   if (daysPerSecond >= 1) return `${daysPerSecond.toFixed(daysPerSecond >= 10 ? 0 : 1)} d`;
-  return `${(daysPerSecond * 24).toFixed(0)} h`;
+  if (daysPerSecond >= 1 / 24) return `${(daysPerSecond * 24).toFixed(0)} h`;
+  if (daysPerSecond >= 1 / 1440) return `${(daysPerSecond * 1440).toFixed(0)} min`;
+  return `${(daysPerSecond * 86400).toFixed(0)} sec`;
 }
 
 export function describeDaysPerSecond(daysPerSecond) {
@@ -152,9 +164,15 @@ export function describeDaysPerSecond(daysPerSecond) {
   } else if (daysPerSecond >= 1) {
     value = Number(daysPerSecond.toFixed(daysPerSecond >= 10 ? 0 : 1));
     unit = "day";
-  } else {
+  } else if (daysPerSecond >= 1 / 24) {
     value = Number((daysPerSecond * 24).toFixed(0));
     unit = "hour";
+  } else if (daysPerSecond >= 1 / 1440) {
+    value = Number((daysPerSecond * 1440).toFixed(0));
+    unit = "minute";
+  } else {
+    value = Number((daysPerSecond * 86400).toFixed(0));
+    unit = "second";
   }
   return `${value} ${unit}${value === 1 ? "" : "s"} per second`;
 }

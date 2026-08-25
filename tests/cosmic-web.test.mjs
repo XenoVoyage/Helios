@@ -6,10 +6,16 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { TWOMRS_METADATA, TWOMRS_PAYLOAD_BASE64 } from "../js/2mrs-data.js";
 import {
+  advanceCosmicDensityJob,
+  advanceTwoMrsSampleJob,
   COSMIC_WEB_MODEL,
+  cosmicDensityJobResult,
   cosmicDensitySampleCount,
+  createCosmicDensityJob,
+  createTwoMrsSampleJob,
   createTwoMrsSamples,
   generateCosmicDensity,
+  twoMrsSampleJobResult,
 } from "../js/cosmic-web.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -35,11 +41,19 @@ test("tracked 2MRS payload matches the licensed source manifest", () => {
 });
 
 test("2MRS samples retain galactic directions and bounded Hubble-law distances", () => {
-  const samples = createTwoMrsSamples(({ lDeg, bDeg, distanceMpc }) => ({
+  const project = ({ lDeg, bDeg, distanceMpc }) => ({
     x: lDeg,
     y: bDeg,
     z: distanceMpc,
-  }));
+  });
+  const samples = createTwoMrsSamples(project);
+  const stagedJob = createTwoMrsSampleJob(project);
+  while (!advanceTwoMrsSampleJob(stagedJob, 997)) {}
+  const staged = twoMrsSampleJobResult(stagedJob);
+  assert.deepEqual(staged.positions, samples.positions);
+  assert.deepEqual(staged.colors, samples.colors);
+  assert.throws(() => advanceTwoMrsSampleJob(stagedJob, 0), /positive integer/);
+  assert.throws(() => advanceTwoMrsSampleJob(stagedJob, 1.5), /positive integer/);
   assert.equal(samples.positions.length, TWOMRS_METADATA.includedRows * 3);
   assert.equal(samples.colors.length, samples.positions.length);
   let minAbsLatitude = Infinity;
@@ -65,9 +79,14 @@ test("post-Virgo density stays deterministic and within the point budget", async
   const innerRadius = 600;
   const outerRadius = 1000;
   const first = generateCosmicDensity(COSMIC_WEB_MODEL.outer, innerRadius, outerRadius);
-  const second = generateCosmicDensity(COSMIC_WEB_MODEL.outer, innerRadius, outerRadius);
+  const stagedJob = createCosmicDensityJob(COSMIC_WEB_MODEL.outer, innerRadius, outerRadius);
+  while (!advanceCosmicDensityJob(stagedJob, 613)) {}
+  const second = cosmicDensityJobResult(stagedJob);
   assert.deepEqual(first.positions, second.positions);
   assert.deepEqual(first.colors, second.colors);
+  assert.equal(first.attempts, second.attempts);
+  assert.throws(() => advanceCosmicDensityJob(stagedJob, 0), /positive integer/);
+  assert.throws(() => advanceCosmicDensityJob(stagedJob, 1.5), /positive integer/);
   assert.equal(first.positions.length, COSMIC_WEB_MODEL.outer.count * 3);
   assert.ok(first.attempts > COSMIC_WEB_MODEL.outer.count);
   const radialBands = [0, 0, 0, 0];

@@ -65,6 +65,10 @@ assert.match(html, /Content-Security-Policy/);
 assert.match(html, /connect-src 'none'/);
 assert.match(html, /id="play-button"/);
 assert.match(html, /id="speed-slider"/);
+assert.match(html, /id="zoom-out-button"/);
+assert.match(html, /id="zoom-in-button"/);
+assert.match(html, /id="keyboard-help"/);
+assert.match(html, /id="dock"[^>]*tabindex="-1"/);
 assert.match(html, /id="reset-button"/);
 assert.match(html, /id="unsupported"[^>]*role="alert"[^>]*tabindex="-1"/);
 assert.match(html, /href="\.\/PROVENANCE\.md"/);
@@ -110,7 +114,8 @@ assert.match(html, /vendor\/three|js\/app\.js/);
 assert.match(license, /MIT License/);
 assert.match(threeLicense, /three\.js authors/);
 assert.match(provenance, /MIT license covers first-party code only/);
-assert.match(provenance, /not JPL Horizons ephemerides/);
+assert.match(provenance, /not a live Horizons feed or a perturbation ephemeris/);
+assert.match(provenance, /Dark Moons, Dark Rings/);
 assert.match(provenance, /No inpainting or synthetic terrain/);
 assert.match(provenance, /doi:10\.1093\/mnras\/staa1946/);
 assert.match(galaxyCatalog, /doi:10\.1093\/mnras\/staa1946/);
@@ -128,13 +133,16 @@ assert.doesNotMatch(css, /--gold|#e8c872/i);
 assert.match(css, /--cyan:\s*#66f7ff/);
 assert.match(css, /--void:\s*#02050c/);
 assert.match(css, /--magenta:\s*#ff57d8/);
-assert.equal(CONFIG.defaultDaysPerSecond, 1 / 24);
-assert.equal(CONFIG.minDaysPerSecond, 1 / 24);
-assert.match(html, /1 h \/ sec/);
+assert.equal(CONFIG.defaultDaysPerSecond, 1 / 86400);
+assert.equal(CONFIG.minDaysPerSecond, 1 / 86400);
+assert.match(html, /1 sec \/ sec/);
 assert.doesNotMatch(html, /8 d \/ sec/);
 assert.match(app, /PointLight/);
 assert.match(app, /MeshStandardMaterial/);
 assert.match(app, /ringInnerKm/);
+assert.match(app, /emissiveMap: ringMap/);
+assert.match(app, /saturnRingHighPhaseFactor/);
+assert.match(configSource, /saturnRingHighPhaseLight: 0\.12/);
 assert.doesNotMatch(app, /HemisphereLight/);
 assert.doesNotMatch(app, /createStarfield/);
 assert.match(app, /createCelestialSphere/);
@@ -158,6 +166,13 @@ assert.match(app, /orbitLineOpacity/);
 assert.match(app, /solarDebrisOpacity/);
 assert.match(app, /ensureGalaxyLayer/);
 assert.doesNotMatch(app, /warmExtraZoom|renderer\.compile/);
+assert.match(app, /createGalaxyLayer\(THREE, \{ defer: true \}\)/);
+assert.match(app, /advanceGalaxyLayer\(layer, GALAXY_IDLE_WORK_BUDGET\)/);
+assert.match(app, /buildGalaxyLayerToDistance\(layer, distance\)/);
+assert.match(app, /scheduleGalaxyWarmup\(true\)/);
+assert.match(app, /lastRenderedControlDistance/);
+assert.match(app, /if \(state\.playing \|\| cameraSettling\) invalidateRender\(\)/);
+assert.equal((app.match(/requestAnimationFrame\(tick\)/g) ?? []).length, 1);
 assert.match(app, /paintConstellations/);
 assert.match(app, /ui\.skyControl\.hidden = !available/);
 assert.match(app, /ui\.sky\.disabled = !available/);
@@ -177,11 +192,21 @@ assert.match(app, /function showUnsupported/);
 assert.match(app, /ui\.version\.hidden = true/);
 assert.match(app, /ui\.stage\.inert = true/);
 assert.match(app, /ResizeObserver/);
+assert.match(app, /renderer\.getPixelRatio\(\)/);
 assert.match(app, /hidePlanets = scaleLayer\(state\.distance\) !== "solar"/);
 assert.match(app, /camera\.updateMatrixWorld\(true\);[\s\S]*updateConstellationLabels/);
 assert.ok(
   app.indexOf("camera.updateMatrixWorld(true);") < app.indexOf("projected.copy(world).project(camera)"),
   "camera world matrices refresh before DOM body-label projection",
+);
+const bodyLabelSuppressor = app.slice(
+  app.indexOf("function suppressBodyLabelCollisions"),
+  app.indexOf("function canShowLabel"),
+);
+assert.doesNotMatch(
+  bodyLabelSuppressor,
+  /\.sort\(|for \(const|labelRight \+|labelLeft -|labelBottom \+|labelTop -/,
+  "body-label suppression uses strict overlap and allocation-free priority passes",
 );
 for (const rootName of ["sun.pivot", "asteroidBelt", "kuiperBelt", "orbitLines"]) {
   assert.ok(
@@ -198,9 +223,10 @@ assert.match(galaxy, /milkyWayInteriorCameraAim/);
 assert.match(galaxy, /skyStaysOn/);
 assert.match(galaxy, /export function skyStaysOn/);
 assert.match(galaxy, /extraZoomCameraDistance/);
+assert.match(galaxy, /responsiveExtraZoomCameraDistance/);
 assert.match(galaxy, /extraZoomCameraNear/);
 assert.match(app, /setStarBrightness/);
-assert.match(app, /extraZoomCameraDistance/);
+assert.match(app, /responsiveExtraZoomCameraDistance/);
 assert.match(app, /extraZoomCameraNear/);
 assert.match(sky, /setStarBrightness/);
 assert.match(sky, /setSkyBandBrightness/);
@@ -254,11 +280,18 @@ assert.match(galaxy, /cmb-shell|cmb\.jpg/);
 assert.match(galaxy, /cosmic-web/);
 assert.match(galaxy, /far-galaxy-sky/);
 assert.match(galaxy, /generateFarGalaxySkySamples/);
+assert.match(galaxy, /export function advanceGalaxyLayer/);
+assert.match(galaxy, /export function buildGalaxyLayerToDistance/);
+assert.match(galaxy, /export function galaxyLayerReadyForDistance/);
+assert.match(galaxy, /createMilkyWayDiskMapJob/);
+assert.match(galaxy, /advanceSpiralStarsJob/);
 assert.match(galaxy, /far-galaxy-density/);
 assert.doesNotMatch(galaxy, /CubeTexture|samplerCube|textureCube/);
 assert.doesNotMatch(galaxy, /deep-field/);
 assert.match(galaxy, /2mrs-galaxies/);
 assert.match(cosmicWeb, /createTwoMrsSamples/);
+assert.match(cosmicWeb, /createTwoMrsSampleJob/);
+assert.match(cosmicWeb, /createCosmicDensityJob/);
 assert.match(cosmicWeb, /seeded Voronoi-proximity/);
 assert.match(twoMrsData, /NASA HEASARC TWOMASSRSC/);
 assert.match(galaxy, /mw-disk-edge/);

@@ -175,6 +175,17 @@ async function saveScreenshot(page, name, options = {}) {
   await writeFile(path.join(screenshotDir, `${name}.png`), await page.screenshot(options));
 }
 
+async function saveCanvasOnlyScreenshot(page, name) {
+  const png = await page.locator("#viewport").screenshot({
+    style: "#stage > :not(#viewport), body > :not(#stage) { visibility: hidden !important; }",
+  });
+  if (screenshotDir) {
+    await mkdir(screenshotDir, { recursive: true });
+    await writeFile(path.join(screenshotDir, `${name}.png`), png);
+  }
+  return png;
+}
+
 async function distributedFrameMetrics(page, png) {
   return page.evaluate(async ({ source, brightLuminance, darkLuminance }) => {
     const image = new Image();
@@ -448,6 +459,562 @@ async function dispatchWheelZoom(page, from, to) {
       cancelable: true,
     }));
   }, deltaY);
+}
+
+async function settleCameraFrame(page) {
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
+    requestAnimationFrame(resolve);
+  })));
+}
+
+async function currentCameraMetrics(page) {
+  return page.evaluate(async () => {
+    const app = await import(new URL("./js/app.js", location.href).href);
+    return app.currentCameraMetrics();
+  });
+}
+
+async function settleCameraMotion(page) {
+  await page.waitForFunction(async () => {
+    const app = await import(new URL("./js/app.js", location.href).href);
+    return app.currentCameraMetrics()?.cameraSettling === false;
+  }, null, { timeout: 5_000 });
+}
+
+async function assertColdGalaxyZoomDoesNotBlock(context) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await page.addInitScript(() => {
+    window.__heliosLongTasks = [];
+    if ("PerformanceObserver" in window) {
+      const observer = new PerformanceObserver((list) => {
+        window.__heliosLongTasks.push(...list.getEntries().map((entry) => ({
+          startTime: entry.startTime,
+          duration: entry.duration,
+        })));
+      });
+      try { observer.observe({ type: "longtask", buffered: true }); } catch {}
+    }
+    window.requestIdleCallback = (callback) => window.setTimeout(() => callback({
+      didTimeout: true,
+      timeRemaining: () => 0,
+    }), 30_000);
+    window.cancelIdleCallback = (handle) => window.clearTimeout(handle);
+  });
+  await openReady(page);
+  assert.equal(await page.getAttribute("html", "data-galaxy-prepared"), null);
+  const result = await page.locator("#viewport").evaluate(async (canvas, target) => {
+    const app = await import(new URL("./js/app.js", location.href).href);
+    const before = app.currentCameraMetrics();
+    const started = performance.now();
+    canvas.dispatchEvent(new WheelEvent("wheel", {
+      deltaY: Math.log(target / before.controlDistance) / 0.0016,
+      bubbles: true,
+      cancelable: true,
+    }));
+    const afterDispatch = app.currentCameraMetrics();
+    const dispatchMs = performance.now() - started;
+    const inputToPaintMs = await new Promise((resolve, reject) => {
+      const deadline = started + 5_000;
+      const inspect = () => {
+        const metrics = app.currentCameraMetrics();
+        if (
+          document.documentElement.dataset.galaxyReady === "1"
+          && Math.abs(metrics.lastRenderedControlDistance - target) < 1e-6
+        ) {
+          resolve(performance.now() - started);
+        } else if (performance.now() >= deadline) {
+          reject(new Error("cold galaxy zoom did not render within 5 seconds"));
+        } else {
+          requestAnimationFrame(inspect);
+        }
+      };
+      requestAnimationFrame(inspect);
+    });
+    const longTasks = (window.__heliosLongTasks ?? [])
+      .filter((entry) => entry.startTime >= started);
+    return {
+      dispatchMs,
+      inputToPaintMs,
+      beforeControlDistance: before.controlDistance,
+      heldControlDistance: afterDispatch.controlDistance,
+      queuedControlDistance: afterDispatch.requestedControlDistance,
+      metrics: app.currentCameraMetrics(),
+      longTaskMaxMs: Math.max(0, ...longTasks.map((entry) => entry.duration)),
+    };
+  }, CONFIG.handoffViewDistance);
+  console.log(
+    `Cold galaxy zoom: dispatch=${result.dispatchMs.toFixed(2)} ms, `
+      + `input-to-render=${result.inputToPaintMs.toFixed(2)} ms, `
+      + `max-task=${result.metrics.galaxyWarmup.maxMs.toFixed(2)} ms, `
+      + `long-task=${result.longTaskMaxMs.toFixed(2)} ms`,
+  );
+  assert.equal(result.heldControlDistance, result.beforeControlDistance);
+  assert.ok(Math.abs(result.queuedControlDistance - CONFIG.handoffViewDistance) < 1e-6);
+  assert.ok(result.dispatchMs < 50, `cold zoom dispatch returns in ${result.dispatchMs.toFixed(2)} ms`);
+  assert.ok(result.metrics.galaxyWarmup.chunks > 5, "cold near build spans multiple tasks");
+  assert.ok(
+    result.metrics.galaxyWarmup.maxMs < 50,
+    `cold galaxy work avoids a long task (${result.metrics.galaxyWarmup.maxMs.toFixed(2)} ms)`,
+  );
+  assert.ok(result.longTaskMaxMs < 50, "dispatch-through-render has no browser long task");
+  assert.ok(result.inputToPaintMs < 2_000, "cold target renders promptly");
+  assert.equal(result.metrics.galaxyStage, "near");
+  assert.deepEqual(errors, []);
+  await saveScreenshot(page, "desktop-cold-galaxy-first-frame");
+  await page.close();
+}
+
+async function assertPreparedZoomLatency(page) {
+  await page.waitForFunction(
+    () => document.documentElement.dataset.galaxyPrepared === "1"
+      && document.documentElement.dataset.assetsLoading === "0",
+    null,
+    { timeout: 30_000 },
+  );
+  const warmup = (await currentCameraMetrics(page)).galaxyWarmup;
+  console.log(`Galaxy warmup: chunks=${warmup.chunks}, max-task=${warmup.maxMs.toFixed(2)} ms`);
+  assert.ok(warmup.chunks > 5);
+  assert.ok(warmup.maxMs < 50);
+  const result = await page.locator("#viewport").evaluate(async (canvas, target) => {
+    const app = await import(new URL("./js/app.js", location.href).href);
+    const before = app.currentCameraMetrics();
+    const started = performance.now();
+    canvas.dispatchEvent(new WheelEvent("wheel", {
+      deltaY: Math.log(target / before.controlDistance) / 0.0016,
+      bubbles: true,
+      cancelable: true,
+    }));
+    const dispatchMs = performance.now() - started;
+    const inputToPaintMs = await new Promise((resolve, reject) => {
+      const deadline = started + 2_000;
+      const inspect = () => {
+        const metrics = app.currentCameraMetrics();
+        if (Math.abs(metrics.lastRenderedControlDistance - target) < 1e-6) {
+          resolve(performance.now() - started);
+        } else if (performance.now() >= deadline) {
+          reject(new Error("prepared galaxy zoom did not render"));
+        } else requestAnimationFrame(inspect);
+      };
+      requestAnimationFrame(inspect);
+    });
+    return { dispatchMs, inputToPaintMs };
+  }, CONFIG.handoffViewDistance);
+  assert.ok(result.dispatchMs < 50);
+  assert.ok(result.inputToPaintMs < 500);
+  await page.locator("#reset-button").click();
+  await settleCameraMotion(page);
+}
+
+async function assertPausedRenderInvalidation(page) {
+  const play = page.locator("#play-button");
+  if (await play.getAttribute("aria-pressed") === "true") await play.click();
+  await page.waitForFunction(async () => {
+    const app = await import(new URL("./js/app.js", location.href).href);
+    const metrics = app.currentCameraMetrics();
+    return document.documentElement.dataset.galaxyPrepared === "1"
+      && document.documentElement.dataset.assetsLoading === "0"
+      && metrics.cameraSettling === false
+      && metrics.framePending === false;
+  }, null, { timeout: 30_000 });
+  const before = (await currentCameraMetrics(page)).renderCount;
+  await page.waitForTimeout(300);
+  assert.equal((await currentCameraMetrics(page)).renderCount, before, "paused settled scene stops GPU renders");
+  await page.locator("#zoom-in-button").click();
+  await page.waitForFunction(async (count) => {
+    const app = await import(new URL("./js/app.js", location.href).href);
+    return app.currentCameraMetrics().renderCount > count;
+  }, before);
+}
+
+async function assertCameraControlsAndSunBoundary(page) {
+  for (const id of ["zoom-out-button", "zoom-in-button"]) {
+    const box = await page.locator(`#${id}`).boundingBox();
+    assert.ok(box && box.width >= 44 && box.height >= 44, `${id} is a 44px target`);
+  }
+  await page.locator("#skip-link").focus();
+  await page.locator("#skip-link").press("Enter");
+  assert.equal(await page.evaluate(() => document.activeElement?.id), "dock");
+  await page.locator("#faster-button").click();
+  assert.equal(await page.locator("#status-live").textContent(), "Time speed 2 seconds per second");
+  await page.locator("#slower-button").click();
+  assert.equal(await page.locator("#status-live").textContent(), "Time speed 1 second per second");
+  const canvas = page.locator("#viewport");
+  await canvas.focus();
+  const beforeOrbit = await currentCameraMetrics(page);
+  await canvas.press("ArrowRight");
+  await settleCameraFrame(page);
+  assert.ok((await currentCameraMetrics(page)).azimuth > beforeOrbit.azimuth);
+  const beforeZoom = await currentCameraMetrics(page);
+  await canvas.press("PageUp");
+  await settleCameraFrame(page);
+  assert.ok((await currentCameraMetrics(page)).controlDistance < beforeZoom.controlDistance);
+  await page.evaluate(() => document.querySelector('[data-body-id="sun"]').click());
+  await settleCameraMotion(page);
+  const haloPoint = await page.evaluate(async () => {
+    const app = await import(new URL("./js/app.js", location.href).href);
+    const metrics = app.currentCameraMetrics();
+    const radius = innerHeight * 0.5
+      * Math.tan(Math.asin(metrics.focusRadius / metrics.cameraDistance))
+      / Math.tan(52 * Math.PI / 360);
+    const point = { x: innerWidth * 0.5 + radius * 2, y: innerHeight * 0.5 };
+    return { ...point, hit: document.elementFromPoint(point.x, point.y)?.id };
+  });
+  assert.equal(haloPoint.hit, "viewport", "the Sun halo test point reaches the canvas");
+  await page.mouse.click(haloPoint.x, haloPoint.y);
+  await settleCameraFrame(page);
+  assert.equal(
+    await page.locator("#body-card").getAttribute("hidden"),
+    "",
+    "transparent Sun glow does not enlarge the scientific mesh pick target",
+  );
+  for (let i = 0; i < 80; i += 1) await canvas.press("PageUp");
+  await settleCameraMotion(page);
+  const sun = await currentCameraMetrics(page);
+  assert.equal(sun.focusedId, "sun");
+  assert.ok(sun.controlDistance > sun.focusRadius + sun.near);
+  assert.ok(
+    sun.cameraDistance > sun.focusRadius + sun.near,
+    "the camera near plane stays outside the Sun",
+  );
+  const assertSunClearance = async (seat) => {
+    const metrics = await currentCameraMetrics(page);
+    assert.ok(
+      metrics.cameraDistance > metrics.focusRadius + metrics.near,
+      `the Sun near-plane boundary holds at ${seat}`,
+    );
+  };
+  for (const pitch of [
+    { key: "ArrowDown", count: 20, name: "low elevation" },
+    { key: "ArrowUp", count: 12, name: "mid elevation" },
+    { key: "ArrowUp", count: 12, name: "high elevation" },
+  ]) {
+    for (let i = 0; i < pitch.count; i += 1) await canvas.press(pitch.key);
+    for (let seat = 0; seat < 8; seat += 1) {
+      for (let step = 0; step < 7; step += 1) await canvas.press("ArrowRight");
+      await settleCameraFrame(page);
+      await assertSunClearance(`${pitch.name}, azimuth seat ${seat + 1}`);
+    }
+  }
+  await page.locator("#reset-button").click();
+  await settleCameraMotion(page);
+}
+
+async function assertBodyLabelCollisionsSuppressed(page) {
+  const visibleSnapshot = () => page.locator(".sky-label").evaluateAll((elements) => (
+    elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      return {
+        id: element.dataset.bodyId,
+        hidden: element.hidden,
+        transform: element.style.transform,
+        className: element.className,
+        left: box.left,
+        right: box.right,
+        top: box.top,
+        bottom: box.bottom,
+      };
+    }).filter((label) => !label.hidden)
+  ));
+  await settleCameraMotion(page);
+  const labels = await visibleSnapshot();
+  for (let i = 0; i < labels.length; i += 1) {
+    for (let j = i + 1; j < labels.length; j += 1) {
+      const first = labels[i];
+      const second = labels[j];
+      const overlaps = first.right > second.left && first.left < second.right
+        && first.bottom > second.top && first.top < second.bottom;
+      assert.equal(overlaps, false, `${first.id} and ${second.id} labels do not overlap`);
+    }
+  }
+  await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+  await settleCameraFrame(page);
+  assert.deepEqual(await visibleSnapshot(), labels, "a repeated frame keeps the same label survivors and styles");
+
+  await page.evaluate(() => document.querySelector('[data-body-id="jupiter"]').click());
+  await page.waitForFunction(async () => {
+    const app = await import(new URL("./js/app.js", location.href).href);
+    const metrics = app.currentCameraMetrics();
+    const label = document.querySelector('[data-body-id="jupiter"]');
+    return metrics.focusedId === "jupiter"
+      && metrics.cameraSettling === false
+      && metrics.framePending === false
+      && label?.hidden === false;
+  });
+  assert.equal(
+    await page.locator('[data-body-id="jupiter"]').getAttribute("hidden"),
+    null,
+    "the selected/focused label wins any collision",
+  );
+  await page.locator("#reset-button").click();
+  await settleCameraMotion(page);
+}
+
+async function pressCameraKey(page, key, count) {
+  const canvas = page.locator("#viewport");
+  await canvas.focus();
+  for (let step = 0; step < count; step += 1) await canvas.press(key);
+  await settleCameraFrame(page);
+}
+
+async function findSaturnFrontSeat(page) {
+  const canvas = page.locator("#viewport");
+  await canvas.focus();
+  let best = null;
+  for (let step = 0; step < 52; step += 1) {
+    const metrics = await currentCameraMetrics(page);
+    if (!best || metrics.saturnRing.viewLightDot > best.metrics.saturnRing.viewLightDot) {
+      best = { step, metrics };
+    }
+    await canvas.press("ArrowRight");
+    await settleCameraFrame(page);
+  }
+  await pressCameraKey(page, "ArrowLeft", 52 - best.step);
+  return currentCameraMetrics(page);
+}
+
+function antipodalOrbitError(first, second) {
+  const vector = ({ azimuth, elevation }) => ({
+    x: Math.cos(elevation) * Math.sin(azimuth),
+    y: Math.sin(elevation),
+    z: Math.cos(elevation) * Math.cos(azimuth),
+  });
+  const a = vector(first);
+  const b = vector(second);
+  const antipodalDot = -(a.x * b.x + a.y * b.y + a.z * b.z);
+  return Math.acos(Math.max(-1, Math.min(1, antipodalDot)));
+}
+
+async function saturnFrameMetrics(page, png, cameraMetrics) {
+  return page.evaluate(async ({ source, camera }) => {
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", reject, { once: true });
+    });
+    image.src = `data:image/png;base64,${source}`;
+    await ready;
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const context = surface.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, surface.width, surface.height).data;
+    const angularRadius = Math.asin(Math.min(0.999, camera.focusRadius / camera.cameraDistance));
+    const globeRadius = surface.height * 0.5 * Math.tan(angularRadius)
+      / Math.tan(52 * Math.PI / 360);
+    const centerX = surface.width * 0.5;
+    const centerY = surface.height * 0.5;
+    let centerTotal = 0;
+    let centerCount = 0;
+    let ringTotal = 0;
+    let ringCount = 0;
+    let ringBright = 0;
+    let outsideTotal = 0;
+    let outsideCount = 0;
+    let outsideBright = 0;
+    for (let y = 0; y < surface.height; y += 1) {
+      for (let x = 0; x < surface.width; x += 1) {
+        const radius = Math.hypot(x + 0.5 - centerX, y + 0.5 - centerY) / globeRadius;
+        if (radius > 3) continue;
+        const offset = (y * surface.width + x) * 4;
+        const luminance = pixels[offset] * 0.2126
+          + pixels[offset + 1] * 0.7152
+          + pixels[offset + 2] * 0.0722;
+        if (radius <= 0.55) {
+          centerTotal += luminance;
+          centerCount += 1;
+        } else if (radius >= 1.12 && radius <= 2.42) {
+          ringTotal += luminance;
+          ringCount += 1;
+          if (luminance > 8) ringBright += 1;
+        } else if (radius >= 2.58) {
+          outsideTotal += luminance;
+          outsideCount += 1;
+          if (luminance > 8) outsideBright += 1;
+        }
+      }
+    }
+    return {
+      globeRadius,
+      centerMean: centerTotal / Math.max(1, centerCount),
+      ringMean: ringTotal / Math.max(1, ringCount),
+      ringBrightCoverage: ringBright / Math.max(1, ringCount),
+      outsideMean: outsideTotal / Math.max(1, outsideCount),
+      outsideBrightCoverage: outsideBright / Math.max(1, outsideCount),
+    };
+  }, { source: png.toString("base64"), camera: cameraMetrics });
+}
+
+async function assertSaturnRingTextureProfile(page) {
+  const profile = await page.evaluate(async () => {
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", reject, { once: true });
+    });
+    image.src = "./assets/textures/saturn-ring.png";
+    await ready;
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const context = surface.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, surface.width, surface.height).data;
+    const alpha = new Float64Array(surface.width);
+    const luminance = new Float64Array(surface.width);
+    for (let x = 0; x < surface.width; x += 1) {
+      for (let y = 0; y < surface.height; y += 1) {
+        const offset = (y * surface.width + x) * 4;
+        const a = pixels[offset + 3] / 255;
+        alpha[x] += pixels[offset + 3] / surface.height;
+        luminance[x] += (pixels[offset] * 0.2126
+          + pixels[offset + 1] * 0.7152
+          + pixels[offset + 2] * 0.0722) * a / surface.height;
+      }
+    }
+    let transparentColumns = 0;
+    let transitions = 0;
+    let mean = 0;
+    for (let x = 0; x < alpha.length; x += 1) {
+      mean += luminance[x] / alpha.length;
+      if (alpha[x] < 10) transparentColumns += 1;
+      if (x > 0 && Math.abs(luminance[x] - luminance[x - 1]) > 5) transitions += 1;
+    }
+    let variance = 0;
+    for (let x = 0; x < luminance.length; x += 1) {
+      variance += (luminance[x] - mean) ** 2 / luminance.length;
+    }
+    return { transparentColumns, transitions, standardDeviation: Math.sqrt(variance) };
+  });
+  assert.ok(profile.transparentColumns > 100, "ring texture retains transparent gaps");
+  assert.ok(profile.transitions > 100, "ring texture retains many radial bands");
+  assert.ok(profile.standardDeviation > 30, "ring texture retains strong radial contrast");
+}
+
+async function touchPinchZoomOut(context, page) {
+  const cdp = await context.newCDPSession(page);
+  const box = await page.locator("#viewport").boundingBox();
+  assert.ok(box);
+  const centerX = box.x + box.width * 0.5;
+  const centerY = box.y + box.height * 0.42;
+  const points = (halfGap) => [
+    { id: 0, x: centerX - halfGap, y: centerY, radiusX: 4, radiusY: 4, force: 1 },
+    { id: 1, x: centerX + halfGap, y: centerY, radiusX: 4, radiusY: 4, force: 1 },
+  ];
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: points(70) });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: points(35) });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await settleCameraFrame(page);
+}
+
+async function touchSaturnHalfTurn(context, page, front) {
+  const cdp = await context.newCDPSession(page);
+  const start = await page.evaluate(() => {
+    const canvas = document.querySelector("#viewport");
+    const box = canvas.getBoundingClientRect();
+    for (const [x, y] of [[0.82, 0.55], [0.82, 0.42], [0.72, 0.5]]) {
+      const at = { x: box.left + box.width * x, y: box.top + box.height * y };
+      if (document.elementFromPoint(at.x, at.y) === canvas) return at;
+    }
+    return null;
+  });
+  assert.ok(start, "touch Saturn audit has an unobstructed drag origin");
+  const dx = -Math.PI / (4 * 0.005);
+  const dy = -2 * front.elevation / (4 * 0.004);
+  for (let drag = 0; drag < 4; drag += 1) {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ id: 0, x: start.x, y: start.y, radiusX: 4, radiusY: 4, force: 1 }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ id: 0, x: start.x + dx, y: start.y + dy, radiusX: 4, radiusY: 4, force: 1 }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await settleCameraFrame(page);
+  }
+}
+
+async function mouseSaturnHalfTurn(page, front) {
+  const start = await page.evaluate(() => {
+    const canvas = document.querySelector("#viewport");
+    const box = canvas.getBoundingClientRect();
+    for (const [x, y] of [[0.72, 0.55], [0.72, 0.42], [0.65, 0.5]]) {
+      const at = { x: box.left + box.width * x, y: box.top + box.height * y };
+      if (document.elementFromPoint(at.x, at.y) === canvas) return at;
+    }
+    return null;
+  });
+  assert.ok(start, "desktop Saturn audit has an unobstructed drag origin");
+  const dx = -Math.PI / (4 * 0.005);
+  const dy = -2 * front.elevation / (4 * 0.004);
+  for (let drag = 0; drag < 4; drag += 1) {
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + dx, start.y + dy, { steps: 2 });
+    await page.mouse.up();
+    await settleCameraFrame(page);
+  }
+}
+
+async function auditSaturnRing(context, prefix = "desktop") {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page);
+  if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
+    await page.locator("#play-button").click();
+  }
+  await page.evaluate(() => document.querySelector('[data-body-id="saturn"]').click());
+  await settleCameraMotion(page);
+  await page.locator("#card-close").click();
+  if (prefix === "touch") await touchPinchZoomOut(context, page);
+  const front = await findSaturnFrontSeat(page);
+  assert.ok(front.saturnRing.viewLightDot >= 0.7, "front audit uses a strongly lit seat");
+  assert.equal(front.saturnRing.emissiveIntensity, 0, "front view remains exactly unchanged");
+  await saveScreenshot(page, `${prefix}-saturn-front-ring`);
+  const frontCanvas = await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-front-ring-canvas`);
+  if (prefix === "touch") {
+    const saturn = findBody("saturn");
+    const horizontalHalfFov = Math.atan(
+      page.viewportSize().width / page.viewportSize().height * Math.tan(52 * Math.PI / 360),
+    );
+    const ringAngularRadius = Math.asin(
+      front.focusRadius * (saturn.ringOuterKm / saturn.radiusKm) / front.cameraDistance,
+    );
+    assert.ok(ringAngularRadius < horizontalHalfFov, "the complete Saturn ring fits in portrait");
+    await touchSaturnHalfTurn(context, page, front);
+  } else {
+    await mouseSaturnHalfTurn(page, front);
+  }
+  const back = await currentCameraMetrics(page);
+  assert.ok(antipodalOrbitError(front, back) < 0.04, "front/back Saturn seats are antipodal");
+  assert.ok(back.saturnRing.viewLightDot <= -0.85, "back audit uses strong high phase");
+  assert.ok(back.saturnRing.emissiveIntensity > 0);
+  assert.ok(back.saturnRing.emissiveIntensity <= CONFIG.saturnRingHighPhaseLight);
+  await saveScreenshot(page, `${prefix}-saturn-backlit-ring`);
+  const backCanvas = await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-backlit-ring-canvas`);
+  const frontVisual = await saturnFrameMetrics(page, frontCanvas, front);
+  const backVisual = await saturnFrameMetrics(page, backCanvas, back);
+  assert.ok(backVisual.centerMean < frontVisual.centerMean, "Saturn's backlit globe stays dark");
+  assert.ok(backVisual.ringMean < frontVisual.ringMean, "backlit rings stay dimmer than front-lit rings");
+  assert.ok(backVisual.ringMean > backVisual.outsideMean, "backlit rings remain visible without a halo");
+  assert.ok(
+    backVisual.ringBrightCoverage > backVisual.outsideBrightCoverage,
+    "bright pixels stay concentrated on the ring surface",
+  );
+  await assertSaturnRingTextureProfile(page);
+  await pressCameraKey(page, "ArrowUp", 2);
+  assert.ok((await currentCameraMetrics(page)).saturnRing.emissiveIntensity > 0);
+  await saveScreenshot(page, `${prefix}-saturn-backlit-high`);
+  await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-backlit-high-canvas`);
+  await pressCameraKey(page, "ArrowDown", 4);
+  assert.ok((await currentCameraMetrics(page)).saturnRing.emissiveIntensity > 0);
+  await saveScreenshot(page, `${prefix}-saturn-backlit-low`);
+  await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-backlit-low-canvas`);
+  console.log(`${prefix} Saturn front/back metrics`, { frontVisual, backVisual });
+  assert.deepEqual(errors, []);
+  await page.close();
 }
 
 async function assertConstellationModesAndFreshLabels(page) {
@@ -894,6 +1461,34 @@ async function auditResponsiveCosmology(context, prefix) {
     } else {
       await saveScreenshot(page, `${prefix}-${look}`);
     }
+    if (look === "universe") {
+      await settleCameraMotion(page);
+      const fit = await page.evaluate(async () => {
+        const app = await import(new URL("./js/app.js", location.href).href);
+        const galaxy = await import(new URL("./js/galaxy.js", location.href).href);
+        const metrics = app.currentCameraMetrics();
+        const halfFov = 52 * Math.PI / 360;
+        const limiting = Math.min(halfFov, Math.atan(innerWidth / innerHeight * Math.tan(halfFov)));
+        return {
+          angularRadius: Math.asin(galaxy.farthestUniverseDistance() / metrics.cameraDistance),
+          limiting,
+        };
+      });
+      assert.ok(fit.angularRadius <= fit.limiting + 1e-6, `${prefix} contains the complete CMB sphere`);
+      if (prefix === "touch-portrait") {
+        const before = await currentCameraMetrics(page);
+        await page.locator("#zoom-out-button").click();
+        await page.locator("#zoom-out-button").click();
+        await settleCameraFrame(page);
+        const after = await currentCameraMetrics(page);
+        assert.ok(after.controlDistance > before.controlDistance, "portrait zoom continues past the fit seat");
+        assert.ok(Math.abs(
+          (after.cameraDistance - before.cameraDistance)
+            - (after.controlDistance - before.controlDistance)
+        ) < 1e-4, "post-fit portrait camera retains one-to-one motion");
+        await saveScreenshot(page, "touch-portrait-universe-max-zoom-out");
+      }
+    }
     assert.deepEqual(errors, [], `${prefix} ${look} has no browser errors`);
     await page.close();
   }
@@ -1033,13 +1628,14 @@ async function captureTriton(page) {
   await page.mouse.wheel(0, -1_200);
   await page.waitForTimeout(500);
   await saveTritonScreenshot(page, "triton-rotation-a");
-  await page.locator("#speed-slider").evaluate((slider) => {
-    const minimum = 1 / 24;
-    const maximum = 400;
-    const target = 5.876994;
+  await page.locator("#speed-slider").evaluate((slider, { minimum, maximum, target }) => {
     slider.value = String((Math.log(target) - Math.log(minimum))
       / (Math.log(maximum) - Math.log(minimum)));
     slider.dispatchEvent(new Event("input", { bubbles: true }));
+  }, {
+    minimum: CONFIG.minDaysPerSecond,
+    maximum: CONFIG.maxDaysPerSecond,
+    target: 5.876994,
   });
   await page.locator("#play-button").click();
   await page.waitForTimeout(500);
@@ -1102,13 +1698,15 @@ async function captureEarthSolstice(context, name, targetDate, southPole = false
   }
   await page.evaluate(() => document.querySelector('[data-body-id="earth"]').click());
   await page.locator("#body-card:not([hidden])").waitFor();
-  const setSpeed = (target) => page.locator("#speed-slider").evaluate((slider, daysPerSecond) => {
-    const minimum = 1 / 24;
-    const maximum = 400;
-    slider.value = String((Math.log(daysPerSecond) - Math.log(minimum))
-      / (Math.log(maximum) - Math.log(minimum)));
+  const setSpeed = (target) => page.locator("#speed-slider").evaluate((slider, options) => {
+    slider.value = String((Math.log(options.target) - Math.log(options.minimum))
+      / (Math.log(options.maximum) - Math.log(options.minimum)));
     slider.dispatchEvent(new Event("input", { bubbles: true }));
-  }, target);
+  }, {
+    target,
+    minimum: CONFIG.minDaysPerSecond,
+    maximum: CONFIG.maxDaysPerSecond,
+  });
   const approachDate = new Date(
     Date.parse(`${targetDate}T00:00:00Z`) - 75 * 86_400_000,
   ).toISOString().slice(0, 10);
@@ -1263,11 +1861,13 @@ try {
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
   });
+  await assertColdGalaxyZoomDoesNotBlock(desktop);
   const desktopPage = await desktop.newPage();
   const desktopErrors = captureErrors(desktopPage);
   await openReady(desktopPage);
   assert.equal(await desktopPage.getAttribute("html", "data-galaxy-ready"), null);
   await assertRenderedCanvas(desktopPage);
+  await assertPreparedZoomLatency(desktopPage);
 
   await desktopPage.locator("#play-button").click();
   const canvas = desktopPage.locator("#viewport");
@@ -1293,6 +1893,9 @@ try {
   assert.equal(await desktopPage.locator("#card-name").textContent(), "Earth");
   await desktopPage.locator("#reset-button").click();
   assert.equal(await desktopPage.locator("#body-card").getAttribute("hidden"), "");
+  await assertCameraControlsAndSunBoundary(desktopPage);
+  await assertBodyLabelCollisionsSuppressed(desktopPage);
+  await assertPausedRenderInvalidation(desktopPage);
 
   await assertBodySelectionSweep(desktopPage);
   await assertConstellationModesAndFreshLabels(desktopPage);
@@ -1350,6 +1953,7 @@ try {
   await auditSolarHandoff(desktop);
   await auditScaleTransitions(desktop);
   await auditFarSkyDirections(desktop);
+  await auditSaturnRing(desktop);
   await captureEarthSolstice(desktop, "earth-june-solstice", "2000-06-21");
   await captureEarthSolstice(desktop, "earth-december-solstice", "2000-12-21", true);
   await desktop.close();
@@ -1430,6 +2034,7 @@ try {
   await assertCardClearsDock(touchPage, { width: 568, height: 320 });
   await saveScreenshot(touchPage, "touch-landscape-card");
   assert.deepEqual(touchErrors, []);
+  await auditSaturnRing(touch, "touch");
   await auditResponsiveCosmology(touch, "touch-portrait");
   await touch.close();
 

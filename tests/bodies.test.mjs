@@ -216,6 +216,25 @@ function orbitNormal(body) {
   return normalized(cross(at, subtract(next, at)));
 }
 
+function physicalJ2000SceneVector(body) {
+  const at = keplerOffset(body, findBody(body.parent), 0);
+  const physicalPerVisual = body.orbitAu / visualOrbit(body.orbitAu);
+  return {
+    x: at.x * physicalPerVisual,
+    y: at.y * physicalPerVisual,
+    z: at.z * physicalPerVisual,
+  };
+}
+
+function assertVectorClose(actual, expected, tolerance = 1e-12) {
+  for (const axis of ["x", "y", "z"]) {
+    assert.ok(
+      Math.abs(actual[axis] - expected[axis]) < tolerance,
+      `${axis}: expected ${expected[axis]}, received ${actual[axis]}`,
+    );
+  }
+}
+
 test("catalog includes the v1 bodies with published periods, spins, and tilts", () => {
   assert.deepEqual(BODIES.map((body) => body.id).sort(), [...required].sort());
   assert.equal(BODIES.filter((body) => body.kind === "planet").length, 8);
@@ -273,7 +292,7 @@ test("physical catalog matches published NASA / JPL figures", () => {
   assert.equal(findBody("uranus").radiusKm, 25362);
   assert.equal(findBody("neptune").radiusKm, 24622);
   assert.equal(findBody("pluto").radiusKm, 1188.3);
-  assert.equal(findBody("ceres").radiusKm, 473);
+  assert.equal(findBody("ceres").radiusKm, 469.7);
 
   // JPL SSD sats/phys_par mean radii (IAU WGCCRE 2015), except Io 1821.6
   // which keeps the NASA Galilean fact-sheet rounding of 1821.49.
@@ -329,6 +348,58 @@ test("physical catalog matches published NASA / JPL figures", () => {
   assert.equal(findBody("titan").periDeg, 78.3);
   assert.equal(findBody("titan").meanAnomalyDeg, 11.7);
   assert.equal(findBody("titan").nodeDeg, 78.6);
+});
+
+test("Ceres and Neptune keep coherent fixed J2000 element rows", () => {
+  const ceres = findBody("ceres");
+  assert.deepEqual({
+    orbitAu: ceres.orbitAu,
+    eccentricity: ceres.eccentricity,
+    inclinationDeg: ceres.inclinationDeg,
+    nodeDeg: ceres.nodeDeg,
+    periDeg: ceres.periDeg,
+    meanAnomalyDeg: ceres.meanAnomalyDeg,
+    orbitDays: ceres.orbitDays,
+  }, {
+    orbitAu: 2.766496019994375,
+    eccentricity: 0.07837562647163041,
+    inclinationDeg: 10.58336045805628,
+    nodeDeg: 80.49435747295276,
+    periDeg: 73.92286274285223,
+    meanAnomalyDeg: 6.176654513180486,
+    orbitDays: 1680.712776442072,
+  });
+  // Horizons JPL#48 ecliptic vector at JD 2451545.0, mapped to scene axes.
+  assertVectorClose(physicalJ2000SceneVector(ceres), {
+    x: -2.379327705915647,
+    y: 0.4630055715902157,
+    z: -0.7954860388931395,
+  });
+
+  const neptune = findBody("neptune");
+  assert.deepEqual({
+    orbitAu: neptune.orbitAu,
+    eccentricity: neptune.eccentricity,
+    inclinationDeg: neptune.inclinationDeg,
+    nodeDeg: neptune.nodeDeg,
+    periDeg: neptune.periDeg,
+    meanAnomalyDeg: neptune.meanAnomalyDeg,
+    orbitDays: neptune.orbitDays,
+  }, {
+    orbitAu: 30.06992276,
+    eccentricity: 0.00859048,
+    inclinationDeg: 1.77004347,
+    nodeDeg: 131.78422574,
+    // Table 1 gives long.peri.=44.96476227 and L=-55.12002969.
+    periDeg: 273.18053653,
+    meanAnomalyDeg: 259.91520804,
+    orbitDays: 60189,
+  });
+  assertVectorClose(physicalJ2000SceneVector(neptune), {
+    x: 16.804762811918863,
+    y: 0.12740321008663313,
+    z: 24.99270986023979,
+  });
 });
 
 test("Kepler's equation recovers a circular and an eccentric orbit", () => {
@@ -420,18 +491,26 @@ test("heliocentric axes and Saturn's ring plane use static J2000 PCK poles", () 
     spinDirection: 1,
   });
 
-  for (const [id, expectedTilt, tolerance] of [
-    ["mercury", 0.034, 0.001],
-    ["ceres", 4.033, 0.01],
-    ["saturn", 26.73, 0.01],
-    ["uranus", 97.77, 0.01],
-    ["pluto", 119.6, 0.1],
+  for (const id of [
+    "mercury",
+    "venus",
+    "earth",
+    "mars",
+    "ceres",
+    "jupiter",
+    "saturn",
+    "uranus",
+    "neptune",
+    "pluto",
   ]) {
     const body = findBody(id);
     const pole = sceneOrientationBasis(body).zAxis;
     const direction = Math.sign(renderedSpinPeriod(body));
     const spinAxis = { x: pole.x * direction, y: pole.y * direction, z: pole.z * direction };
-    assert.ok(Math.abs(angleDeg(spinAxis, orbitNormal(body)) - expectedTilt) < tolerance);
+    assert.ok(
+      Math.abs(angleDeg(spinAxis, orbitNormal(body)) - body.tiltDeg) < 0.02,
+      `${id} rendered axis matches its catalog obliquity`,
+    );
   }
   assert.ok(Math.abs(angleDeg(
     sceneOrientationBasis(findBody("saturn")).zAxis,
@@ -586,6 +665,36 @@ test("rendered moon planes and retrograde directions use each source frame once"
   assert.ok(renderedPeriod(triton.orbitDays, triton.inclinationDeg) > 0);
 });
 
+test("every catalog orbit and spin uses its retrograde sign exactly once", () => {
+  for (const body of BODIES.filter((candidate) => candidate.orbitDays)) {
+    const referencePole = body.kind === "moon" && moonOrbitAttachment(body) === "parent-equatorial"
+      ? sceneOrientationBasis(findBody(body.parent)).zAxis
+      : { x: 0, y: 1, z: 0 };
+    const expectedDirection = body.inclinationDeg > 90 ? -1 : 1;
+    assert.equal(
+      Math.sign(dot(orbitNormal(body), referencePole)),
+      expectedDirection,
+      `${body.id} orbit direction`,
+    );
+  }
+
+  const negativeRenderedPeriods = BODIES
+    .filter((body) => renderedSpinPeriod(body) < 0)
+    .map((body) => body.id);
+  assert.deepEqual(negativeRenderedPeriods, ["venus", "uranus", "triton"]);
+
+  const retrogradeHeliocentricSpins = BODIES
+    .filter((body) => body.parent === "sun" && body.orientationJ2000)
+    .filter((body) => {
+      const pole = sceneOrientationBasis(body).zAxis;
+      const direction = Math.sign(renderedSpinPeriod(body));
+      const spinAxis = { x: pole.x * direction, y: pole.y * direction, z: pole.z * direction };
+      return dot(spinAxis, orbitNormal(body)) < 0;
+    })
+    .map((body) => body.id);
+  assert.deepEqual(retrogradeHeliocentricSpins, ["venus", "uranus", "pluto"]);
+});
+
 test("retrograde spin is not reversed twice by period and obliquity", () => {
   for (const id of ["venus", "uranus", "pluto"]) {
     const body = findBody(id);
@@ -601,11 +710,11 @@ test("retrograde spin is not reversed twice by period and obliquity", () => {
   }
 });
 
-test("time floor is one simulated hour per real second", () => {
-  assert.equal(CONFIG.defaultDaysPerSecond, 1 / 24);
-  assert.equal(CONFIG.minDaysPerSecond, 1 / 24);
+test("time floor is one simulated second per real second", () => {
+  assert.equal(CONFIG.defaultDaysPerSecond, 1 / 86400);
+  assert.equal(CONFIG.minDaysPerSecond, 1 / 86400);
   assert.ok(CONFIG.maxDaysPerSecond > CONFIG.defaultDaysPerSecond);
-  assert.equal(formatDaysPerSecond(CONFIG.defaultDaysPerSecond), "1 h");
+  assert.equal(formatDaysPerSecond(CONFIG.defaultDaysPerSecond), "1 sec");
   assert.equal(formatDaysPerSecond(8), "8.0 d");
   assert.equal(formatDaysPerSecond(0.25), "6 h");
 });

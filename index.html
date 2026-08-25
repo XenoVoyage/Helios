@@ -14,10 +14,16 @@
     <script type="module" src="./js/app.js"></script>
   </head>
   <body>
-    <a id="skip-link" class="skip-link" href="#dock">Skip to time controls</a>
+    <a id="skip-link" class="skip-link" href="#dock">Skip to controls</a>
 
     <main id="stage">
-      <canvas id="viewport" tabindex="0" aria-label="Interactive solar system">
+      <canvas
+        id="viewport"
+        tabindex="0"
+        aria-label="Interactive solar system"
+        aria-describedby="keyboard-help"
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight PageUp PageDown"
+      >
         Helios needs a browser with canvas and WebGL support.
       </canvas>
       <div id="labels" class="labels" aria-label="World labels"></div>
@@ -44,7 +50,7 @@
         <button id="card-close" type="button" aria-label="Close">×</button>
       </section>
 
-      <footer id="dock" class="dock">
+      <footer id="dock" class="dock" tabindex="-1" aria-label="Playback, camera, and view controls">
         <button id="play-button" type="button" aria-pressed="true">Pause</button>
         <div class="speed-group">
           <button id="slower-button" type="button" aria-label="Slower">−</button>
@@ -56,12 +62,16 @@
               min="0"
               max="1"
               step="0.01"
-              value="0.5"
-              aria-valuetext="1 hour per second"
+              value="0"
+              aria-valuetext="1 second per second"
             >
           </label>
           <button id="faster-button" type="button" aria-label="Faster">+</button>
-          <span id="speed-readout">1 h / sec</span>
+          <span id="speed-readout">1 sec / sec</span>
+        </div>
+        <div class="camera-controls" role="group" aria-label="Camera zoom">
+          <button id="zoom-out-button" type="button" aria-label="Zoom out" aria-keyshortcuts="PageDown">−</button>
+          <button id="zoom-in-button" type="button" aria-label="Zoom in" aria-keyshortcuts="PageUp">+</button>
         </div>
         <label id="sky-control" class="constellation-control">
           <span class="visually-hidden">Constellation display</span>
@@ -72,6 +82,9 @@
           </select>
         </label>
         <button id="reset-button" type="button">Reset view</button>
+        <p id="keyboard-help" class="visually-hidden">
+          Use the arrow keys to orbit the camera and Page Up or Page Down to zoom.
+        </p>
       </footer>
     </main>
 

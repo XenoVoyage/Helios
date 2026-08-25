@@ -35,6 +35,7 @@ try {
     "js/2mrs-data.js",
     "js/helpers.js",
     "js/time.js",
+    "PROVENANCE.md",
     "styles.css",
     "vendor/three.module.min.js",
     "vendor/three.core.min.js",
@@ -50,6 +51,8 @@ try {
     assert.equal(response.status, 200, relative || "index.html");
     if (relative.endsWith(".webp")) {
       assert.match(response.headers.get("content-type") ?? "", /image\/webp/);
+    } else if (relative.endsWith(".md")) {
+      assert.match(response.headers.get("content-type") ?? "", /text\/markdown/);
     }
   }
 

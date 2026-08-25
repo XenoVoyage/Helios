@@ -7,6 +7,7 @@ import {
   CONFIG,
   isShortcutTargetInteractive,
   pinchZoomDistance,
+  saturnRingHighPhaseFactor,
   wheelZoomMultiplier,
 } from "../js/config.js";
 import { visualOrbit } from "../js/bodies.js";
@@ -48,6 +49,8 @@ import {
   farGalaxySkyRadius,
   generateFarGalaxySkySamples,
   galaxyOpacity,
+  galaxyBuildStageForDistance,
+  galaxyLayerReadyForDistance,
   heliocentricGalactic,
   localWebOpacity,
   localGroupCameraAim,
@@ -80,6 +83,7 @@ import {
   neighborScenePosition,
   orbitLineOpacity,
   orreryScale,
+  responsiveExtraZoomCameraDistance,
   scaleLayer,
   semanticLabelOpacities,
   semanticLabelRow,
@@ -687,6 +691,75 @@ test("cosmic structure brightens by semantic stage while the CMB waits for shell
   }
 });
 
+test("portrait CMB distance fits the shell without changing the approved base path", () => {
+  const pullStart = CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.68;
+  const landscape = 16 / 9;
+  for (const distance of [
+    CONFIG.cameraDistance,
+    CONFIG.webViewDistance,
+    pullStart,
+    (pullStart + CONFIG.universeViewDistance) / 2,
+    CONFIG.universeViewDistance,
+    CONFIG.maxDistance,
+  ]) {
+    assert.equal(
+      responsiveExtraZoomCameraDistance(distance, landscape),
+      extraZoomCameraDistance(distance),
+      `landscape keeps the exact base camera distance at ${distance}`,
+    );
+  }
+
+  const aspect = 390 / 844;
+  const halfFov = 52 * Math.PI / 360;
+  const limitingHalfFov = Math.min(halfFov, Math.atan(aspect * Math.tan(halfFov)));
+  const shellFit = farthestUniverseDistance() / Math.sin(limitingHalfFov);
+  let previous = 0;
+  for (let index = 0; index <= 200; index += 1) {
+    const distance = CONFIG.webViewDistance
+      + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * index / 200;
+    const base = extraZoomCameraDistance(distance);
+    const cmb = cmbSkyOpacity(distance);
+    const responsive = responsiveExtraZoomCameraDistance(distance, aspect);
+    if (cmb === 0) assert.equal(responsive, base, `invisible CMB keeps base path at ${distance}`);
+    const blend = cmb * cmb * (3 - 2 * cmb);
+    assert.ok(Math.abs(responsive - (base + (shellFit - base) * blend)) < 1e-9);
+    assert.ok(responsive >= previous, `portrait camera remains monotonic at ${distance}`);
+    previous = responsive;
+  }
+  const finalDistance = responsiveExtraZoomCameraDistance(CONFIG.universeViewDistance, aspect);
+  assert.ok(Math.abs(finalDistance - shellFit) < 1e-9);
+  assert.ok(Math.asin(farthestUniverseDistance() / finalDistance) <= limitingHalfFov + 1e-12);
+  assert.equal(
+    responsiveExtraZoomCameraDistance(CONFIG.universeViewDistance, 0.8),
+    extraZoomCameraDistance(CONFIG.universeViewDistance),
+  );
+  assert.ok(Math.abs(
+    responsiveExtraZoomCameraDistance(CONFIG.maxDistance, aspect) - finalDistance
+      - (CONFIG.maxDistance - CONFIG.universeViewDistance)
+  ) < 1e-9, "portrait zoom retains one-to-one motion beyond the fitted endpoint");
+});
+
+test("galaxy construction stages follow only layers that can contribute", () => {
+  assert.equal(galaxyBuildStageForDistance(CONFIG.cameraDistance), "skeleton");
+  assert.equal(galaxyBuildStageForDistance(CONFIG.handoffViewDistance), "near");
+  assert.equal(galaxyBuildStageForDistance(CONFIG.localGroupViewDistance), "near");
+  assert.equal(galaxyBuildStageForDistance(CONFIG.webViewDistance), "web");
+  assert.equal(
+    galaxyBuildStageForDistance(
+      CONFIG.webViewDistance
+        + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * 0.2,
+    ),
+    "outer",
+  );
+  assert.equal(galaxyBuildStageForDistance(CONFIG.universeViewDistance), "complete");
+  const staged = { userData: { buildStage: "near" } };
+  assert.equal(galaxyLayerReadyForDistance(staged, CONFIG.localGroupViewDistance), true);
+  assert.equal(galaxyLayerReadyForDistance(staged, CONFIG.webViewDistance), false);
+  staged.userData.buildStage = "complete";
+  assert.equal(galaxyLayerReadyForDistance(staged, CONFIG.universeViewDistance), true);
+});
+
 test("semantic labels roll up from galaxies to superclusters, then clear for the web", () => {
   assert.ok(semanticLabelScale("catalog") < semanticLabelScale("group"));
   assert.ok(semanticLabelScale("group") < semanticLabelScale("structure"));
@@ -1095,6 +1168,16 @@ test("pinch direction, wheel direction, and shortcut targets follow native behav
   assert.equal(isShortcutTargetInteractive({ tagName: "CANVAS" }), false);
 });
 
+test("Saturn high-phase ring cue is zero in normal views and smoothly bounded", () => {
+  assert.equal(saturnRingHighPhaseFactor(1), 0);
+  assert.equal(saturnRingHighPhaseFactor(-0.2), 0);
+  assert.equal(saturnRingHighPhaseFactor(-0.85), 1);
+  assert.equal(saturnRingHighPhaseFactor(-1), 1);
+  assert.ok(saturnRingHighPhaseFactor(-0.5) > 0);
+  assert.ok(saturnRingHighPhaseFactor(-0.5) < 1);
+  assert.equal(CONFIG.saturnRingHighPhaseLight, 0.12);
+});
+
 test("camera far plane clears the neighborhood and galactic coordinates stay coherent", () => {
   const farthest = Math.max(
     farthestNeighborhoodDistance(),
@@ -1262,7 +1345,7 @@ test("post-Virgo map uses measured cluster anchors and no invented web links", a
   assert.match(galaxySource, /cmb-shell/);
   assert.match(galaxySource, /export function createGalaxyLayer/);
   assert.match(galaxySource, /map\.name = "galactic-frame"/);
-  assert.match(galaxySource, /orientMapFrame\(THREE, map\)/);
+  assert.match(galaxySource, /orientMapFrame\(job\.THREE, job\.map\)/);
   assert.match(galaxySource, /visibilityCache/);
   assert.match(galaxySource, /cache\.opacity === opacity && cache\.distance === distance/);
   assert.match(galaxySource, /far-galaxy-sky/);
@@ -1295,7 +1378,7 @@ test("post-Virgo map uses measured cluster anchors and no invented web links", a
   );
   assert.doesNotMatch(galaxySource, /farGalaxySkyRadius\(\) \* 0\.045/);
   assert.doesNotMatch(galaxySource, /t: 0\.16/);
-  assert.match(galaxySource, /createFarGalaxySky\(THREE, group\)/);
+  assert.match(galaxySource, /function createFarGalaxySky\(THREE, group, samples/);
   assert.doesNotMatch(galaxySource, /far-galaxy-shell/);
   assert.doesNotMatch(galaxySource, /far-galaxy-blobs/);
   assert.match(galaxySource, /brightenLoadedMap/);
@@ -1372,9 +1455,11 @@ test("post-Virgo map uses measured cluster anchors and no invented web links", a
   assert.match(galaxySource, /outerDensityBlend/);
   assert.match(galaxySource, /localWebOpacity/);
   const m31 = findNeighbor("m31");
+  const catalogRelativeSize = milkyWayDiskDiameter()
+    * (m31.radiusKpc / MILKY_WAY.diskRadiusKpc);
   assert.ok(
-    neighborApparentSize(m31) < milkyWayDiskDiameter(),
-    "Andromeda stays smaller than the Milky Way disk",
+    Math.abs(neighborApparentSize(m31) - catalogRelativeSize) < 1e-9,
+    "Andromeda cannot read smaller than its catalog radius relative to the Milky Way",
   );
   assert.ok(
     visualNeighborhood(m31.distanceKpc) > milkyWayDiskDiameter(),

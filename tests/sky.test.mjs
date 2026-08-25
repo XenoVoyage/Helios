@@ -23,6 +23,7 @@ import {
   constellationAnchorHips,
   constellationHasStar,
   constellationLabelBudget,
+  constellationLabelFitsViewport,
   constellationLabelPixelHeight,
   createConstellationLabelWorkspace,
   equatorialToGalactic,
@@ -247,6 +248,94 @@ test("All-mode label budgets are responsive and bounded", () => {
       assert.ok(budget >= 4 && budget <= 18);
     }
   }
+});
+
+test("Major labels hide only when visible ink crosses a raw viewport edge", () => {
+  const candidate = (x, y, width = 80, height = 24, eligible = true) => ({
+    x, y, width, height, eligible,
+  });
+  const viewport = { width: 800, height: 400, topInset: 40, bottomInset: 60 };
+  assert.equal(constellationLabelFitsViewport(candidate(200, 150), viewport), true);
+  assert.equal(constellationLabelFitsViewport(candidate(20, 150), viewport), false, "left edge clips");
+  assert.equal(constellationLabelFitsViewport(candidate(780, 150), viewport), false, "right edge clips");
+  assert.equal(constellationLabelFitsViewport(candidate(200, 6), viewport), false, "top edge clips");
+  assert.equal(constellationLabelFitsViewport(candidate(200, 394), viewport), false, "bottom edge clips");
+  assert.equal(constellationLabelFitsViewport(candidate(-100, 150), viewport), true, "offscreen stays baseline-visible");
+  assert.equal(constellationLabelFitsViewport(candidate(200, 150, 80, 24, false), viewport), true);
+});
+
+test("Major-mode live layout only hides clipped labels and does not pack them", () => {
+  const vector = () => ({
+    x: 0,
+    y: 0,
+    z: 0,
+    copy(other) {
+      this.x = other.x;
+      this.y = other.y;
+      this.z = other.z;
+      return this;
+    },
+    applyMatrix4() { return this; },
+    project() {
+      this.z = 0;
+      return this;
+    },
+  });
+  const sprite = (id, x, majorRank) => ({
+    visible: true,
+    scale: { x: 1, y: 0.4 },
+    getWorldPosition(target) {
+      target.x = x;
+      target.y = 0;
+      target.z = -10;
+      return target;
+    },
+    userData: {
+      constellationId: id,
+      majorRank,
+      inkWidthRatio: 0.8,
+      world: vector(),
+      cameraSpace: vector(),
+      projected: vector(),
+      layoutCandidate: {
+        id,
+        majorRank,
+        catalogRank: 0,
+        retained: false,
+        eligible: false,
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+      },
+    },
+  });
+  const overlappingA = sprite("Ori", 0, 0);
+  const overlappingB = sprite("UMa", 0, 1);
+  const clipped = sprite("Sco", -0.99, 2);
+  const minor = sprite("Men", 0.5, -1);
+  const labels = {
+    visible: true,
+    userData: { layoutWorkspace: createConstellationLabelWorkspace() },
+    children: [overlappingA, overlappingB, clipped, minor],
+  };
+  const sky = {
+    userData: { constellationMode: CONSTELLATION_MODES.major },
+    getObjectByName(name) {
+      return name === "constellation-labels" ? labels : null;
+    },
+  };
+  const selected = updateConstellationLabels(
+    sky,
+    { fov: 52, near: 0.1, matrixWorldInverse: {} },
+    { width: 800, height: 400, topInset: 40, bottomInset: 60 },
+  );
+  assert.deepEqual(selected, ["Ori", "UMa"], "overlapping Major labels keep their legacy visibility");
+  assert.deepEqual(
+    labels.children.map((label) => label.visible),
+    [true, true, false, false],
+    "only the clipped Major and the non-Major label are hidden",
+  );
 });
 
 test("All-mode label packing is deterministic, clipped, prioritized, and collision-free", () => {

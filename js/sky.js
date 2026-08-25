@@ -694,6 +694,23 @@ function createConstellationLabelRect() {
   return { left: 0, right: 0, top: 0, bottom: 0 };
 }
 
+/** Preserve Major mode unless visible label ink would be cut by a viewport edge. */
+export function constellationLabelFitsViewport(candidate, {
+  width,
+  height,
+} = {}) {
+  if (!candidate || !(width > 0) || !(height > 0)) return true;
+  const halfWidth = candidate.width / 2;
+  const halfHeight = candidate.height / 2;
+  const left = candidate.x - halfWidth;
+  const right = candidate.x + halfWidth;
+  const top = candidate.y - halfHeight;
+  const bottom = candidate.y + halfHeight;
+  const intersectsViewport = right > 0 && left < width && bottom > 0 && top < height;
+  if (!candidate.eligible || !intersectsViewport) return true;
+  return left >= 0 && right <= width && top >= 0 && bottom <= height;
+}
+
 /** Reusable CPU-only storage for the per-frame All-label layout. */
 export function createConstellationLabelWorkspace(
   rectCapacity = CONSTELLATION_LAYOUT.maxBudget,
@@ -810,7 +827,7 @@ export function updateConstellationLabels(sky, camera, {
   const labels = sky?.getObjectByName("constellation-labels");
   if (!labels?.visible || !camera) return [];
   const mode = normalizeConstellationMode(sky.userData.constellationMode);
-  if (mode !== CONSTELLATION_MODES.all) return [];
+  if (mode === CONSTELLATION_MODES.off) return [];
   const workspace = labels.userData.layoutWorkspace;
   const { viewport, retained, selected, options } = workspace;
   if (viewport.width !== width
@@ -828,6 +845,10 @@ export function updateConstellationLabels(sky, camera, {
   candidates.length = 0;
   for (const sprite of labels.children) {
     const data = sprite.userData;
+    if (mode === CONSTELLATION_MODES.major && data.majorRank < 0) {
+      sprite.visible = false;
+      continue;
+    }
     const candidate = data.layoutCandidate;
     sprite.getWorldPosition(data.world);
     data.cameraSpace.copy(data.world).applyMatrix4(camera.matrixWorldInverse);
@@ -850,6 +871,18 @@ export function updateConstellationLabels(sky, camera, {
   options.height = height;
   options.topInset = topInset;
   options.bottomInset = bottomInset;
+  if (mode === CONSTELLATION_MODES.major) {
+    const visibleIds = workspace.accepted;
+    visibleIds.length = 0;
+    for (const sprite of labels.children) {
+      const data = sprite.userData;
+      const visible = data.majorRank >= 0
+        && constellationLabelFitsViewport(data.layoutCandidate, options);
+      sprite.visible = visible;
+      if (visible) visibleIds.push(data.constellationId);
+    }
+    return visibleIds;
+  }
   const selectedIds = selectConstellationLabelIds(candidates, options, workspace);
   selected.clear();
   for (const id of selectedIds) selected.add(id);

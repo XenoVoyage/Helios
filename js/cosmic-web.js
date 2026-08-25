@@ -53,33 +53,60 @@ function decodePayload() {
   return bytes;
 }
 
-/** Decode the compact 2MRS subset into one projected point/color pair. */
-export function createTwoMrsSamples(project) {
+/** Create a resumable, deterministic decoder for the compact 2MRS subset. */
+export function createTwoMrsSampleJob(project) {
   if (typeof project !== "function") throw new TypeError("2MRS projection must be a function");
   const bytes = decodePayload();
   const count = TWOMRS_METADATA.includedRows;
-  const stride = TWOMRS_METADATA.recordBytes;
-  const positions = new Float32Array(count * 3);
-  const colors = new Float32Array(count * 3);
-  for (let i = 0; i < count; i += 1) {
-    const offset = i * stride;
-    const lDeg = readUint16(bytes, offset) / 65535 * 360;
-    const bDeg = readUint16(bytes, offset + 2) / 65535 * 180 - 90;
-    const velocityKmS = readUint16(bytes, offset + 4);
-    const distanceMpc = velocityKmS / TWOMRS_METADATA.h0KmSPerMpc;
-    const at = project({ lDeg, bDeg, distanceMpc });
-    const positionOffset = i * 3;
-    positions[positionOffset] = at.x;
-    positions[positionOffset + 1] = at.y;
-    positions[positionOffset + 2] = at.z;
+  return {
+    project,
+    bytes,
+    count,
+    stride: TWOMRS_METADATA.recordBytes,
+    index: 0,
+    positions: new Float32Array(count * 3),
+    colors: new Float32Array(count * 3),
+  };
+}
 
-    const magnitude = 4 + bytes[offset + 6] / 32;
-    const brightness = clamp01((11.75 - magnitude) / 7.75);
-    colors[positionOffset] = 0.52 + brightness * 0.42;
-    colors[positionOffset + 1] = 0.65 + brightness * 0.3;
-    colors[positionOffset + 2] = 0.86 + brightness * 0.14;
+/** Advance at most `rowBudget` catalog rows without changing output order. */
+export function advanceTwoMrsSampleJob(job, rowBudget = Infinity) {
+  if (rowBudget !== Infinity && (!Number.isInteger(rowBudget) || rowBudget <= 0)) {
+    throw new RangeError("2MRS row budget must be a positive integer");
   }
-  return { positions, colors };
+  const stop = rowBudget === Infinity ? job.count : Math.min(job.count, job.index + rowBudget);
+  for (; job.index < stop; job.index += 1) {
+    const i = job.index;
+    const offset = i * job.stride;
+    const lDeg = readUint16(job.bytes, offset) / 65535 * 360;
+    const bDeg = readUint16(job.bytes, offset + 2) / 65535 * 180 - 90;
+    const velocityKmS = readUint16(job.bytes, offset + 4);
+    const distanceMpc = velocityKmS / TWOMRS_METADATA.h0KmSPerMpc;
+    const at = job.project({ lDeg, bDeg, distanceMpc });
+    const positionOffset = i * 3;
+    job.positions[positionOffset] = at.x;
+    job.positions[positionOffset + 1] = at.y;
+    job.positions[positionOffset + 2] = at.z;
+
+    const magnitude = 4 + job.bytes[offset + 6] / 32;
+    const brightness = clamp01((11.75 - magnitude) / 7.75);
+    job.colors[positionOffset] = 0.52 + brightness * 0.42;
+    job.colors[positionOffset + 1] = 0.65 + brightness * 0.3;
+    job.colors[positionOffset + 2] = 0.86 + brightness * 0.14;
+  }
+  return job.index === job.count;
+}
+
+export function twoMrsSampleJobResult(job) {
+  if (job.index !== job.count) throw new Error("2MRS sample job is incomplete");
+  return { positions: job.positions, colors: job.colors };
+}
+
+/** Decode the compact 2MRS subset into one projected point/color pair. */
+export function createTwoMrsSamples(project) {
+  const job = createTwoMrsSampleJob(project);
+  advanceTwoMrsSampleJob(job);
+  return twoMrsSampleJobResult(job);
 }
 
 function unitSpherePoint(rand, inner = 0, outer = 1) {
@@ -147,7 +174,7 @@ function proximityScores(point, centers) {
  * The small uniform floor leaves a sparse field while the Voronoi proximity
  * weights concentrate most accepted points on walls and their intersections.
  */
-export function generateCosmicDensity(settings, innerRadius, outerRadius) {
+export function createCosmicDensityJob(settings, innerRadius, outerRadius) {
   if (!(innerRadius >= 0) || !(outerRadius > innerRadius)) {
     throw new RangeError("cosmic density radii must define a positive shell");
   }
@@ -156,56 +183,88 @@ export function generateCosmicDensity(settings, innerRadius, outerRadius) {
   if (!Number.isInteger(voidCount) || voidCount < 4) throw new RangeError("cosmic density needs at least four void centers");
 
   const rand = seedRandom(seed);
-  const centers = createVoidCenters(voidCount, rand);
-  const positions = new Float32Array(count * 3);
-  const colors = new Float32Array(count * 3);
-  let accepted = 0;
-  let attempts = 0;
-  const maxAttempts = count * 180;
+  return {
+    count,
+    innerRadius,
+    outerRadius,
+    verticalScale,
+    warmth,
+    rand,
+    centers: createVoidCenters(voidCount, rand),
+    positions: new Float32Array(count * 3),
+    colors: new Float32Array(count * 3),
+    accepted: 0,
+    attempts: 0,
+    maxAttempts: count * 180,
+  };
+}
 
-  while (accepted < count && attempts < maxAttempts) {
-    attempts += 1;
-    const point = unitSpherePoint(rand, 0.035, 0.965);
-    const scores = proximityScores(point, centers);
+/** Advance bounded candidate attempts while retaining the exact seeded stream. */
+export function advanceCosmicDensityJob(job, attemptBudget = Infinity) {
+  if (attemptBudget !== Infinity && (!Number.isInteger(attemptBudget) || attemptBudget <= 0)) {
+    throw new RangeError("cosmic density attempt budget must be a positive integer");
+  }
+  let work = 0;
+  while (
+    job.accepted < job.count
+    && job.attempts < job.maxAttempts
+    && work < attemptBudget
+  ) {
+    job.attempts += 1;
+    work += 1;
+    const point = unitSpherePoint(job.rand, 0.035, 0.965);
+    const scores = proximityScores(point, job.centers);
     const acceptance = Math.min(
       0.96,
       0.012 + scores.wall * 0.2 + scores.filament * 0.54 + scores.node * 0.22,
     );
-    if (rand() > acceptance) continue;
+    if (job.rand() > acceptance) continue;
 
-    const i = accepted * 3;
+    const i = job.accepted * 3;
     // Retain the accepted topology and radial ordering, but remap it into a
     // volume-uniform shell beyond the measured 2MRS boundary. Normalize after
     // the visual flattening so no direction can fall back inside that boundary.
     const sourceRadius = Math.hypot(point.x, point.y, point.z);
     const radialQuantile = (sourceRadius ** 3 - 0.035 ** 3) / (0.965 ** 3 - 0.035 ** 3);
     const shellRadius = Math.cbrt(
-      innerRadius ** 3 + radialQuantile * (outerRadius ** 3 - innerRadius ** 3),
+      job.innerRadius ** 3
+        + radialQuantile * (job.outerRadius ** 3 - job.innerRadius ** 3),
     );
-    const directionLength = Math.hypot(point.x, point.y * verticalScale, point.z);
-    positions[i] = point.x / directionLength * shellRadius;
-    positions[i + 1] = point.y * verticalScale / directionLength * shellRadius;
-    positions[i + 2] = point.z / directionLength * shellRadius;
+    const directionLength = Math.hypot(point.x, point.y * job.verticalScale, point.z);
+    job.positions[i] = point.x / directionLength * shellRadius;
+    job.positions[i + 1] = point.y * job.verticalScale / directionLength * shellRadius;
+    job.positions[i + 2] = point.z / directionLength * shellRadius;
 
     const strength = clamp01(
       0.12 + scores.wall * 0.18 + scores.filament * 0.44 + scores.node * 0.62,
     );
     // Cool walls, brighter violet filaments, and warm nodes reveal the
     // illustrative topology without implying extra measured structure.
-    colors[i] = clamp01(
-      0.34 + warmth * 0.35 + scores.filament * 0.16 + scores.node * 0.72,
+    job.colors[i] = clamp01(
+      0.34 + job.warmth * 0.35 + scores.filament * 0.16 + scores.node * 0.72,
     );
-    colors[i + 1] = clamp01(0.45 + strength * 0.28 + warmth * 0.08);
-    colors[i + 2] = clamp01(
-      0.66 + scores.wall * 0.08 + scores.filament * 0.14 - scores.node * 0.3 - warmth * 0.08,
+    job.colors[i + 1] = clamp01(0.45 + strength * 0.28 + job.warmth * 0.08);
+    job.colors[i + 2] = clamp01(
+      0.66 + scores.wall * 0.08 + scores.filament * 0.14
+        - scores.node * 0.3 - job.warmth * 0.08,
     );
-    accepted += 1;
+    job.accepted += 1;
   }
+  if (job.accepted !== job.count && job.attempts >= job.maxAttempts) {
+    throw new Error(`cosmic density accepted ${job.accepted} of ${job.count} samples`);
+  }
+  return job.accepted === job.count;
+}
 
-  if (accepted !== count) {
-    throw new Error(`cosmic density accepted ${accepted} of ${count} samples`);
-  }
-  return { positions, colors, attempts };
+export function cosmicDensityJobResult(job) {
+  if (job.accepted !== job.count) throw new Error("cosmic density job is incomplete");
+  return { positions: job.positions, colors: job.colors, attempts: job.attempts };
+}
+
+export function generateCosmicDensity(settings, innerRadius, outerRadius) {
+  const job = createCosmicDensityJob(settings, innerRadius, outerRadius);
+  advanceCosmicDensityJob(job);
+  return cosmicDensityJobResult(job);
 }
 
 export function cosmicDensitySampleCount() {

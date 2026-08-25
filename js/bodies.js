@@ -57,7 +57,8 @@ function orientationJ2000(bodyId, spinDirection, primeMeridianDeg = null) {
  *
  * Physical numbers follow the NASA planetary fact sheet where it and JPL
  * agree, and JPL SSD satellite phys_par (IAU WGCCRE 2015) for moons.
- * Heliocentric Kepler angles stay J2000 approximations, not Horizons.
+ * Heliocentric Kepler angles are fixed J2000 source snapshots, not a live
+ * Horizons feed or a perturbation ephemeris.
  */
 export const BODIES = Object.freeze([
   {
@@ -225,14 +226,15 @@ export const BODIES = Object.freeze([
     name: "Ceres",
     kind: "dwarf",
     parent: "sun",
-    radiusKm: 473,
-    orbitAu: 2.769165,
-    eccentricity: 0.0758,
-    inclinationDeg: 10.59,
-    nodeDeg: 80.31,
-    periDeg: 73.47,
-    meanAnomalyDeg: 95.99,
-    orbitDays: 1681.63,
+    // JPL Horizons JPL#48 heliocentric ecliptic osculating row at J2000 TDB.
+    radiusKm: 469.7,
+    orbitAu: 2.766496019994375,
+    eccentricity: 0.07837562647163041,
+    inclinationDeg: 10.58336045805628,
+    nodeDeg: 80.49435747295276,
+    periDeg: 73.92286274285223,
+    meanAnomalyDeg: 6.176654513180486,
+    orbitDays: 1680.712776442072,
     rotationHours: 9.074,
     tiltDeg: 4,
     orientationJ2000: orientationJ2000("ceres", 1),
@@ -406,12 +408,13 @@ export const BODIES = Object.freeze([
     kind: "planet",
     parent: "sun",
     radiusKm: 24622,
-    orbitAu: 30.068963,
-    eccentricity: 0.0086,
-    inclinationDeg: 1.77,
-    nodeDeg: 131.784,
-    periDeg: 273.219,
-    meanAnomalyDeg: 256.228,
+    // JPL Table 1 fixed elements at J2000 (1800–2050 approximation).
+    orbitAu: 30.06992276,
+    eccentricity: 0.00859048,
+    inclinationDeg: 1.77004347,
+    nodeDeg: 131.78422574,
+    periDeg: 273.18053653,
+    meanAnomalyDeg: 259.91520804,
     orbitDays: 60189,
     rotationHours: 16.11,
     tiltDeg: 28.32,

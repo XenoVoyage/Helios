@@ -17,9 +17,15 @@
  */
 import { CONFIG } from "./config.js";
 import {
+  advanceCosmicDensityJob,
+  advanceTwoMrsSampleJob,
   COSMIC_WEB_MODEL,
+  cosmicDensityJobResult,
+  createCosmicDensityJob,
   createTwoMrsSamples,
+  createTwoMrsSampleJob,
   generateCosmicDensity,
+  twoMrsSampleJobResult,
 } from "./cosmic-web.js";
 import {
   CELESTIAL_RENDER_THRESHOLD,
@@ -783,6 +789,24 @@ export function extraZoomCameraDistance(distance) {
   return near + (CONFIG.mwViewDistance - near) * (t ** 1.55);
 }
 
+/** Preserve the approved path, adding only the late portrait CMB sphere fit. */
+export function responsiveExtraZoomCameraDistance(distance, aspect) {
+  const base = extraZoomCameraDistance(distance);
+  if (!(aspect > 0)) return base;
+  const halfFov = 52 * DEG / 2;
+  const limitingHalfFov = Math.min(halfFov, Math.atan(aspect * Math.tan(halfFov)));
+  const shellFit = farthestUniverseDistance() / Math.sin(limitingHalfFov);
+  const endpoint = extraZoomCameraDistance(CONFIG.universeViewDistance);
+  if (shellFit <= endpoint) return base;
+  if (distance >= CONFIG.universeViewDistance) {
+    return shellFit + (base - endpoint);
+  }
+  // Do not alter the approved outer-density framing while the CMB is absent.
+  // Once its base-path visibility begins, ease only the portrait fit delta.
+  const blend = smoothstep01(cmbSkyOpacity(distance));
+  return base + (shellFit - base) * blend;
+}
+
 /** Near clip so nearby arm stars are not sliced off. Extra-zoom only. */
 export function extraZoomCameraNear(distance) {
   return Math.max(0.05, extraZoomCameraDistance(distance) / 160);
@@ -1163,7 +1187,7 @@ function stampSoft(ctx, x, y, radius, color) {
   ctx.fill();
 }
 
-function milkyWayDiskMap(THREE) {
+function createMilkyWayDiskMapJob(THREE) {
   const size = 2048;
   const canvas = document.createElement("canvas");
   canvas.width = size;
@@ -1194,41 +1218,73 @@ function milkyWayDiskMap(THREE) {
     { beta: beta0 + 1.55, turns: 1.05, alpha: 0.55, width: 0.72 },
     { beta: beta0 + Math.PI + 1.55, turns: 1.05, alpha: 0.5, width: 0.68 },
   ];
-  for (const arm of arms) {
-    const stamps = Math.floor(520 * arm.alpha);
-    for (let i = 0; i < stamps; i += 1) {
-      const t = 0.04 + (i / stamps) * 0.94 + (rand() - 0.5) * 0.01;
+  return {
+    THREE, canvas, ctx, cx, cy, diskPx, rand, pitch, rInner, arms,
+    armIndex: 0,
+    phase: "stamps",
+    index: 0,
+    map: null,
+  };
+}
+
+function advanceMilkyWayDiskMapJob(job, operationBudget = Infinity) {
+  let remaining = operationBudget;
+  while (job.armIndex < job.arms.length && remaining > 0) {
+    const arm = job.arms[job.armIndex];
+    const count = job.phase === "stamps"
+      ? Math.floor(520 * arm.alpha)
+      : arm.alpha > 0.8 ? 120 : 56;
+    while (job.index < count && remaining > 0) {
+      const i = job.index;
+      job.index += 1;
+      remaining -= 1;
+      if (job.phase === "stamps") {
+        const t = 0.04 + (i / count) * 0.94 + (job.rand() - 0.5) * 0.01;
+        const theta = t * arm.turns * Math.PI * 2;
+        const r = job.rInner * Math.exp(theta * Math.tan(job.pitch));
+        if (r > job.diskPx * 0.98) continue;
+        const a = arm.beta + theta;
+        const scatter = (8 + t * 22) * arm.width;
+        const x = job.cx + Math.cos(a) * r + (job.rand() - 0.5) * scatter;
+        const y = job.cy + Math.sin(a) * r + (job.rand() - 0.5) * scatter;
+        const fade = (1 - t * 0.55) * arm.alpha;
+        stampSoft(job.ctx, x + 5, y + 3, 8 + t * 12, `rgba(40, 28, 22, ${0.1 * fade})`);
+        stampSoft(job.ctx, x, y, 18 + t * 24, `rgba(170, 200, 255, ${0.52 * fade})`);
+        stampSoft(job.ctx, x, y, 10 + t * 14, `rgba(255, 236, 210, ${0.66 * fade})`);
+        continue;
+      }
+      const t = 0.1 + job.rand() * 0.8;
       const theta = t * arm.turns * Math.PI * 2;
-      const r = rInner * Math.exp(theta * Math.tan(pitch));
-      if (r > diskPx * 0.98) continue;
+      const r = job.rInner * Math.exp(theta * Math.tan(job.pitch));
       const a = arm.beta + theta;
-      const scatter = (8 + t * 22) * arm.width;
-      const x = cx + Math.cos(a) * r + (rand() - 0.5) * scatter;
-      const y = cy + Math.sin(a) * r + (rand() - 0.5) * scatter;
-      const fade = (1 - t * 0.55) * arm.alpha;
-      stampSoft(ctx, x + 5, y + 3, 8 + t * 12, `rgba(40, 28, 22, ${0.1 * fade})`);
-      stampSoft(ctx, x, y, 18 + t * 24, `rgba(170, 200, 255, ${0.52 * fade})`);
-      stampSoft(ctx, x, y, 10 + t * 14, `rgba(255, 236, 210, ${0.66 * fade})`);
+      const x = job.cx + Math.cos(a) * r + (job.rand() - 0.5) * 14;
+      const y = job.cy + Math.sin(a) * r + (job.rand() - 0.5) * 14;
+      stampSoft(job.ctx, x, y, 5 + job.rand() * 8, `rgba(255, 196, 150, ${0.45 * arm.alpha})`);
     }
-    const clumps = arm.alpha > 0.8 ? 120 : 56;
-    for (let i = 0; i < clumps; i += 1) {
-      const t = 0.1 + rand() * 0.8;
-      const theta = t * arm.turns * Math.PI * 2;
-      const r = rInner * Math.exp(theta * Math.tan(pitch));
-      const a = arm.beta + theta;
-      const x = cx + Math.cos(a) * r + (rand() - 0.5) * 14;
-      const y = cy + Math.sin(a) * r + (rand() - 0.5) * 14;
-      stampSoft(ctx, x, y, 5 + rand() * 8, `rgba(255, 196, 150, ${0.45 * arm.alpha})`);
+    if (job.index < count) break;
+    job.index = 0;
+    if (job.phase === "stamps") {
+      job.phase = "clumps";
+    } else {
+      job.phase = "stamps";
+      job.armIndex += 1;
     }
   }
+  if (job.armIndex < job.arms.length) return false;
+  if (!job.map) {
+    stampSoft(job.ctx, job.cx, job.cy, job.diskPx * 0.2, "rgba(255, 230, 190, 0.85)");
+    stampSoft(job.ctx, job.cx, job.cy, job.diskPx * 0.1, "rgba(255, 244, 220, 0.9)");
+    job.map = new job.THREE.CanvasTexture(job.canvas);
+    job.map.colorSpace = job.THREE.SRGBColorSpace;
+    job.map.anisotropy = 4;
+  }
+  return true;
+}
 
-  stampSoft(ctx, cx, cy, diskPx * 0.2, "rgba(255, 230, 190, 0.85)");
-  stampSoft(ctx, cx, cy, diskPx * 0.1, "rgba(255, 244, 220, 0.9)");
-
-  const map = new THREE.CanvasTexture(canvas);
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.anisotropy = 4;
-  return map;
+function milkyWayDiskMap(THREE) {
+  const job = createMilkyWayDiskMapJob(THREE);
+  advanceMilkyWayDiskMapJob(job);
+  return job.map;
 }
 
 function softPointMap(THREE) {
@@ -1309,44 +1365,80 @@ function visualDiskHalfHeight() {
   return CONFIG.mwVisualHeightKpc * milkyWayUnitsPerKpc();
 }
 
-function createSpiralStars(THREE, group) {
+function createSpiralStarsJob() {
   const count = 11000;
-  const positions = new Float32Array(count * 3);
-  const colors = new Float32Array(count * 3);
-  const rand = seedRandom(20260820);
   const diskR = MILKY_WAY.diskRadiusKpc;
   const pitch = 14 * DEG;
   const rInner = 2.4;
   const thetaSun = Math.log(SUN_GALACTIC.rKpc / rInner) / Math.tan(pitch);
   const beta0 = -thetaSun;
-  const arms = [beta0, beta0 + Math.PI, beta0 + 1.55, beta0 + Math.PI + 1.55];
-  const thinH = MILKY_WAY.heightKpc;
-  const thickH = MILKY_WAY.thickHeightKpc;
-  const visualH = CONFIG.mwVisualHeightKpc;
-  let n = 0;
-  for (let i = 0; i < count * 2 && n < count; i += 1) {
-    const arm = arms[Math.floor(rand() * 4)];
-    const t = rand() ** 0.7;
+  return {
+    count,
+    positions: new Float32Array(count * 3),
+    colors: new Float32Array(count * 3),
+    rand: seedRandom(20260820),
+    diskR,
+    pitch,
+    rInner,
+    arms: [beta0, beta0 + Math.PI, beta0 + 1.55, beta0 + Math.PI + 1.55],
+    thinH: MILKY_WAY.heightKpc,
+    thickH: MILKY_WAY.thickHeightKpc,
+    visualH: CONFIG.mwVisualHeightKpc,
+    attempts: 0,
+    accepted: 0,
+  };
+}
+
+function advanceSpiralStarsJob(job, attemptBudget = Infinity) {
+  let work = 0;
+  while (job.attempts < job.count * 2 && job.accepted < job.count && work < attemptBudget) {
+    job.attempts += 1;
+    work += 1;
+    const arm = job.arms[Math.floor(job.rand() * 4)];
+    const t = job.rand() ** 0.7;
     const theta = t * 1.28 * Math.PI * 2;
-    const radius = rInner * Math.exp(theta * Math.tan(pitch)) + (rand() - 0.5) * (0.7 + t * 1.4);
-    if (radius < 1.6 || radius > diskR) continue;
+    const radius = job.rInner * Math.exp(theta * Math.tan(job.pitch))
+      + (job.rand() - 0.5) * (0.7 + t * 1.4);
+    if (radius < 1.6 || radius > job.diskR) continue;
     const beta = (arm + theta) / DEG;
-    const thick = rand() < 0.28;
-    const scaleH = thick ? Math.max(thickH, visualH * 0.72) : Math.max(thinH * 2.2, visualH * 0.42);
-    const height = (rand() + rand() - 1) * scaleH;
+    const thick = job.rand() < 0.28;
+    const scaleH = thick
+      ? Math.max(job.thickH, job.visualH * 0.72)
+      : Math.max(job.thinH * 2.2, job.visualH * 0.42);
+    const height = (job.rand() + job.rand() - 1) * scaleH;
     const at = armPointKpc(radius, beta, height);
     const scene = milkyWayToMap(at.x, at.y, at.z);
-    const o = n * 3;
-    positions[o] = scene.x;
-    positions[o + 1] = scene.y;
-    positions[o + 2] = scene.z;
-    const warm = clamp(1 - radius / diskR, 0, 1);
-    colors[o] = 0.7 + 0.25 * warm;
-    colors[o + 1] = 0.78 + 0.12 * warm;
-    colors[o + 2] = 0.95 - 0.2 * warm;
-    n += 1;
+    const o = job.accepted * 3;
+    job.positions[o] = scene.x;
+    job.positions[o + 1] = scene.y;
+    job.positions[o + 2] = scene.z;
+    const warm = clamp(1 - radius / job.diskR, 0, 1);
+    job.colors[o] = 0.7 + 0.25 * warm;
+    job.colors[o + 1] = 0.78 + 0.12 * warm;
+    job.colors[o + 2] = 0.95 - 0.2 * warm;
+    job.accepted += 1;
   }
-  addPoints(THREE, group, "mw-disk", positions.slice(0, n * 3), colors.slice(0, n * 3), 3.1, 0.82, true, THREE.AdditiveBlending);
+  return job.attempts >= job.count * 2 || job.accepted >= job.count;
+}
+
+function finishSpiralStarsJob(THREE, group, job) {
+  addPoints(
+    THREE,
+    group,
+    "mw-disk",
+    job.positions.slice(0, job.accepted * 3),
+    job.colors.slice(0, job.accepted * 3),
+    3.1,
+    0.82,
+    true,
+    THREE.AdditiveBlending,
+  );
+}
+
+function createSpiralStars(THREE, group) {
+  const job = createSpiralStarsJob();
+  advanceSpiralStarsJob(job);
+  finishSpiralStarsJob(THREE, group, job);
 }
 
 function createHalo(THREE, group) {
@@ -1408,7 +1500,7 @@ function createBulge(THREE, group) {
   group.add(mesh);
 }
 
-function createDiskGlow(THREE, group) {
+function createDiskGlowShell(THREE, group) {
   const gc = galacticCenterMapPosition();
   const radius = MILKY_WAY.diskRadiusKpc * milkyWayUnitsPerKpc();
   const halfH = visualDiskHalfHeight();
@@ -1441,11 +1533,15 @@ function createDiskGlow(THREE, group) {
   edge.scale.set(1, clamp((halfH * 2.2) / radius, 0.14, 0.24), 1);
   edge.name = "mw-disk-edge";
   group.add(edge);
+}
 
+function createDiskPlane(THREE, group, map, geometry) {
+  const gc = galacticCenterMapPosition();
+  const radius = MILKY_WAY.diskRadiusKpc * milkyWayUnitsPerKpc();
   const disk = new THREE.Mesh(
-    new THREE.PlaneGeometry(radius * 2, radius * 2),
+    geometry ?? new THREE.PlaneGeometry(radius * 2, radius * 2),
     unlitBasic(THREE, {
-      map: milkyWayDiskMap(THREE),
+      map,
       opacity: 1,
       side: THREE.DoubleSide,
     }),
@@ -1454,6 +1550,13 @@ function createDiskGlow(THREE, group) {
   disk.position.set(gc.x, gc.y, gc.z);
   disk.name = "mw-spiral";
   group.add(disk);
+}
+
+function createDiskGlow(THREE, group) {
+  createDiskGlowShell(THREE, group);
+  const radius = MILKY_WAY.diskRadiusKpc * milkyWayUnitsPerKpc();
+  const geometry = new THREE.PlaneGeometry(radius * 2, radius * 2);
+  createDiskPlane(THREE, group, milkyWayDiskMap(THREE), geometry);
 }
 
 function neighborSpriteSize(neighbor) {
@@ -1471,10 +1574,14 @@ function neighborSizeBoost(neighbor) {
 }
 
 export function neighborApparentSize(neighbor) {
-  return neighborSpriteSize(neighbor) * neighborSizeBoost(neighbor);
+  const apparentSize = neighborSpriteSize(neighbor) * neighborSizeBoost(neighbor);
+  if (neighbor.id !== "m31") return apparentSize;
+  // M31's catalog radius is larger than the Milky Way disk radius. Keep its
+  // existing sprite treatment, but do not let it read physically smaller.
+  const catalogRadiusSize = milkyWayDiskDiameter()
+    * (neighbor.radiusKpc / MILKY_WAY.diskRadiusKpc);
+  return Math.max(apparentSize, catalogRadiusSize);
 }
-
-// Later issue: M31 still reads as a dwarf beside its label. Do not invent a model here.
 function quietAndromedaMap(THREE) {
   const canvas = document.createElement("canvas");
   canvas.width = 256;
@@ -1788,10 +1895,9 @@ function createVirgoCluster(THREE, group, maps) {
 }
 
 /** Public 2MRS galaxies, not connected hubs or a reconstructed matter field. */
-function createMeasuredWeb(THREE, group) {
+function createMeasuredWeb(THREE, group, samples = createTwoMrsSamples(webHubMapPosition)) {
   const web = new THREE.Group();
   web.name = "cosmic-web";
-  const samples = createTwoMrsSamples(webHubMapPosition);
   addPoints(
     THREE,
     web,
@@ -1835,12 +1941,17 @@ function createHomeMark(THREE, group) {
 }
 
 /** Beyond 2MRS: bounded first-party density illustration, never named data. */
-function createOuterDensity(THREE, group) {
+function createOuterDensity(
+  THREE,
+  group,
+  samples = generateCosmicDensity(
+    COSMIC_WEB_MODEL.outer,
+    visualWeb(CONFIG.webRadiusMpc),
+    visualUniverse(PARTICLE_HORIZON.comovingRadiusGpc) * 0.92,
+  ),
+) {
   const shell = new THREE.Group();
   shell.name = "universe";
-  const innerRadius = visualWeb(CONFIG.webRadiusMpc);
-  const outerRadius = visualUniverse(PARTICLE_HORIZON.comovingRadiusGpc) * 0.92;
-  const samples = generateCosmicDensity(COSMIC_WEB_MODEL.outer, innerRadius, outerRadius);
   addPoints(
     THREE,
     shell,
@@ -1891,6 +2002,10 @@ export function generateFarGalaxySkySamples(radius = farGalaxySkyRadius()) {
     radius * 0.985,
     radius,
   );
+  return farGalaxySkySamplesFromDensity(density);
+}
+
+function farGalaxySkySamplesFromDensity(density) {
   const corePositions = new Float32Array(FAR_GALAXY_SKY_MODEL.coreCount * 3);
   const coreColors = new Float32Array(FAR_GALAXY_SKY_MODEL.coreCount * 3);
   for (let core = 0; core < FAR_GALAXY_SKY_MODEL.coreCount; core += 1) {
@@ -1914,12 +2029,10 @@ export function generateFarGalaxySkySamples(radius = farGalaxySkyRadius()) {
   };
 }
 
-function createFarGalaxySky(THREE, group) {
+function createFarGalaxySky(THREE, group, samples = generateFarGalaxySkySamples()) {
   const sky = new THREE.Group();
   sky.name = "far-galaxy-sky";
   orientMapFrame(THREE, sky);
-  const radius = farGalaxySkyRadius();
-  const samples = generateFarGalaxySkySamples(radius);
   const density = addPoints(
     THREE,
     sky,
@@ -1993,40 +2106,215 @@ function createVisibilityCache(group) {
   return { nodes, groups, materials, opacity: null, distance: null };
 }
 
-export function createGalaxyLayer(THREE) {
+function refreshVisibilityCache(group) {
+  const previous = group.userData.visibilityCache;
+  const opacity = previous?.opacity;
+  const distance = previous?.distance;
+  group.userData.visibilityCache = createVisibilityCache(group);
+  if (opacity != null && distance != null) setGalaxyLayerVisible(group, opacity, distance);
+}
+
+function createNearGalaxyJob(THREE, group, maps) {
+  return {
+    THREE,
+    group,
+    maps,
+    phase: 0,
+    map: null,
+    milkyway: null,
+    diskGeometry: null,
+    diskJob: null,
+    spiralJob: null,
+  };
+}
+
+/** Keep partial near work detached from readiness while preserving draw order. */
+function advanceNearGalaxyJob(job, workBudget = Infinity) {
+  const finite = workBudget !== Infinity;
+  while (true) {
+    if (job.phase === 0) {
+      createScaleLabels(job.THREE, job.group);
+      job.map = new job.THREE.Group();
+      job.map.name = "galactic-frame";
+      orientMapFrame(job.THREE, job.map);
+      job.group.add(job.map);
+      job.milkyway = new job.THREE.Group();
+      job.milkyway.name = "milkyway";
+    } else if (job.phase === 1) {
+      createDiskGlowShell(job.THREE, job.milkyway);
+    } else if (job.phase === 2) {
+      if (!job.diskJob) {
+        const radius = MILKY_WAY.diskRadiusKpc * milkyWayUnitsPerKpc();
+        job.diskGeometry = new job.THREE.PlaneGeometry(radius * 2, radius * 2);
+        job.diskJob = createMilkyWayDiskMapJob(job.THREE);
+      }
+      const budget = finite ? Math.max(1, Math.min(64, workBudget)) : Infinity;
+      if (!advanceMilkyWayDiskMapJob(job.diskJob, budget)) return false;
+    } else if (job.phase === 3) {
+      createDiskPlane(job.THREE, job.milkyway, job.diskJob.map, job.diskGeometry);
+      job.diskJob = null;
+      job.diskGeometry = null;
+    } else if (job.phase === 4) {
+      if (!job.spiralJob) job.spiralJob = createSpiralStarsJob();
+      const budget = finite ? Math.max(1, Math.min(3000, workBudget)) : Infinity;
+      if (!advanceSpiralStarsJob(job.spiralJob, budget)) return false;
+    } else if (job.phase === 5) {
+      finishSpiralStarsJob(job.THREE, job.milkyway, job.spiralJob);
+      job.spiralJob = null;
+    } else if (job.phase === 6) {
+      createHalo(job.THREE, job.milkyway);
+    } else if (job.phase === 7) {
+      createBulge(job.THREE, job.milkyway);
+    } else if (job.phase === 8) {
+      job.map.add(job.milkyway);
+    } else if (job.phase === 9) {
+      createMilkyWayMarks(job.THREE, job.map);
+    } else if (job.phase === 10) {
+      createNeighbors(job.THREE, job.map, job.maps);
+    } else if (job.phase === 11) {
+      createLocalGroupMembers(job.THREE, job.map, job.maps);
+    } else if (job.phase === 12) {
+      createLocalGroupLabel(job.THREE, job.map);
+    } else if (job.phase === 13) {
+      createPostVirgoClusters(job.THREE, job.map);
+    } else if (job.phase === 14) {
+      createVirgoCluster(job.THREE, job.map, job.maps);
+    } else {
+      return true;
+    }
+    job.phase += 1;
+    if (finite) return false;
+  }
+}
+
+const GALAXY_BUILD_STAGES = Object.freeze(["far", "near", "web", "outer", "complete"]);
+
+/** Build bounded work toward one deterministic stage; completion is idempotent. */
+export function advanceGalaxyLayer(group, workBudget = Infinity) {
+  const build = group?.userData?.build;
+  if (!build || build.index >= build.steps.length) return galaxyLayerBuildStage(group);
+  if (build.steps[build.index](workBudget) === false) return group.userData.buildStage;
+  build.index += 1;
+  group.userData.buildStage = GALAXY_BUILD_STAGES[build.index - 1];
+  refreshVisibilityCache(group);
+  if (build.index >= build.steps.length) delete group.userData.build;
+  return group.userData.buildStage;
+}
+
+/** Read-only stage name used by performance and first-frame regressions. */
+export function galaxyLayerBuildStage(group) {
+  return group?.userData?.buildStage ?? "absent";
+}
+
+function galaxyBuildTarget(distance) {
+  let target = galaxyOpacity(distance) > 0 ? 2 : 0;
+  if (webOpacity(distance) > 0 || localWebOpacity(distance) > 0) target = 3;
+  if (universeOpacity(distance) > 0) target = 4;
+  if (cmbDisplayOpacity(distance) > 0) target = 5;
+  return target;
+}
+
+export function galaxyBuildStageForDistance(distance) {
+  const target = galaxyBuildTarget(distance);
+  return target === 0 ? "skeleton" : GALAXY_BUILD_STAGES[target - 1];
+}
+
+/** Whether the deterministic layer already contains every object visible here. */
+export function galaxyLayerReadyForDistance(group, distance) {
+  const target = galaxyBuildTarget(distance);
+  if (target === 0) return true;
+  const stage = galaxyLayerBuildStage(group);
+  const built = stage === "skeleton" ? 0 : GALAXY_BUILD_STAGES.indexOf(stage) + 1;
+  return built >= target;
+}
+
+/** Synchronously finish only the stages that can contribute at this distance. */
+export function buildGalaxyLayerToDistance(group, distance) {
+  const target = galaxyBuildTarget(distance);
+  while (group?.userData?.build && group.userData.build.index < target) {
+    advanceGalaxyLayer(group);
+  }
+  return galaxyLayerBuildStage(group);
+}
+
+export function createGalaxyLayer(THREE, { defer = false } = {}) {
   const group = new THREE.Group();
   group.name = "galaxy-layer";
   group.visible = false;
-  const maps = {
-    spiral: galaxySprite(THREE, "spiral", 1),
-    elliptical: galaxySprite(THREE, "elliptical", 2),
-    irregular: galaxySprite(THREE, "irregular", 3),
-    lmc: galaxySprite(THREE, "lmc", 4),
+  const build = {
+    index: 0,
+    maps: null,
+    map: null,
+    nearJob: null,
+    farJob: null,
+    webJob: null,
+    outerJob: null,
+    steps: [],
   };
-  createFarGalaxySky(THREE, group);
-  createScaleLabels(THREE, group);
-  const map = new THREE.Group();
-  map.name = "galactic-frame";
-  orientMapFrame(THREE, map);
-  group.add(map);
-  const milkyway = new THREE.Group();
-  milkyway.name = "milkyway";
-  createDiskGlow(THREE, milkyway);
-  createSpiralStars(THREE, milkyway);
-  createHalo(THREE, milkyway);
-  createBulge(THREE, milkyway);
-  map.add(milkyway);
-  createMilkyWayMarks(THREE, map);
-  createNeighbors(THREE, map, maps);
-  createLocalGroupMembers(THREE, map, maps);
-  createLocalGroupLabel(THREE, map);
-  createPostVirgoClusters(THREE, map);
-  createVirgoCluster(THREE, map, maps);
-  createMeasuredWeb(THREE, map);
-  createHomeMark(THREE, map);
-  createOuterDensity(THREE, map);
-  createCmbShell(THREE, map);
+  build.steps = [
+    (workBudget) => {
+      // Keep material/texture creation and deterministic RNG order identical
+      // to the former monolithic builder.
+      if (!build.maps) {
+        build.maps = {
+          spiral: galaxySprite(THREE, "spiral", 1),
+          elliptical: galaxySprite(THREE, "elliptical", 2),
+          irregular: galaxySprite(THREE, "irregular", 3),
+          lmc: galaxySprite(THREE, "lmc", 4),
+        };
+      }
+      if (!build.farJob) {
+        const radius = farGalaxySkyRadius();
+        build.farJob = createCosmicDensityJob(FAR_GALAXY_SKY_MODEL, radius * 0.985, radius);
+      }
+      if (!advanceCosmicDensityJob(build.farJob, workBudget)) return false;
+      createFarGalaxySky(
+        THREE,
+        group,
+        farGalaxySkySamplesFromDensity(cosmicDensityJobResult(build.farJob)),
+      );
+      build.farJob = null;
+      return true;
+    },
+    (workBudget) => {
+      if (!build.nearJob) build.nearJob = createNearGalaxyJob(THREE, group, build.maps);
+      if (!advanceNearGalaxyJob(build.nearJob, workBudget)) return false;
+      build.map = build.nearJob.map;
+      build.nearJob = null;
+      return true;
+    },
+    (workBudget) => {
+      if (!build.webJob) build.webJob = createTwoMrsSampleJob(webHubMapPosition);
+      if (!advanceTwoMrsSampleJob(build.webJob, workBudget)) return false;
+      createMeasuredWeb(THREE, build.map, twoMrsSampleJobResult(build.webJob));
+      build.webJob = null;
+      createHomeMark(THREE, build.map);
+      return true;
+    },
+    (workBudget) => {
+      if (!build.outerJob) {
+        build.outerJob = createCosmicDensityJob(
+          COSMIC_WEB_MODEL.outer,
+          visualWeb(CONFIG.webRadiusMpc),
+          visualUniverse(PARTICLE_HORIZON.comovingRadiusGpc) * 0.92,
+        );
+      }
+      if (!advanceCosmicDensityJob(build.outerJob, workBudget)) return false;
+      createOuterDensity(THREE, build.map, cosmicDensityJobResult(build.outerJob));
+      build.outerJob = null;
+      return true;
+    },
+    () => {
+      createCmbShell(THREE, build.map);
+      return true;
+    },
+  ];
+  group.userData.build = build;
+  group.userData.buildStage = "skeleton";
   group.userData.visibilityCache = createVisibilityCache(group);
+  if (!defer) {
+    while (group.userData.build) advanceGalaxyLayer(group);
+  }
   return group;
 }
 

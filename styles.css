@@ -293,6 +293,14 @@ select:focus-visible,
   max-width: 100%;
 }
 
+.camera-controls {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
 .speed-label {
   display: flex;
   flex: 1;
@@ -306,7 +314,9 @@ input[type="range"] {
 }
 
 #slower-button,
-#faster-button {
+#faster-button,
+#zoom-out-button,
+#zoom-in-button {
   min-width: 44px;
   padding: 0;
 }

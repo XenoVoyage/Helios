@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { describeDaysPerSecond } from "../js/config.js";
+import {
+  CONFIG,
+  describeDaysPerSecond,
+  formatDaysPerSecond,
+} from "../js/config.js";
 import {
   MAX_SIMULATION_DAYS,
   advanceSimulationDays,
@@ -36,6 +40,14 @@ test("date range is bounded and accessible speed text is human-readable", () => 
   assert.equal(simulationDateLabel(0), "2000-01-01");
   assert.match(simulationDateLabel(MAX_SIMULATION_DAYS), /^\+275760-09-13$/);
   assert.equal(advanceSimulationDays(MAX_SIMULATION_DAYS - 1, 10, 400, true), MAX_SIMULATION_DAYS);
+  assert.equal(CONFIG.defaultDaysPerSecond, 1 / 86400);
+  assert.equal(CONFIG.minDaysPerSecond, 1 / 86400);
+  assert.equal(advanceSimulationDays(0, 1, CONFIG.defaultDaysPerSecond, true), 1 / 86400);
+  assert.equal(formatDaysPerSecond(1 / 86400), "1 sec");
+  assert.equal(formatDaysPerSecond(1 / 1440), "1 min");
+  assert.equal(formatDaysPerSecond(1 / 24), "1 h");
+  assert.equal(describeDaysPerSecond(1 / 86400), "1 second per second");
+  assert.equal(describeDaysPerSecond(1 / 1440), "1 minute per second");
   assert.equal(describeDaysPerSecond(1 / 24), "1 hour per second");
   assert.equal(describeDaysPerSecond(8), "8 days per second");
 });
