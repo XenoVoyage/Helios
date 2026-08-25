@@ -136,7 +136,10 @@ export function saturnRingHighPhaseFactor(viewLightDot) {
 /** Dim all ordinarily reflected ring light at high phase without changing normal views. */
 export function saturnRingHighPhaseLitScale(viewLightDot) {
   const phase = saturnRingHighPhaseFactor(viewLightDot);
-  return 1 - (1 - CONFIG.saturnRingBacklitReflectedLight) * phase;
+  return Math.max(
+    CONFIG.saturnRingBacklitReflectedLight,
+    1 - (1 - CONFIG.saturnRingBacklitReflectedLight) * phase,
+  );
 }
 
 /** Global canvas shortcuts must yield to native and editable controls. */
