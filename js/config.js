@@ -108,7 +108,7 @@ export const CONFIG = Object.freeze({
   focusLerp: 6,
   // Bounded material response for Saturn's strongly backlit rings.
   saturnRingHighPhaseLight: 0.025,
-  saturnRingBacklitReflectedLight: 0.1,
+  saturnRingBacklitReflectedLight: 0.08,
 });
 
 /**
