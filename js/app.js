@@ -131,6 +131,7 @@ let pendingGalaxyDistance = null;
 let helpers;
 let dockObserver;
 let dockClearance = 72;
+let measuredDockHeight = 0;
 let lastStamp = 0;
 let lastClockLabel = "";
 let saturnRingViewLightDot = 1;
@@ -1015,11 +1016,11 @@ function resize() {
 
 function paintDockClearance() {
   const height = Math.ceil(ui.dock.getBoundingClientRect().height);
-  if (height > 0) {
-    dockClearance = height;
-    document.documentElement.style.setProperty("--dock-clearance", `${height}px`);
-    invalidateRender();
-  }
+  if (height <= 0 || height === measuredDockHeight) return;
+  measuredDockHeight = height;
+  dockClearance = height;
+  document.documentElement.style.setProperty("--dock-clearance", `${height}px`);
+  invalidateRender();
 }
 
 function observeDock() {

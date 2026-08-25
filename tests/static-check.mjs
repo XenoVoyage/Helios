@@ -177,6 +177,7 @@ assert.match(app, /if \(dirty\) renderDirty = true/);
 assert.match(app, /pendingGalaxyDistance == null \|\| renderDirty/);
 assert.match(app, /heldFrameSkips \+= 1/);
 assert.match(app, /if \(state\.playing \|\| cameraSettling\) invalidateRender\(false\)/);
+assert.match(app, /height === measuredDockHeight/);
 assert.equal((app.match(/requestAnimationFrame\(tick\)/g) ?? []).length, 1);
 assert.match(app, /paintConstellations/);
 assert.match(app, /ui\.skyControl\.hidden = !available/);
