@@ -1893,7 +1893,13 @@ async function assertCardClearsDock(page, viewport) {
   await page.locator("#reset-button").click();
   await page.evaluate(() => document.querySelector('[data-body-id="earth"]').click());
   await page.locator("#body-card:not([hidden])").waitFor();
-  await page.waitForTimeout(100);
+  await page.waitForFunction(() => {
+    const dockHeight = Math.ceil(document.querySelector("#dock").getBoundingClientRect().height);
+    const clearance = Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--dock-clearance"),
+    );
+    return dockHeight > 0 && Math.abs(clearance - dockHeight) <= 1;
+  });
   const layout = await page.evaluate(() => {
     const card = document.querySelector("#body-card").getBoundingClientRect();
     const dock = document.querySelector("#dock").getBoundingClientRect();
@@ -1934,19 +1940,40 @@ async function assertCardClearsDock(page, viewport) {
         getComputedStyle(document.documentElement).getPropertyValue("--dock-clearance"),
       ),
       dockHeight: dock.height,
+      viewport: {
+        innerWidth,
+        innerHeight,
+        visualWidth: visualViewport?.width ?? null,
+        visualHeight: visualViewport?.height ?? null,
+      },
+      dockChildren: [...document.querySelector("#dock").children].map((element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          name: element.id || element.className,
+          top: box.top,
+          right: box.right,
+          bottom: box.bottom,
+          left: box.left,
+        };
+      }),
       speedOverflow: getComputedStyle(document.querySelector(".speed-group")).overflow,
     };
   });
-  assert.equal(layout.overlaps, false, `${viewport.width}x${viewport.height} card clears dock`);
+  const layoutDetails = JSON.stringify(layout);
+  assert.equal(
+    layout.overlaps,
+    false,
+    `${viewport.width}x${viewport.height} card clears dock: ${layoutDetails}`,
+  );
   assert.equal(
     layout.creditsOverlap,
     false,
-    `${viewport.width}x${viewport.height} card clears credits`,
+    `${viewport.width}x${viewport.height} card clears credits: ${layoutDetails}`,
   );
   assert.equal(
     layout.topbarOverlap,
     false,
-    `${viewport.width}x${viewport.height} card clears the title and date`,
+    `${viewport.width}x${viewport.height} card clears the title and date: ${layoutDetails}`,
   );
   assert.equal(
     layout.helpersInside,
