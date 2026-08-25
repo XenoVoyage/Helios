@@ -6,6 +6,7 @@ import {
   isShortcutTargetInteractive,
   pinchZoomDistance,
   saturnRingHighPhaseFactor,
+  saturnRingHighPhaseLitScale,
   wheelZoomMultiplier,
 } from "./config.js";
 import { advanceSimulationDays, elapsedSeconds, simulationDateLabel } from "./time.js";
@@ -1088,8 +1089,9 @@ function updateSaturnRingShading() {
   ringViewDirection.copy(camera.position).sub(ringCenter).normalize();
   ringLightDirection.copy(sunPosition).sub(ringCenter).normalize();
   saturnRingViewLightDot = ringViewDirection.dot(ringLightDirection);
-  saturn.ring.material.emissiveIntensity = CONFIG.saturnRingHighPhaseLight
-    * saturnRingHighPhaseFactor(saturnRingViewLightDot);
+  const phase = saturnRingHighPhaseFactor(saturnRingViewLightDot);
+  saturn.ring.material.color.setScalar(saturnRingHighPhaseLitScale(saturnRingViewLightDot));
+  saturn.ring.material.emissiveIntensity = CONFIG.saturnRingHighPhaseLight * phase;
 }
 
 function placeCamera(blend) {
@@ -1400,6 +1402,7 @@ export function currentCameraMetrics() {
     },
     saturnRing: {
       viewLightDot: saturnRingViewLightDot,
+      reflectedLightScale: saturn?.ring?.material?.color.r ?? 1,
       emissiveIntensity: saturn?.ring?.material?.emissiveIntensity ?? 0,
     },
   };

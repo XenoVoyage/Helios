@@ -106,8 +106,9 @@ export const CONFIG = Object.freeze({
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
   focusLerp: 6,
-  // Bounded texture-shaped scattered light for Saturn's strongly backlit rings.
+  // Bounded material response for Saturn's strongly backlit rings.
   saturnRingHighPhaseLight: 0.01,
+  saturnRingBacklitMapLight: 0.2,
 });
 
 /**
@@ -130,6 +131,12 @@ export function saturnRingHighPhaseFactor(viewLightDot) {
   if (viewLightDot <= -0.85) return 1;
   const t = (-0.2 - viewLightDot) / 0.65;
   return t * t * (3 - 2 * t);
+}
+
+/** Dim the ordinarily lit ring map at high phase without changing normal views. */
+export function saturnRingHighPhaseLitScale(viewLightDot) {
+  const phase = saturnRingHighPhaseFactor(viewLightDot);
+  return 1 - (1 - CONFIG.saturnRingBacklitMapLight) * phase;
 }
 
 /** Global canvas shortcuts must yield to native and editable controls. */

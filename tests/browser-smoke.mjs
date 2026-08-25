@@ -1103,6 +1103,7 @@ async function auditSaturnRing(context, prefix = "desktop") {
   if (prefix === "touch") await touchPinchZoomOut(context, page);
   const front = await findSaturnFrontSeat(page);
   assert.ok(front.saturnRing.viewLightDot >= 0.7, "front audit uses a strongly lit seat");
+  assert.equal(front.saturnRing.reflectedLightScale, 1, "front ring map remains exactly unchanged");
   assert.equal(front.saturnRing.emissiveIntensity, 0, "front view remains exactly unchanged");
   const frontFull = await saveScreenshot(page, `${prefix}-saturn-front-ring`);
   const frontCanvas = await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-front-ring-canvas`);
@@ -1125,6 +1126,10 @@ async function auditSaturnRing(context, prefix = "desktop") {
   const back = await currentCameraMetrics(page);
   assert.ok(antipodalOrbitError(front, back) < 0.04, "front/back Saturn seats are antipodal");
   assert.ok(back.saturnRing.viewLightDot <= -0.85, "back audit uses strong high phase");
+  assert.ok(
+    Math.abs(back.saturnRing.reflectedLightScale - CONFIG.saturnRingBacklitMapLight) < 1e-12,
+    "strongly backlit reflected ring light reaches its bounded floor",
+  );
   assert.ok(back.saturnRing.emissiveIntensity > 0);
   assert.ok(back.saturnRing.emissiveIntensity <= CONFIG.saturnRingHighPhaseLight);
   const backFull = await saveScreenshot(page, `${prefix}-saturn-backlit-ring`);
@@ -1134,29 +1139,47 @@ async function auditSaturnRing(context, prefix = "desktop") {
   }
   const frontVisual = await saturnFrameMetrics(page, frontCanvas, front);
   const backVisual = await saturnFrameMetrics(page, backCanvas, back);
-  assert.ok(backVisual.centerMean < frontVisual.centerMean, "Saturn's backlit globe stays dark");
-  assert.ok(
-    backVisual.ringBrightCoverage > backVisual.outsideBrightCoverage + 0.005,
-    "bright pixels stay concentrated on the ring surface",
-  );
-  assert.ok(
-    backVisual.ringP98 >= backVisual.outsideP98 + 16,
-    "rendered backlit ring texture stays perceptible above nearby sky detail",
-  );
-  assert.ok(
-    backVisual.ringP98 < frontVisual.centerMean,
-    "the bounded ring cue stays dimmer than the front-lit globe",
-  );
+  const assertBacklitVisual = (seat, visual) => {
+    assert.ok(visual.centerMean < frontVisual.centerMean, `${seat} keeps Saturn's globe dark`);
+    assert.ok(
+      visual.ringBrightCoverage > visual.outsideBrightCoverage + 0.005,
+      `${seat} concentrates bright pixels on the ring surface`,
+    );
+    assert.ok(
+      visual.ringP98 >= visual.outsideP98 + 16,
+      `${seat} keeps rendered ring texture perceptible above nearby sky detail`,
+    );
+    assert.ok(
+      visual.ringP98 < frontVisual.centerMean * 0.75,
+      `${seat} keeps the bounded ring cue below a white artificial glow`,
+    );
+  };
+  assertBacklitVisual("matched backlit seat", backVisual);
   await assertSaturnRingTextureProfile(page);
   await pressCameraKey(page, "ArrowUp", 2);
-  assert.ok((await currentCameraMetrics(page)).saturnRing.emissiveIntensity > 0);
+  const high = await currentCameraMetrics(page);
+  assert.ok(high.saturnRing.emissiveIntensity > 0);
+  assert.ok(high.saturnRing.reflectedLightScale >= CONFIG.saturnRingBacklitMapLight);
+  assert.ok(high.saturnRing.reflectedLightScale < 1);
   await saveScreenshot(page, `${prefix}-saturn-backlit-high`);
-  await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-backlit-high-canvas`);
+  const highCanvas = await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-backlit-high-canvas`);
+  const highVisual = await saturnFrameMetrics(page, highCanvas, high);
+  assertBacklitVisual("high backlit seat", highVisual);
   await pressCameraKey(page, "ArrowDown", 4);
-  assert.ok((await currentCameraMetrics(page)).saturnRing.emissiveIntensity > 0);
+  const low = await currentCameraMetrics(page);
+  assert.ok(low.saturnRing.emissiveIntensity > 0);
+  assert.ok(low.saturnRing.reflectedLightScale >= CONFIG.saturnRingBacklitMapLight);
+  assert.ok(low.saturnRing.reflectedLightScale < 1);
   await saveScreenshot(page, `${prefix}-saturn-backlit-low`);
-  await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-backlit-low-canvas`);
-  console.log(`${prefix} Saturn front/back metrics`, { frontVisual, backVisual });
+  const lowCanvas = await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-backlit-low-canvas`);
+  const lowVisual = await saturnFrameMetrics(page, lowCanvas, low);
+  assertBacklitVisual("low backlit seat", lowVisual);
+  console.log(`${prefix} Saturn front/back metrics`, {
+    frontVisual,
+    backVisual,
+    highVisual,
+    lowVisual,
+  });
   assert.deepEqual(errors, []);
   await page.close();
 }
@@ -1920,7 +1943,15 @@ async function assertCardClearsDock(page, viewport) {
     const helpersInside = [...document.querySelectorAll(".helper-toggles button")]
       .every((button) => {
         const box = button.getBoundingClientRect();
-        return box.top >= card.top && box.bottom <= card.bottom;
+        return box.top >= card.top
+          && box.right <= card.right
+          && box.bottom <= card.bottom
+          && box.left >= card.left;
+      });
+    const helpersSized = [...document.querySelectorAll(".helper-toggles button")]
+      .every((button) => {
+        const box = button.getBoundingClientRect();
+        return box.width >= 44 && box.height >= 44;
       });
     const creditsHit = document.elementFromPoint(
       credits.left + credits.width / 2,
@@ -1933,8 +1964,11 @@ async function assertCardClearsDock(page, viewport) {
       creditsOverlap,
       topbarOverlap,
       helpersInside,
+      helpersSized,
       cardClientHeight: document.querySelector("#body-card").clientHeight,
       cardScrollHeight: document.querySelector("#body-card").scrollHeight,
+      cardClientWidth: document.querySelector("#body-card").clientWidth,
+      cardScrollWidth: document.querySelector("#body-card").scrollWidth,
       creditsHit: creditsHit?.id,
       clearance: Number.parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue("--dock-clearance"),
@@ -1980,9 +2014,18 @@ async function assertCardClearsDock(page, viewport) {
     true,
     `${viewport.width}x${viewport.height} keeps every helper control inside the card`,
   );
+  assert.equal(
+    layout.helpersSized,
+    true,
+    `${viewport.width}x${viewport.height} keeps 44px helper targets`,
+  );
   assert.ok(
     layout.cardScrollHeight <= layout.cardClientHeight + 1,
     `${viewport.width}x${viewport.height} card content is not vertically clipped`,
+  );
+  assert.ok(
+    layout.cardScrollWidth <= layout.cardClientWidth + 1,
+    `${viewport.width}x${viewport.height} card content is not horizontally clipped`,
   );
   assert.equal(
     layout.creditsHit,
@@ -2164,6 +2207,7 @@ try {
     assert.equal(await touchPage.locator("#sky-control").isHidden(), false);
     assert.equal(await touchSky.isEnabled(), true);
     assert.equal(await touchSky.inputValue(), "all");
+    if (viewport.width === 320) await saveScreenshot(touchPage, "touch-compact-card");
   }
   await touchPage.locator("#reset-button").click();
   await touchPage.setViewportSize({ width: 390, height: 844 });

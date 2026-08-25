@@ -399,6 +399,26 @@ input[type="range"] {
   }
 }
 
+@media (max-width: 360px) and (max-height: 600px) and (orientation: portrait) {
+  .card {
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  .card-meta {
+    margin-top: 4px;
+  }
+
+  .helper-toggles {
+    gap: 4px;
+    margin-top: 6px;
+  }
+
+  .helper-toggles button {
+    padding-inline: 10px;
+  }
+}
+
 @media (min-width: 721px) and (max-width: 1100px) {
   .version {
     bottom: calc(var(--dock-clearance) + max(20px, env(safe-area-inset-bottom)));
