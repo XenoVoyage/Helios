@@ -2224,11 +2224,16 @@ try {
   await cdp.send("Input.dispatchTouchEvent", {
     type: "touchMove",
     touchPoints: [
-      { id: 0, x: 165, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-      { id: 1, x: 225, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 0, x: 270, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 1, x: 320, y: 320, radiusX: 4, radiusY: 4, force: 1 },
     ],
   });
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  const touchZoom = await currentCameraMetrics(touchPage);
+  assert.ok(
+    touchZoom.requestedControlDistance > CONFIG.handoffViewDistance,
+    `touch pinch crosses the handoff threshold: ${JSON.stringify(touchZoom)}`,
+  );
   await touchPage.waitForFunction(
     () => document.querySelector("#sky-control").hidden,
     null,
