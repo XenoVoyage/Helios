@@ -108,7 +108,7 @@ export const CONFIG = Object.freeze({
   focusLerp: 6,
   // Bounded material response for Saturn's strongly backlit rings.
   saturnRingHighPhaseLight: 0.01,
-  saturnRingBacklitMapLight: 0.2,
+  saturnRingBacklitReflectedLight: 0.2,
 });
 
 /**
@@ -133,10 +133,10 @@ export function saturnRingHighPhaseFactor(viewLightDot) {
   return t * t * (3 - 2 * t);
 }
 
-/** Dim the ordinarily lit ring map at high phase without changing normal views. */
+/** Dim all ordinarily reflected ring light at high phase without changing normal views. */
 export function saturnRingHighPhaseLitScale(viewLightDot) {
   const phase = saturnRingHighPhaseFactor(viewLightDot);
-  return 1 - (1 - CONFIG.saturnRingBacklitMapLight) * phase;
+  return 1 - (1 - CONFIG.saturnRingBacklitReflectedLight) * phase;
 }
 
 /** Global canvas shortcuts must yield to native and editable controls. */

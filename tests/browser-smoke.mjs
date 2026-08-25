@@ -1127,7 +1127,7 @@ async function auditSaturnRing(context, prefix = "desktop") {
   assert.ok(antipodalOrbitError(front, back) < 0.04, "front/back Saturn seats are antipodal");
   assert.ok(back.saturnRing.viewLightDot <= -0.85, "back audit uses strong high phase");
   assert.ok(
-    Math.abs(back.saturnRing.reflectedLightScale - CONFIG.saturnRingBacklitMapLight) < 1e-12,
+    Math.abs(back.saturnRing.reflectedLightScale - CONFIG.saturnRingBacklitReflectedLight) < 1e-12,
     "strongly backlit reflected ring light reaches its bounded floor",
   );
   assert.ok(back.saturnRing.emissiveIntensity > 0);
@@ -1139,41 +1139,42 @@ async function auditSaturnRing(context, prefix = "desktop") {
   }
   const frontVisual = await saturnFrameMetrics(page, frontCanvas, front);
   const backVisual = await saturnFrameMetrics(page, backCanvas, back);
-  const assertBacklitVisual = (seat, visual) => {
-    assert.ok(visual.centerMean < frontVisual.centerMean, `${seat} keeps Saturn's globe dark`);
+  const assertBacklitVisual = (seat, visual, cameraMetrics) => {
+    const evidence = JSON.stringify({ cameraMetrics, frontVisual, visual });
+    assert.ok(visual.centerMean < frontVisual.centerMean, `${seat} keeps Saturn's globe dark: ${evidence}`);
     assert.ok(
       visual.ringBrightCoverage > visual.outsideBrightCoverage + 0.005,
-      `${seat} concentrates bright pixels on the ring surface`,
+      `${seat} concentrates bright pixels on the ring surface: ${evidence}`,
     );
     assert.ok(
       visual.ringP98 >= visual.outsideP98 + 16,
-      `${seat} keeps rendered ring texture perceptible above nearby sky detail`,
+      `${seat} keeps rendered ring texture perceptible above nearby sky detail: ${evidence}`,
     );
     assert.ok(
       visual.ringP98 < frontVisual.centerMean * 0.75,
-      `${seat} keeps the bounded ring cue below a white artificial glow`,
+      `${seat} keeps the bounded ring cue below a white artificial glow: ${evidence}`,
     );
   };
-  assertBacklitVisual("matched backlit seat", backVisual);
+  assertBacklitVisual("matched backlit seat", backVisual, back);
   await assertSaturnRingTextureProfile(page);
   await pressCameraKey(page, "ArrowUp", 2);
   const high = await currentCameraMetrics(page);
   assert.ok(high.saturnRing.emissiveIntensity > 0);
-  assert.ok(high.saturnRing.reflectedLightScale >= CONFIG.saturnRingBacklitMapLight);
+  assert.ok(high.saturnRing.reflectedLightScale >= CONFIG.saturnRingBacklitReflectedLight);
   assert.ok(high.saturnRing.reflectedLightScale < 1);
   await saveScreenshot(page, `${prefix}-saturn-backlit-high`);
   const highCanvas = await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-backlit-high-canvas`);
   const highVisual = await saturnFrameMetrics(page, highCanvas, high);
-  assertBacklitVisual("high backlit seat", highVisual);
+  assertBacklitVisual("high backlit seat", highVisual, high);
   await pressCameraKey(page, "ArrowDown", 4);
   const low = await currentCameraMetrics(page);
   assert.ok(low.saturnRing.emissiveIntensity > 0);
-  assert.ok(low.saturnRing.reflectedLightScale >= CONFIG.saturnRingBacklitMapLight);
+  assert.ok(low.saturnRing.reflectedLightScale >= CONFIG.saturnRingBacklitReflectedLight);
   assert.ok(low.saturnRing.reflectedLightScale < 1);
   await saveScreenshot(page, `${prefix}-saturn-backlit-low`);
   const lowCanvas = await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-backlit-low-canvas`);
   const lowVisual = await saturnFrameMetrics(page, lowCanvas, low);
-  assertBacklitVisual("low backlit seat", lowVisual);
+  assertBacklitVisual("low backlit seat", lowVisual, low);
   console.log(`${prefix} Saturn front/back metrics`, {
     frontVisual,
     backVisual,

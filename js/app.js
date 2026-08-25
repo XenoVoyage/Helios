@@ -542,20 +542,39 @@ function createRing(body) {
   }
   uv.needsUpdate = true;
   const ringMap = loadMap(body.ring);
+  const reflectedLightScale = { value: 1 };
+  const material = new THREE.MeshStandardMaterial({
+    map: ringMap,
+    emissive: 0xffffff,
+    emissiveMap: ringMap,
+    emissiveIntensity: 0,
+    transparent: true,
+    alphaTest: 0.08,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    roughness: 0.58,
+    metalness: 0.12,
+  });
+  material.userData.reflectedLightScale = reflectedLightScale;
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.saturnRingReflectedLightScale = reflectedLightScale;
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "uniform float opacity;",
+        "uniform float opacity;\nuniform float saturnRingReflectedLightScale;",
+      )
+      .replace(
+        "vec3 totalDiffuse = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse;",
+        "vec3 totalDiffuse = ( reflectedLight.directDiffuse + reflectedLight.indirectDiffuse ) * saturnRingReflectedLightScale;",
+      )
+      .replace(
+        "vec3 totalSpecular = reflectedLight.directSpecular + reflectedLight.indirectSpecular;",
+        "vec3 totalSpecular = ( reflectedLight.directSpecular + reflectedLight.indirectSpecular ) * saturnRingReflectedLightScale;",
+      );
+  };
   const ring = new THREE.Mesh(
     ringGeo,
-    new THREE.MeshStandardMaterial({
-      map: ringMap,
-      emissive: 0xffffff,
-      emissiveMap: ringMap,
-      emissiveIntensity: 0,
-      transparent: true,
-      alphaTest: 0.08,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      roughness: 0.58,
-      metalness: 0.12,
-    }),
+    material,
   );
   ring.rotation.x = -Math.PI / 2;
   return ring;
@@ -1090,7 +1109,9 @@ function updateSaturnRingShading() {
   ringLightDirection.copy(sunPosition).sub(ringCenter).normalize();
   saturnRingViewLightDot = ringViewDirection.dot(ringLightDirection);
   const phase = saturnRingHighPhaseFactor(saturnRingViewLightDot);
-  saturn.ring.material.color.setScalar(saturnRingHighPhaseLitScale(saturnRingViewLightDot));
+  saturn.ring.material.userData.reflectedLightScale.value = saturnRingHighPhaseLitScale(
+    saturnRingViewLightDot,
+  );
   saturn.ring.material.emissiveIntensity = CONFIG.saturnRingHighPhaseLight * phase;
 }
 
@@ -1402,7 +1423,7 @@ export function currentCameraMetrics() {
     },
     saturnRing: {
       viewLightDot: saturnRingViewLightDot,
-      reflectedLightScale: saturn?.ring?.material?.color.r ?? 1,
+      reflectedLightScale: saturn?.ring?.material?.userData?.reflectedLightScale?.value ?? 1,
       emissiveIntensity: saturn?.ring?.material?.emissiveIntensity ?? 0,
     },
   };
