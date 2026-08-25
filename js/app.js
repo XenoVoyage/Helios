@@ -127,7 +127,6 @@ let galaxy;
 let galaxyActivated = false;
 let galaxyWarmupHandle = null;
 let galaxyWarmupKind = null;
-let galaxyWarmupMessage = 0;
 let pendingGalaxyDistance = null;
 let helpers;
 let dockObserver;
@@ -142,14 +141,6 @@ let lastRenderedControlDistance = null;
 let galaxyWarmupChunks = 0;
 let galaxyWarmupMaxMs = 0;
 const earthSkyLook = wantsEarthSkyLook();
-const galaxyWarmupChannel = typeof MessageChannel === "undefined" ? null : new MessageChannel();
-
-if (galaxyWarmupChannel) {
-  galaxyWarmupChannel.port1.onmessage = ({ data }) => {
-    if (galaxyWarmupKind !== "urgent" || galaxyWarmupHandle !== data) return;
-    warmGalaxyLayer();
-  };
-}
 
 function $(id) {
   return document.getElementById(id);
@@ -1152,7 +1143,7 @@ function finishGalaxyPreparation() {
 
 function warmGalaxyLayer() {
   const started = performance.now();
-  const urgent = galaxyWarmupKind === "urgent" || galaxyWarmupKind === "urgent-timer";
+  const urgent = galaxyWarmupKind === "urgent";
   let advanced = false;
   galaxyWarmupHandle = null;
   galaxyWarmupKind = null;
@@ -1190,7 +1181,7 @@ function warmGalaxyLayer() {
 function cancelGalaxyWarmup() {
   if (galaxyWarmupHandle == null) return;
   if (galaxyWarmupKind === "idle") window.cancelIdleCallback(galaxyWarmupHandle);
-  else if (galaxyWarmupKind !== "urgent") window.clearTimeout(galaxyWarmupHandle);
+  else window.clearTimeout(galaxyWarmupHandle);
   galaxyWarmupHandle = null;
   galaxyWarmupKind = null;
 }
@@ -1199,22 +1190,12 @@ function scheduleGalaxyWarmup(urgent = false) {
   if (earthSkyLook) return;
   if (galaxy && galaxyLayerBuildStage(galaxy) === "complete") return;
   if (galaxyWarmupHandle != null) {
-    if (
-      !urgent
-      || galaxyWarmupKind === "urgent"
-      || galaxyWarmupKind === "urgent-timer"
-    ) return;
+    if (!urgent || galaxyWarmupKind === "urgent") return;
     cancelGalaxyWarmup();
   }
   if (urgent) {
-    if (galaxyWarmupChannel) {
-      galaxyWarmupKind = "urgent";
-      galaxyWarmupHandle = ++galaxyWarmupMessage;
-      galaxyWarmupChannel.port2.postMessage(galaxyWarmupHandle);
-    } else {
-      galaxyWarmupKind = "urgent-timer";
-      galaxyWarmupHandle = window.setTimeout(warmGalaxyLayer, 0);
-    }
+    galaxyWarmupKind = "urgent";
+    galaxyWarmupHandle = window.setTimeout(warmGalaxyLayer, 0);
     return;
   }
   if ("requestIdleCallback" in window) {

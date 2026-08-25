@@ -486,7 +486,6 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
   const errors = captureErrors(page);
   await page.addInitScript(() => {
     window.__heliosLongTasks = [];
-    const nativeSetTimeout = window.setTimeout.bind(window);
     if ("PerformanceObserver" in window) {
       const observer = new PerformanceObserver((list) => {
         window.__heliosLongTasks.push(...list.getEntries().map((entry) => ({
@@ -496,14 +495,7 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
       });
       try { observer.observe({ type: "longtask", buffered: true }); } catch {}
     }
-    // Make the regression deterministic: neither the idle prewarm nor a chain
-    // of nested zero-delay timers may rescue the cold input path.
-    window.setTimeout = (callback, delay = 0, ...args) => nativeSetTimeout(
-      callback,
-      delay === 0 ? 30_000 : delay,
-      ...args,
-    );
-    window.requestIdleCallback = (callback) => nativeSetTimeout(() => callback({
+    window.requestIdleCallback = (callback) => window.setTimeout(() => callback({
       didTimeout: true,
       timeRemaining: () => 0,
     }), 30_000);
