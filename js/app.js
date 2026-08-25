@@ -138,6 +138,7 @@ let frameRequest = 0;
 let renderDirty = true;
 let cameraSettling = true;
 let renderCount = 0;
+let heldFrameSkips = 0;
 let lastRenderedControlDistance = null;
 let galaxyWarmupChunks = 0;
 let galaxyWarmupMaxMs = 0;
@@ -1057,6 +1058,8 @@ function tick(now) {
     renderer.render(scene, camera);
     renderCount += 1;
     lastRenderedControlDistance = state.distance;
+  } else {
+    heldFrameSkips += 1;
   }
   if (state.playing || cameraSettling) invalidateRender(false);
 }
@@ -1380,6 +1383,7 @@ export function currentCameraMetrics() {
     azimuth: state.azimuth,
     elevation: state.elevation,
     renderCount,
+    heldFrameSkips,
     lastRenderedControlDistance,
     framePending: Boolean(frameRequest),
     cameraSettling,

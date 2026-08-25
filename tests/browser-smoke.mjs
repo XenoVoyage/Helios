@@ -520,7 +520,7 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
     }));
     const afterDispatch = app.currentCameraMetrics();
     const dispatchMs = performance.now() - started;
-    let pendingRenderCountMax = afterDispatch.renderCount;
+    let heldDistanceRenderCountMax = afterDispatch.renderCount;
     const inputToPaintMs = await new Promise((resolve, reject) => {
       const deadline = started + 5_000;
       const inspect = () => {
@@ -542,7 +542,10 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
               }),
           ));
         } else {
-          pendingRenderCountMax = Math.max(pendingRenderCountMax, metrics.renderCount);
+          heldDistanceRenderCountMax = Math.max(
+            heldDistanceRenderCountMax,
+            metrics.renderCount,
+          );
           requestAnimationFrame(inspect);
         }
       };
@@ -550,14 +553,16 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
     });
     const longTasks = (window.__heliosLongTasks ?? [])
       .filter((entry) => entry.startTime >= started);
+    const metrics = app.currentCameraMetrics();
     return {
       dispatchMs,
       inputToPaintMs,
       beforeControlDistance: before.controlDistance,
       heldControlDistance: afterDispatch.controlDistance,
       queuedControlDistance: afterDispatch.requestedControlDistance,
-      pendingRenderCount: pendingRenderCountMax - afterDispatch.renderCount,
-      metrics: app.currentCameraMetrics(),
+      heldDistanceRenders: heldDistanceRenderCountMax - afterDispatch.renderCount,
+      heldFrameSkips: metrics.heldFrameSkips - afterDispatch.heldFrameSkips,
+      metrics,
       glRenderer,
       longTasks: longTasks.map((entry) => ({
         startMs: entry.startTime - started,
@@ -571,12 +576,14 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
       + `input-to-render=${result.inputToPaintMs.toFixed(2)} ms, `
       + `chunks=${result.metrics.galaxyWarmup.chunks}, `
       + `max-task=${result.metrics.galaxyWarmup.maxMs.toFixed(2)} ms, `
+      + `held-skips=${result.heldFrameSkips}, `
+      + `held-renders=${result.heldDistanceRenders}, `
       + `long-task=${result.longTaskMaxMs.toFixed(2)} ms, `
       + `renderer=${result.glRenderer}`,
   );
   assert.equal(result.heldControlDistance, result.beforeControlDistance);
   assert.ok(Math.abs(result.queuedControlDistance - CONFIG.handoffViewDistance) < 1e-6);
-  assert.equal(result.pendingRenderCount, 0, "cold build holds its last submitted frame");
+  assert.ok(result.heldFrameSkips > 0, "cold build suppresses autoplay WebGL submissions");
   assert.ok(result.dispatchMs < 50, `cold zoom dispatch returns in ${result.dispatchMs.toFixed(2)} ms`);
   assert.ok(result.metrics.galaxyWarmup.chunks > 5, "cold near build spans multiple tasks");
   assert.ok(

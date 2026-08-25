@@ -175,6 +175,7 @@ assert.match(app, /lastRenderedControlDistance/);
 assert.match(app, /let renderDirty = true/);
 assert.match(app, /if \(dirty\) renderDirty = true/);
 assert.match(app, /pendingGalaxyDistance == null \|\| renderDirty/);
+assert.match(app, /heldFrameSkips \+= 1/);
 assert.match(app, /if \(state\.playing \|\| cameraSettling\) invalidateRender\(false\)/);
 assert.equal((app.match(/requestAnimationFrame\(tick\)/g) ?? []).length, 1);
 assert.match(app, /paintConstellations/);
