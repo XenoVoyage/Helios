@@ -79,6 +79,7 @@ const KEY_ELEVATION_STEP = 0.1;
 const KEY_ZOOM_FACTOR = 0.8;
 const SUN_CAMERA_EPSILON = 1e-6;
 const GALAXY_IDLE_WORK_BUDGET = 3000;
+const GALAXY_URGENT_TIME_BUDGET_MS = 24;
 const pointerIds = new Map();
 const ndc = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
@@ -1151,20 +1152,30 @@ function finishGalaxyPreparation() {
 
 function warmGalaxyLayer() {
   const started = performance.now();
+  const urgent = galaxyWarmupKind === "urgent" || galaxyWarmupKind === "urgent-timer";
   let advanced = false;
   galaxyWarmupHandle = null;
   galaxyWarmupKind = null;
   try {
     const layer = prepareGalaxyLayer();
     if (!layer) return;
-    advanceGalaxyLayer(layer, GALAXY_IDLE_WORK_BUDGET);
-    advanced = true;
-    if (galaxyActivated) invalidateRender();
+    // Urgent input amortizes task/render scheduling without enlarging any
+    // deterministic builder step; background preparation still advances once.
+    do {
+      advanceGalaxyLayer(layer, GALAXY_IDLE_WORK_BUDGET);
+      advanced = true;
+      if (galaxyActivated) invalidateRender();
+      if (pendingGalaxyDistance != null
+        && galaxyLayerReadyForDistance(layer, pendingGalaxyDistance)) {
+        applyZoomTo(pendingGalaxyDistance);
+      }
+    } while (
+      urgent
+      && pendingGalaxyDistance != null
+      && galaxyLayerBuildStage(layer) !== "complete"
+      && performance.now() - started < GALAXY_URGENT_TIME_BUDGET_MS
+    );
     finishGalaxyPreparation();
-    if (pendingGalaxyDistance != null
-      && galaxyLayerReadyForDistance(layer, pendingGalaxyDistance)) {
-      applyZoomTo(pendingGalaxyDistance);
-    }
     if (galaxyLayerBuildStage(layer) !== "complete") {
       scheduleGalaxyWarmup(pendingGalaxyDistance != null);
     }
