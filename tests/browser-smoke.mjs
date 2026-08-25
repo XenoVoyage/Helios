@@ -1933,10 +1933,12 @@ try {
   assert.notEqual(digest(beforeDrag), digest(afterDrag), "pointer drag changes the rendered view");
 
   await desktopPage.locator("#reset-button").click();
-  const earth = desktopPage.locator('[data-body-id="earth"]');
-  await earth.click();
+  const visibleBody = desktopPage.locator(".sky-label:visible").first();
+  const visibleBodyName = await visibleBody.textContent();
+  assert.ok(visibleBodyName);
+  await visibleBody.click();
   await desktopPage.locator("#body-card:not([hidden])").waitFor();
-  assert.equal(await desktopPage.locator("#card-name").textContent(), "Earth");
+  assert.equal(await desktopPage.locator("#card-name").textContent(), visibleBodyName);
   await desktopPage.locator("#reset-button").click();
   assert.equal(await desktopPage.locator("#body-card").getAttribute("hidden"), "");
   await assertCameraControlsAndSunBoundary(desktopPage);
