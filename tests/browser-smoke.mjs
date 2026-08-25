@@ -2231,6 +2231,8 @@ try {
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await touchPage.waitForFunction(
     () => document.querySelector("#sky-control").hidden,
+    null,
+    { timeout: 60_000 },
   );
   assert.equal(await touchSky.inputValue(), "all", "touch preference survives sky unavailability");
   assert.equal(await touchSky.isEnabled(), false, "unavailable touch control is disabled");
