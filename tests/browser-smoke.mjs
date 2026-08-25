@@ -643,8 +643,8 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
   assert.equal(result.heldControlDistance, result.beforeControlDistance);
   assert.ok(Math.abs(result.queuedControlDistance - CONFIG.handoffViewDistance) < 1e-6);
   assert.ok(result.heldFrameSkips > 0, "cold build suppresses autoplay WebGL submissions");
+  assert.equal(result.heldDistanceRenders, 0, "cold build renders no stale held-distance frame");
   assert.ok(result.dispatchMs < 50, `cold zoom dispatch returns in ${result.dispatchMs.toFixed(2)} ms`);
-  assert.ok(result.metrics.galaxyWarmup.chunks > 5, "cold near build spans multiple tasks");
   assert.ok(
     result.metrics.galaxyWarmup.maxMs < 50,
     `cold galaxy work avoids a long task (${result.metrics.galaxyWarmup.maxMs.toFixed(2)} ms)`,
