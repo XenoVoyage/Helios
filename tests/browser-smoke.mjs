@@ -134,6 +134,9 @@ async function openReady(page, suffix = "") {
     null,
     { timeout: 20_000 },
   );
+  await page.evaluate(async () => {
+    globalThis.__heliosTestApp = await import(new URL("./js/app.js", location.href).href);
+  });
 }
 
 async function assertRenderedCanvas(page) {
@@ -475,9 +478,8 @@ async function currentCameraMetrics(page) {
 }
 
 async function settleCameraMotion(page) {
-  await page.waitForFunction(async () => {
-    const app = await import(new URL("./js/app.js", location.href).href);
-    return app.currentCameraMetrics()?.cameraSettling === false;
+  await page.waitForFunction(() => {
+    return globalThis.__heliosTestApp.currentCameraMetrics()?.cameraSettling === false;
   }, null, { timeout: 5_000 });
 }
 
@@ -662,9 +664,8 @@ async function assertPreparedZoomLatency(page) {
 async function assertPausedRenderInvalidation(page) {
   const play = page.locator("#play-button");
   if (await play.getAttribute("aria-pressed") === "true") await play.click();
-  await page.waitForFunction(async () => {
-    const app = await import(new URL("./js/app.js", location.href).href);
-    const metrics = app.currentCameraMetrics();
+  await page.waitForFunction(() => {
+    const metrics = globalThis.__heliosTestApp.currentCameraMetrics();
     return document.documentElement.dataset.galaxyPrepared === "1"
       && document.documentElement.dataset.assetsLoading === "0"
       && metrics.cameraSettling === false
@@ -687,9 +688,8 @@ async function assertPausedRenderInvalidation(page) {
   assert.equal(settled.renderCount, before, "paused settled scene stops GPU renders");
   assert.equal(settled.framePending, false, "paused settled scene leaves no queued frame");
   await page.locator("#zoom-in-button").click();
-  await page.waitForFunction(async (count) => {
-    const app = await import(new URL("./js/app.js", location.href).href);
-    return app.currentCameraMetrics().renderCount > count;
+  await page.waitForFunction((count) => {
+    return globalThis.__heliosTestApp.currentCameraMetrics().renderCount > count;
   }, before);
 }
 
@@ -797,21 +797,15 @@ async function assertBodyLabelCollisionsSuppressed(page) {
   await settleCameraFrame(page);
   assert.deepEqual(await visibleSnapshot(), labels, "a repeated frame keeps the same label survivors and styles");
 
-  await page.evaluate(() => document.querySelector('[data-body-id="jupiter"]').click());
-  await page.waitForFunction(async () => {
-    const app = await import(new URL("./js/app.js", location.href).href);
-    const metrics = app.currentCameraMetrics();
-    const label = document.querySelector('[data-body-id="jupiter"]');
+  await page.evaluate(() => document.querySelector('.sky-label[data-body-id="jupiter"]').click());
+  await page.waitForFunction(() => {
+    const metrics = globalThis.__heliosTestApp.currentCameraMetrics();
+    const label = document.querySelector('.sky-label[data-body-id="jupiter"]');
     return metrics.focusedId === "jupiter"
       && metrics.cameraSettling === false
       && metrics.framePending === false
       && label?.hidden === false;
   });
-  assert.equal(
-    await page.locator('[data-body-id="jupiter"]').getAttribute("hidden"),
-    null,
-    "the selected/focused label wins any collision",
-  );
   await page.locator("#reset-button").click();
   await settleCameraMotion(page);
 }
