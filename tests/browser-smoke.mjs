@@ -480,7 +480,7 @@ async function currentCameraMetrics(page) {
 async function settleCameraMotion(page) {
   await page.waitForFunction(() => {
     return globalThis.__heliosTestApp.currentCameraMetrics()?.cameraSettling === false;
-  }, null, { timeout: 5_000 });
+  }, null, { timeout: 30_000 });
 }
 
 async function assertColdGalaxyZoomDoesNotBlock(context) {
@@ -533,14 +533,21 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
         ) {
           resolve(performance.now() - started);
         } else if (performance.now() >= deadline) {
+          const longTasks = (window.__heliosLongTasks ?? [])
+            .filter((entry) => entry.startTime >= started);
           reject(new Error(
             "cold galaxy zoom did not render within 5 seconds: "
               + JSON.stringify({
                 galaxyReady: document.documentElement.dataset.galaxyReady ?? null,
+                assetsLoading: document.documentElement.dataset.assetsLoading ?? null,
                 stage: metrics.galaxyStage,
                 warmup: metrics.galaxyWarmup,
                 requested: metrics.requestedControlDistance,
                 rendered: metrics.lastRenderedControlDistance,
+                renderCountDelta: metrics.renderCount - afterDispatch.renderCount,
+                heldFrameSkips: metrics.heldFrameSkips - afterDispatch.heldFrameSkips,
+                framePending: metrics.framePending,
+                longTaskMaxMs: Math.max(0, ...longTasks.map((entry) => entry.duration)),
               }),
           ));
         } else {

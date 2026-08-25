@@ -159,6 +159,10 @@ function invalidateRender(dirty = true) {
   frameRequest = requestAnimationFrame(tick);
 }
 
+function invalidateAssetRender() {
+  invalidateRender(pendingGalaxyDistance == null);
+}
+
 function seedRandom(seed) {
   let n = seed >>> 0;
   return () => {
@@ -202,14 +206,14 @@ function boot() {
   document.documentElement.dataset.assetsLoading = "0";
   THREE.DefaultLoadingManager.onStart = () => {
     document.documentElement.dataset.assetsLoading = "1";
-    invalidateRender();
+    invalidateAssetRender();
   };
-  THREE.DefaultLoadingManager.onProgress = invalidateRender;
+  THREE.DefaultLoadingManager.onProgress = invalidateAssetRender;
   THREE.DefaultLoadingManager.onLoad = () => {
     document.documentElement.dataset.assetsLoading = "0";
-    invalidateRender();
+    invalidateAssetRender();
   };
-  THREE.DefaultLoadingManager.onError = invalidateRender;
+  THREE.DefaultLoadingManager.onError = invalidateAssetRender;
   const galaxyLook = earthSkyLook ? null : requestedGalaxyLook();
   paintSpeed();
   paintClock();
@@ -423,7 +427,7 @@ function createRenderer() {
 }
 
 function loadMap(path) {
-  const texture = new THREE.TextureLoader().load(path, invalidateRender);
+  const texture = new THREE.TextureLoader().load(path, invalidateAssetRender);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 8;
   return texture;
@@ -1051,7 +1055,8 @@ function tick(now) {
   // A cold extra-zoom keeps the last complete frame visible while its exact
   // target is built. Do not resubmit that unchanged frame to software WebGL:
   // it can starve the bounded builder tasks without improving what is shown.
-  // Explicit input, resize, and asset invalidations still refresh immediately.
+  // Explicit input and resize still refresh immediately; asset completion is
+  // coalesced into the exact handoff frame while a cold target is pending.
   const submitFrame = pendingGalaxyDistance == null || renderDirty;
   renderDirty = false;
   if (submitFrame) {
