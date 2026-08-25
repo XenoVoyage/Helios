@@ -181,14 +181,50 @@ async function saveScreenshot(page, name, options = {}) {
 }
 
 async function saveCanvasOnlyScreenshot(page, name) {
-  const png = await page.screenshot({
-    style: "#stage > :not(#viewport), body > :not(#stage) { opacity: 0 !important; }",
+  const overlaySelector = "#stage > :not(#viewport), body > :not(#stage)";
+  const readViewport = () => page.locator("#viewport").evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      drawingWidth: element.width,
+      drawingHeight: element.height,
+    };
   });
-  if (screenshotDir) {
-    await mkdir(screenshotDir, { recursive: true });
-    await writeFile(path.join(screenshotDir, `${name}.png`), png);
+  const viewportBefore = await readViewport();
+  const priorStyles = await page.locator(overlaySelector).evaluateAll((elements) => elements.map((element) => {
+    const style = element.getAttribute("style");
+    element.style.setProperty("opacity", "0", "important");
+    return style;
+  }));
+  try {
+    const hidden = await page.locator(overlaySelector).evaluateAll((elements) => (
+      elements.every((element) => Number.parseFloat(getComputedStyle(element).opacity) === 0)
+    ));
+    assert.equal(hidden, true, "canvas evidence hides every DOM overlay without changing layout");
+    assert.deepEqual(await readViewport(), viewportBefore, "canvas evidence preserves the viewport projection");
+    const png = await page.screenshot();
+    if (screenshotDir) {
+      await mkdir(screenshotDir, { recursive: true });
+      await writeFile(path.join(screenshotDir, `${name}.png`), png);
+    }
+    return png;
+  } finally {
+    await page.locator(overlaySelector).evaluateAll((elements, styles) => {
+      elements.forEach((element, index) => {
+        const style = styles[index];
+        if (style == null) element.removeAttribute("style");
+        else element.setAttribute("style", style);
+      });
+    }, priorStyles);
+    const restoredStyles = await page.locator(overlaySelector).evaluateAll((elements) => (
+      elements.map((element) => element.getAttribute("style"))
+    ));
+    assert.deepEqual(restoredStyles, priorStyles, "canvas evidence restores every DOM overlay");
+    assert.deepEqual(await readViewport(), viewportBefore, "canvas evidence restores the viewport projection");
   }
-  return png;
 }
 
 async function distributedFrameMetrics(page, png) {
