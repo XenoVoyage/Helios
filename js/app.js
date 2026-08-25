@@ -1188,7 +1188,11 @@ function scheduleGalaxyWarmup(urgent = false) {
   if (earthSkyLook) return;
   if (galaxy && galaxyLayerBuildStage(galaxy) === "complete") return;
   if (galaxyWarmupHandle != null) {
-    if (!urgent || galaxyWarmupKind === "urgent") return;
+    if (
+      !urgent
+      || galaxyWarmupKind === "urgent"
+      || galaxyWarmupKind === "urgent-timer"
+    ) return;
     cancelGalaxyWarmup();
   }
   if (urgent) {
@@ -1197,7 +1201,7 @@ function scheduleGalaxyWarmup(urgent = false) {
       galaxyWarmupHandle = ++galaxyWarmupMessage;
       galaxyWarmupChannel.port2.postMessage(galaxyWarmupHandle);
     } else {
-      galaxyWarmupKind = "timer";
+      galaxyWarmupKind = "urgent-timer";
       galaxyWarmupHandle = window.setTimeout(warmGalaxyLayer, 0);
     }
     return;
