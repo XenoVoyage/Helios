@@ -173,14 +173,16 @@ async function assertBodyLabelsHidden(page) {
 }
 
 async function saveScreenshot(page, name, options = {}) {
-  if (!screenshotDir) return;
+  if (!screenshotDir) return null;
   await mkdir(screenshotDir, { recursive: true });
-  await writeFile(path.join(screenshotDir, `${name}.png`), await page.screenshot(options));
+  const png = await page.screenshot(options);
+  await writeFile(path.join(screenshotDir, `${name}.png`), png);
+  return png;
 }
 
 async function saveCanvasOnlyScreenshot(page, name) {
-  const png = await page.locator("#viewport").screenshot({
-    style: "#stage > :not(#viewport), body > :not(#stage) { visibility: hidden !important; }",
+  const png = await page.screenshot({
+    style: "#stage > :not(#viewport), body > :not(#stage) { opacity: 0 !important; }",
   });
   if (screenshotDir) {
     await mkdir(screenshotDir, { recursive: true });
@@ -877,9 +879,11 @@ async function saturnFrameMetrics(page, png, cameraMetrics) {
     let ringTotal = 0;
     let ringCount = 0;
     let ringBright = 0;
+    const ringHistogram = new Uint32Array(256);
     let outsideTotal = 0;
     let outsideCount = 0;
     let outsideBright = 0;
+    const outsideHistogram = new Uint32Array(256);
     for (let y = 0; y < surface.height; y += 1) {
       for (let x = 0; x < surface.width; x += 1) {
         const radius = Math.hypot(x + 0.5 - centerX, y + 0.5 - centerY) / globeRadius;
@@ -894,20 +898,33 @@ async function saturnFrameMetrics(page, png, cameraMetrics) {
         } else if (radius >= 1.12 && radius <= 2.42) {
           ringTotal += luminance;
           ringCount += 1;
-          if (luminance > 8) ringBright += 1;
+          ringHistogram[Math.max(0, Math.min(255, Math.round(luminance)))] += 1;
+          if (luminance > 60) ringBright += 1;
         } else if (radius >= 2.58) {
           outsideTotal += luminance;
           outsideCount += 1;
-          if (luminance > 8) outsideBright += 1;
+          outsideHistogram[Math.max(0, Math.min(255, Math.round(luminance)))] += 1;
+          if (luminance > 60) outsideBright += 1;
         }
       }
     }
+    const percentile = (histogram, count, fraction) => {
+      const target = Math.ceil(count * fraction);
+      let seen = 0;
+      for (let value = 0; value < histogram.length; value += 1) {
+        seen += histogram[value];
+        if (seen >= target) return value;
+      }
+      return histogram.length - 1;
+    };
     return {
       globeRadius,
       centerMean: centerTotal / Math.max(1, centerCount),
       ringMean: ringTotal / Math.max(1, ringCount),
+      ringP98: percentile(ringHistogram, ringCount, 0.98),
       ringBrightCoverage: ringBright / Math.max(1, ringCount),
       outsideMean: outsideTotal / Math.max(1, outsideCount),
+      outsideP98: percentile(outsideHistogram, outsideCount, 0.98),
       outsideBrightCoverage: outsideBright / Math.max(1, outsideCount),
     };
   }, { source: png.toString("base64"), camera: cameraMetrics });
@@ -1039,8 +1056,11 @@ async function auditSaturnRing(context, prefix = "desktop") {
   const front = await findSaturnFrontSeat(page);
   assert.ok(front.saturnRing.viewLightDot >= 0.7, "front audit uses a strongly lit seat");
   assert.equal(front.saturnRing.emissiveIntensity, 0, "front view remains exactly unchanged");
-  await saveScreenshot(page, `${prefix}-saturn-front-ring`);
+  const frontFull = await saveScreenshot(page, `${prefix}-saturn-front-ring`);
   const frontCanvas = await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-front-ring-canvas`);
+  if (frontFull) {
+    assert.notEqual(digest(frontCanvas), digest(frontFull), "front canvas evidence excludes the UI");
+  }
   if (prefix === "touch") {
     const saturn = findBody("saturn");
     const horizontalHalfFov = Math.atan(
@@ -1059,16 +1079,25 @@ async function auditSaturnRing(context, prefix = "desktop") {
   assert.ok(back.saturnRing.viewLightDot <= -0.85, "back audit uses strong high phase");
   assert.ok(back.saturnRing.emissiveIntensity > 0);
   assert.ok(back.saturnRing.emissiveIntensity <= CONFIG.saturnRingHighPhaseLight);
-  await saveScreenshot(page, `${prefix}-saturn-backlit-ring`);
+  const backFull = await saveScreenshot(page, `${prefix}-saturn-backlit-ring`);
   const backCanvas = await saveCanvasOnlyScreenshot(page, `${prefix}-saturn-backlit-ring-canvas`);
+  if (backFull) {
+    assert.notEqual(digest(backCanvas), digest(backFull), "back canvas evidence excludes the UI");
+  }
   const frontVisual = await saturnFrameMetrics(page, frontCanvas, front);
   const backVisual = await saturnFrameMetrics(page, backCanvas, back);
   assert.ok(backVisual.centerMean < frontVisual.centerMean, "Saturn's backlit globe stays dark");
-  assert.ok(backVisual.ringMean < frontVisual.ringMean, "backlit rings stay dimmer than front-lit rings");
-  assert.ok(backVisual.ringMean > backVisual.outsideMean, "backlit rings remain visible without a halo");
   assert.ok(
-    backVisual.ringBrightCoverage > backVisual.outsideBrightCoverage,
+    backVisual.ringBrightCoverage > backVisual.outsideBrightCoverage + 0.005,
     "bright pixels stay concentrated on the ring surface",
+  );
+  assert.ok(
+    backVisual.ringP98 >= backVisual.outsideP98 + 16,
+    "rendered backlit ring texture stays perceptible above nearby sky detail",
+  );
+  assert.ok(
+    backVisual.ringP98 < frontVisual.centerMean,
+    "the bounded ring cue stays dimmer than the front-lit globe",
   );
   await assertSaturnRingTextureProfile(page);
   await pressCameraKey(page, "ArrowUp", 2);
