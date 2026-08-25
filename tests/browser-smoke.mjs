@@ -670,9 +670,22 @@ async function assertPausedRenderInvalidation(page) {
       && metrics.cameraSettling === false
       && metrics.framePending === false;
   }, null, { timeout: 30_000 });
-  const before = (await currentCameraMetrics(page)).renderCount;
+  let before = (await currentCameraMetrics(page)).renderCount;
+  let stableSamples = 0;
+  for (let attempt = 0; attempt < 50 && stableSamples < 3; attempt += 1) {
+    await page.waitForTimeout(100);
+    const current = (await currentCameraMetrics(page)).renderCount;
+    if (current === before) stableSamples += 1;
+    else {
+      before = current;
+      stableSamples = 0;
+    }
+  }
+  assert.equal(stableSamples, 3, "paused scene reaches render quiescence");
   await page.waitForTimeout(300);
-  assert.equal((await currentCameraMetrics(page)).renderCount, before, "paused settled scene stops GPU renders");
+  const settled = await currentCameraMetrics(page);
+  assert.equal(settled.renderCount, before, "paused settled scene stops GPU renders");
+  assert.equal(settled.framePending, false, "paused settled scene leaves no queued frame");
   await page.locator("#zoom-in-button").click();
   await page.waitForFunction(async (count) => {
     const app = await import(new URL("./js/app.js", location.href).href);
