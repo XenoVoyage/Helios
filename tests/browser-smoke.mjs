@@ -194,10 +194,14 @@ async function saveCanvasOnlyScreenshot(page, name) {
     };
   });
   const viewportBefore = await readViewport();
-  const priorStyles = await page.locator(overlaySelector).evaluateAll((elements) => elements.map((element) => {
-    const style = element.getAttribute("style");
+  const priorOpacity = await page.locator(overlaySelector).evaluateAll((elements) => elements.map((element) => {
+    const state = {
+      value: element.style.getPropertyValue("opacity"),
+      priority: element.style.getPropertyPriority("opacity"),
+      hadStyleAttribute: element.hasAttribute("style"),
+    };
     element.style.setProperty("opacity", "0", "important");
-    return style;
+    return state;
   }));
   try {
     const hidden = await page.locator(overlaySelector).evaluateAll((elements) => (
@@ -212,17 +216,25 @@ async function saveCanvasOnlyScreenshot(page, name) {
     }
     return png;
   } finally {
-    await page.locator(overlaySelector).evaluateAll((elements, styles) => {
+    await page.locator(overlaySelector).evaluateAll((elements, states) => {
       elements.forEach((element, index) => {
-        const style = styles[index];
-        if (style == null) element.removeAttribute("style");
-        else element.setAttribute("style", style);
+        const state = states[index];
+        if (state.value) element.style.setProperty("opacity", state.value, state.priority);
+        else element.style.removeProperty("opacity");
+        if (!state.hadStyleAttribute && element.style.length === 0) element.removeAttribute("style");
       });
-    }, priorStyles);
-    const restoredStyles = await page.locator(overlaySelector).evaluateAll((elements) => (
-      elements.map((element) => element.getAttribute("style"))
+    }, priorOpacity);
+    const restoredOpacity = await page.locator(overlaySelector).evaluateAll((elements) => (
+      elements.map((element) => ({
+        value: element.style.getPropertyValue("opacity"),
+        priority: element.style.getPropertyPriority("opacity"),
+      }))
     ));
-    assert.deepEqual(restoredStyles, priorStyles, "canvas evidence restores every DOM overlay");
+    assert.deepEqual(
+      restoredOpacity,
+      priorOpacity.map(({ value, priority }) => ({ value, priority })),
+      "canvas evidence restores every DOM overlay",
+    );
     assert.deepEqual(await readViewport(), viewportBefore, "canvas evidence restores the viewport projection");
   }
 }
