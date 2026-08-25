@@ -1176,12 +1176,18 @@ test("Saturn high-phase ring cue is zero in normal views and smoothly bounded", 
   assert.equal(saturnRingHighPhaseFactor(-1), 1);
   assert.ok(saturnRingHighPhaseFactor(-0.5) > 0);
   assert.ok(saturnRingHighPhaseFactor(-0.5) < 1);
-  assert.equal(CONFIG.saturnRingHighPhaseLight, 0.01);
-  assert.equal(CONFIG.saturnRingBacklitReflectedLight, 0.2);
+  assert.equal(CONFIG.saturnRingHighPhaseLight, 0.025);
+  assert.equal(CONFIG.saturnRingBacklitReflectedLight, 0.1);
   assert.equal(saturnRingHighPhaseLitScale(1), 1);
   assert.equal(saturnRingHighPhaseLitScale(-0.2), 1);
-  assert.ok(Math.abs(saturnRingHighPhaseLitScale(-0.85) - 0.2) < 1e-12);
-  assert.ok(saturnRingHighPhaseLitScale(-0.5) > 0.2);
+  assert.ok(
+    Math.abs(
+      saturnRingHighPhaseLitScale(-0.85) - CONFIG.saturnRingBacklitReflectedLight,
+    ) < 1e-12,
+  );
+  assert.ok(
+    saturnRingHighPhaseLitScale(-0.5) > CONFIG.saturnRingBacklitReflectedLight,
+  );
   assert.ok(saturnRingHighPhaseLitScale(-0.5) < 1);
 });
 

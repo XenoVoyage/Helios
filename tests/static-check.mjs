@@ -146,8 +146,8 @@ assert.match(app, /shader\.uniforms\.saturnRingReflectedLightScale = reflectedLi
 assert.match(app, /totalDiffuse = \( reflectedLight\.directDiffuse \+ reflectedLight\.indirectDiffuse \) \* saturnRingReflectedLightScale/);
 assert.match(app, /totalSpecular = \( reflectedLight\.directSpecular \+ reflectedLight\.indirectSpecular \) \* saturnRingReflectedLightScale/);
 assert.match(app, /userData\.reflectedLightScale\.value = saturnRingHighPhaseLitScale/);
-assert.match(configSource, /saturnRingHighPhaseLight: 0\.01/);
-assert.match(configSource, /saturnRingBacklitReflectedLight: 0\.2/);
+assert.match(configSource, /saturnRingHighPhaseLight: 0\.025/);
+assert.match(configSource, /saturnRingBacklitReflectedLight: 0\.1/);
 assert.doesNotMatch(app, /HemisphereLight/);
 assert.doesNotMatch(app, /createStarfield/);
 assert.match(app, /createCelestialSphere/);
