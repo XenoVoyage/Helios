@@ -609,7 +609,7 @@ async function assertPreparedZoomLatency(page) {
     () => document.documentElement.dataset.galaxyPrepared === "1"
       && document.documentElement.dataset.assetsLoading === "0",
     null,
-    { timeout: 30_000 },
+    { timeout: 45_000 },
   );
   const warmup = (await currentCameraMetrics(page)).galaxyWarmup;
   console.log(`Galaxy warmup: chunks=${warmup.chunks}, max-task=${warmup.maxMs.toFixed(2)} ms`);

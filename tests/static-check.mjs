@@ -170,6 +170,7 @@ assert.match(app, /createGalaxyLayer\(THREE, \{ defer: true \}\)/);
 assert.match(app, /advanceGalaxyLayer\(layer, GALAXY_IDLE_WORK_BUDGET\)/);
 assert.match(app, /buildGalaxyLayerToDistance\(layer, distance\)/);
 assert.match(app, /scheduleGalaxyWarmup\(true\)/);
+assert.match(app, /GALAXY_IDLE_WORK_BUDGET = 2400/);
 assert.match(app, /GALAXY_URGENT_TIME_BUDGET_MS = 24/);
 assert.match(app, /lastRenderedControlDistance/);
 assert.match(app, /let renderDirty = true/);
