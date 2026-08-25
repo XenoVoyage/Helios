@@ -126,6 +126,7 @@ let galaxy;
 let galaxyActivated = false;
 let galaxyWarmupHandle = null;
 let galaxyWarmupKind = null;
+let galaxyWarmupMessage = 0;
 let pendingGalaxyDistance = null;
 let helpers;
 let dockObserver;
@@ -140,6 +141,14 @@ let lastRenderedControlDistance = null;
 let galaxyWarmupChunks = 0;
 let galaxyWarmupMaxMs = 0;
 const earthSkyLook = wantsEarthSkyLook();
+const galaxyWarmupChannel = typeof MessageChannel === "undefined" ? null : new MessageChannel();
+
+if (galaxyWarmupChannel) {
+  galaxyWarmupChannel.port1.onmessage = ({ data }) => {
+    if (galaxyWarmupKind !== "urgent" || galaxyWarmupHandle !== data) return;
+    warmGalaxyLayer();
+  };
+}
 
 function $(id) {
   return document.getElementById(id);
@@ -1170,7 +1179,7 @@ function warmGalaxyLayer() {
 function cancelGalaxyWarmup() {
   if (galaxyWarmupHandle == null) return;
   if (galaxyWarmupKind === "idle") window.cancelIdleCallback(galaxyWarmupHandle);
-  else window.clearTimeout(galaxyWarmupHandle);
+  else if (galaxyWarmupKind !== "urgent") window.clearTimeout(galaxyWarmupHandle);
   galaxyWarmupHandle = null;
   galaxyWarmupKind = null;
 }
@@ -1183,8 +1192,14 @@ function scheduleGalaxyWarmup(urgent = false) {
     cancelGalaxyWarmup();
   }
   if (urgent) {
-    galaxyWarmupKind = "urgent";
-    galaxyWarmupHandle = window.setTimeout(warmGalaxyLayer, 0);
+    if (galaxyWarmupChannel) {
+      galaxyWarmupKind = "urgent";
+      galaxyWarmupHandle = ++galaxyWarmupMessage;
+      galaxyWarmupChannel.port2.postMessage(galaxyWarmupHandle);
+    } else {
+      galaxyWarmupKind = "timer";
+      galaxyWarmupHandle = window.setTimeout(warmGalaxyLayer, 0);
+    }
     return;
   }
   if ("requestIdleCallback" in window) {

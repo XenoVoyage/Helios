@@ -524,7 +524,16 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
         ) {
           resolve(performance.now() - started);
         } else if (performance.now() >= deadline) {
-          reject(new Error("cold galaxy zoom did not render within 5 seconds"));
+          reject(new Error(
+            "cold galaxy zoom did not render within 5 seconds: "
+              + JSON.stringify({
+                galaxyReady: document.documentElement.dataset.galaxyReady ?? null,
+                stage: metrics.galaxyStage,
+                warmup: metrics.galaxyWarmup,
+                requested: metrics.requestedControlDistance,
+                rendered: metrics.lastRenderedControlDistance,
+              }),
+          ));
         } else {
           requestAnimationFrame(inspect);
         }
