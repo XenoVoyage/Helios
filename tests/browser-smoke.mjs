@@ -2212,22 +2212,56 @@ try {
   }
   await touchPage.locator("#reset-button").click();
   await touchPage.setViewportSize({ width: 390, height: 844 });
+  await settleCameraMotion(touchPage);
 
   const cdp = await touch.newCDPSession(touchPage);
+  const touchPinch = await touchPage.evaluate(() => {
+    const canvas = document.querySelector("#viewport");
+    const bounds = canvas.getBoundingClientRect();
+    for (const yRatio of [0.28, 0.38, 0.48, 0.58, 0.68]) {
+      const y = bounds.top + bounds.height * yRatio;
+      for (const [leftRatio, rightRatio] of [[0.08, 0.92], [0.14, 0.86], [0.2, 0.8]]) {
+        const left = { x: bounds.left + bounds.width * leftRatio, y };
+        const right = { x: bounds.left + bounds.width * rightRatio, y };
+        if (
+          document.elementFromPoint(left.x, left.y) === canvas
+          && document.elementFromPoint(right.x, right.y) === canvas
+        ) {
+          return {
+            left,
+            right,
+            moved: {
+              x: right.x + (left.x - right.x) * 0.2,
+              y,
+            },
+          };
+        }
+      }
+    }
+    return null;
+  });
+  assert.ok(touchPinch, "touch pinch has two unobstructed canvas contacts");
   await cdp.send("Input.dispatchTouchEvent", {
     type: "touchStart",
     touchPoints: [
-      { id: 0, x: 70, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-      { id: 1, x: 320, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 0, ...touchPinch.left, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 1, ...touchPinch.right, radiusX: 4, radiusY: 4, force: 1 },
     ],
   });
+  await touchPage.waitForTimeout(50);
   await cdp.send("Input.dispatchTouchEvent", {
     type: "touchMove",
     touchPoints: [
-      { id: 0, x: 270, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-      { id: 1, x: 320, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 0, ...touchPinch.moved, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 1, ...touchPinch.right, radiusX: 4, radiusY: 4, force: 1 },
     ],
   });
+  await touchPage.waitForFunction(
+    (handoff) => globalThis.__heliosTestApp.currentCameraMetrics()
+      .requestedControlDistance > handoff,
+    CONFIG.handoffViewDistance,
+    { timeout: 5_000 },
+  );
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   const touchZoom = await currentCameraMetrics(touchPage);
   assert.ok(
