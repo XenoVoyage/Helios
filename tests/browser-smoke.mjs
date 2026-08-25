@@ -672,7 +672,7 @@ async function assertPausedRenderInvalidation(page) {
   }, null, { timeout: 30_000 });
   let before = (await currentCameraMetrics(page)).renderCount;
   let stableSamples = 0;
-  for (let attempt = 0; attempt < 50 && stableSamples < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 100 && stableSamples < 10; attempt += 1) {
     await page.waitForTimeout(100);
     const current = (await currentCameraMetrics(page)).renderCount;
     if (current === before) stableSamples += 1;
@@ -681,8 +681,8 @@ async function assertPausedRenderInvalidation(page) {
       stableSamples = 0;
     }
   }
-  assert.equal(stableSamples, 3, "paused scene reaches render quiescence");
-  await page.waitForTimeout(300);
+  assert.equal(stableSamples, 10, "paused scene reaches render quiescence");
+  await page.waitForTimeout(500);
   const settled = await currentCameraMetrics(page);
   assert.equal(settled.renderCount, before, "paused settled scene stops GPU renders");
   assert.equal(settled.framePending, false, "paused settled scene leaves no queued frame");
