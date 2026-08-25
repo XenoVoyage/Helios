@@ -107,7 +107,7 @@ export const CONFIG = Object.freeze({
   tapMovePx: 12,
   focusLerp: 6,
   // Bounded texture-shaped scattered light for Saturn's strongly backlit rings.
-  saturnRingHighPhaseLight: 0.04,
+  saturnRingHighPhaseLight: 0.01,
 });
 
 /**

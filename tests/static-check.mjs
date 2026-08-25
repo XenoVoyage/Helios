@@ -142,7 +142,7 @@ assert.match(app, /MeshStandardMaterial/);
 assert.match(app, /ringInnerKm/);
 assert.match(app, /emissiveMap: ringMap/);
 assert.match(app, /saturnRingHighPhaseFactor/);
-assert.match(configSource, /saturnRingHighPhaseLight: 0\.04/);
+assert.match(configSource, /saturnRingHighPhaseLight: 0\.01/);
 assert.doesNotMatch(app, /HemisphereLight/);
 assert.doesNotMatch(app, /createStarfield/);
 assert.match(app, /createCelestialSphere/);
