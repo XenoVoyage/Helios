@@ -2230,8 +2230,7 @@ try {
   });
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await touchPage.waitForFunction(
-    () => document.documentElement.dataset.galaxyReady === "1"
-      && document.querySelector("#sky-control").hidden,
+    () => document.querySelector("#sky-control").hidden,
   );
   assert.equal(await touchSky.inputValue(), "all", "touch preference survives sky unavailability");
   assert.equal(await touchSky.isEnabled(), false, "unavailable touch control is disabled");

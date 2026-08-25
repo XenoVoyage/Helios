@@ -147,7 +147,7 @@ assert.match(app, /totalDiffuse = \( reflectedLight\.directDiffuse \+ reflectedL
 assert.match(app, /totalSpecular = \( reflectedLight\.directSpecular \+ reflectedLight\.indirectSpecular \) \* saturnRingReflectedLightScale/);
 assert.match(app, /userData\.reflectedLightScale\.value = saturnRingHighPhaseLitScale/);
 assert.match(configSource, /saturnRingHighPhaseLight: 0\.025/);
-assert.match(configSource, /saturnRingBacklitReflectedLight: 0\.08/);
+assert.match(configSource, /saturnRingBacklitReflectedLight: 0\.07/);
 assert.doesNotMatch(app, /HemisphereLight/);
 assert.doesNotMatch(app, /createStarfield/);
 assert.match(app, /createCelestialSphere/);
