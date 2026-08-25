@@ -520,6 +520,7 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
     }));
     const afterDispatch = app.currentCameraMetrics();
     const dispatchMs = performance.now() - started;
+    let pendingRenderCountMax = afterDispatch.renderCount;
     const inputToPaintMs = await new Promise((resolve, reject) => {
       const deadline = started + 5_000;
       const inspect = () => {
@@ -541,6 +542,7 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
               }),
           ));
         } else {
+          pendingRenderCountMax = Math.max(pendingRenderCountMax, metrics.renderCount);
           requestAnimationFrame(inspect);
         }
       };
@@ -554,6 +556,7 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
       beforeControlDistance: before.controlDistance,
       heldControlDistance: afterDispatch.controlDistance,
       queuedControlDistance: afterDispatch.requestedControlDistance,
+      pendingRenderCount: pendingRenderCountMax - afterDispatch.renderCount,
       metrics: app.currentCameraMetrics(),
       glRenderer,
       longTasks: longTasks.map((entry) => ({
@@ -573,6 +576,7 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
   );
   assert.equal(result.heldControlDistance, result.beforeControlDistance);
   assert.ok(Math.abs(result.queuedControlDistance - CONFIG.handoffViewDistance) < 1e-6);
+  assert.equal(result.pendingRenderCount, 0, "cold build holds its last submitted frame");
   assert.ok(result.dispatchMs < 50, `cold zoom dispatch returns in ${result.dispatchMs.toFixed(2)} ms`);
   assert.ok(result.metrics.galaxyWarmup.chunks > 5, "cold near build spans multiple tasks");
   assert.ok(

@@ -135,6 +135,7 @@ let lastStamp = 0;
 let lastClockLabel = "";
 let saturnRingViewLightDot = 1;
 let frameRequest = 0;
+let renderDirty = true;
 let cameraSettling = true;
 let renderCount = 0;
 let lastRenderedControlDistance = null;
@@ -150,7 +151,8 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function invalidateRender() {
+function invalidateRender(dirty = true) {
+  if (dirty) renderDirty = true;
   if (!renderer || frameRequest) return;
   frameRequest = requestAnimationFrame(tick);
 }
@@ -1043,12 +1045,20 @@ function tick(now) {
   paintScaleLayer();
   cameraSettling = placeCamera(1 - Math.exp(-CONFIG.focusLerp * cameraDt));
   updateSaturnRingShading();
-  updateLabels();
   paintClock();
-  renderer.render(scene, camera);
-  renderCount += 1;
-  lastRenderedControlDistance = state.distance;
-  if (state.playing || cameraSettling) invalidateRender();
+  // A cold extra-zoom keeps the last complete frame visible while its exact
+  // target is built. Do not resubmit that unchanged frame to software WebGL:
+  // it can starve the bounded builder tasks without improving what is shown.
+  // Explicit input, resize, and asset invalidations still refresh immediately.
+  const submitFrame = pendingGalaxyDistance == null || renderDirty;
+  renderDirty = false;
+  if (submitFrame) {
+    updateLabels();
+    renderer.render(scene, camera);
+    renderCount += 1;
+    lastRenderedControlDistance = state.distance;
+  }
+  if (state.playing || cameraSettling) invalidateRender(false);
 }
 
 function updateBodies() {
@@ -1155,7 +1165,7 @@ function warmGalaxyLayer() {
     do {
       advanceGalaxyLayer(layer, GALAXY_IDLE_WORK_BUDGET);
       advanced = true;
-      if (galaxyActivated) invalidateRender();
+      if (galaxyActivated && pendingGalaxyDistance == null) invalidateRender();
       if (pendingGalaxyDistance != null
         && galaxyLayerReadyForDistance(layer, pendingGalaxyDistance)) {
         applyZoomTo(pendingGalaxyDistance);
