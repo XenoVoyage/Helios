@@ -505,6 +505,34 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
   assert.equal(await page.getAttribute("html", "data-galaxy-prepared"), null);
   const result = await page.locator("#viewport").evaluate(async (canvas, target) => {
     const app = await import(new URL("./js/app.js", location.href).href);
+    const gl = canvas.getContext("webgl2");
+    const glCalls = {};
+    const timedCalls = [
+      "compileShader", "linkProgram", "getShaderParameter", "getProgramParameter",
+      "texImage2D", "texSubImage2D", "generateMipmap", "bufferData",
+      "drawArrays", "drawElements", "drawArraysInstanced", "drawElementsInstanced",
+    ];
+    for (const name of timedCalls) {
+      const original = gl?.[name];
+      if (typeof original !== "function") continue;
+      const stats = { calls: 0, totalMs: 0, maxMs: 0, wrapped: false };
+      glCalls[name] = stats;
+      try {
+        gl[name] = function timedWebGlCall(...args) {
+          const callStarted = performance.now();
+          try {
+            return original.apply(this, args);
+          } finally {
+            const duration = performance.now() - callStarted;
+            stats.calls += 1;
+            stats.totalMs += duration;
+            stats.maxMs = Math.max(stats.maxMs, duration);
+          }
+        };
+        stats.wrapped = gl[name] !== original;
+      } catch {}
+    }
+    const parallelCompile = Boolean(gl?.getExtension("KHR_parallel_shader_compile"));
     const before = app.currentCameraMetrics();
     const started = performance.now();
     canvas.dispatchEvent(new WheelEvent("wheel", {
@@ -540,6 +568,8 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
       };
       requestAnimationFrame(inspect);
     });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const longTasks = (window.__heliosLongTasks ?? [])
       .filter((entry) => entry.startTime >= started);
     return {
@@ -549,6 +579,12 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
       heldControlDistance: afterDispatch.controlDistance,
       queuedControlDistance: afterDispatch.requestedControlDistance,
       metrics: app.currentCameraMetrics(),
+      parallelCompile,
+      glCalls,
+      longTasks: longTasks.map((entry) => ({
+        startMs: entry.startTime - started,
+        duration: entry.duration,
+      })),
       longTaskMaxMs: Math.max(0, ...longTasks.map((entry) => entry.duration)),
     };
   }, CONFIG.handoffViewDistance);
@@ -558,6 +594,11 @@ async function assertColdGalaxyZoomDoesNotBlock(context) {
       + `max-task=${result.metrics.galaxyWarmup.maxMs.toFixed(2)} ms, `
       + `long-task=${result.longTaskMaxMs.toFixed(2)} ms`,
   );
+  console.log("Cold galaxy WebGL timing", JSON.stringify({
+    parallelCompile: result.parallelCompile,
+    calls: result.glCalls,
+    longTasks: result.longTasks,
+  }));
   assert.equal(result.heldControlDistance, result.beforeControlDistance);
   assert.ok(Math.abs(result.queuedControlDistance - CONFIG.handoffViewDistance) < 1e-6);
   assert.ok(result.dispatchMs < 50, `cold zoom dispatch returns in ${result.dispatchMs.toFixed(2)} ms`);
