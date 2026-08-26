@@ -40,21 +40,60 @@ const packageLock = JSON.parse(await read("package-lock.json"));
 const readme = await read("README.md");
 const provenance = await read("PROVENANCE.md");
 const agents = await read("AGENTS.md");
+const repositoryStandard = await read("REPOSITORY_STANDARD.md");
 const auditWorkflow = await read(".github/workflows/ci.yml");
 const pagesWorkflow = await read(".github/workflows/pages.yml");
-const issueTemplate = await read(".github/ISSUE_TEMPLATE/engineering-issue.yml");
+const issueTemplate = await read(".github/ISSUE_TEMPLATE/repository-issue.yml");
 const issueConfig = await read(".github/ISSUE_TEMPLATE/config.yml");
 const pullRequestTemplate = await read(".github/pull_request_template.md");
 
 assert.equal(version, CONFIG.VERSION);
 assert.match(version, /^v\d{4}\.\d{1,2}\.\d{1,2}[a-z]$/);
 assert.ok(readme.includes(`Version ${version}`));
-assert.match(agents, /\*\*Project Engineering Standard:\*\* v1\.1/);
+assert.match(agents, /\*\*Repository Standard:\*\* \[Repository Standard\]\(REPOSITORY_STANDARD\.md\)/);
 assert.match(agents, /\*\*Standard Status:\*\* adopting/);
-assert.match(agents, /`develop` is the\s+protected long-lived \*\*Alpha Development\*\*/);
-assert.match(agents, /\[CRITICAL\|HIGH\|MEDIUM\|LOW\]\[Area\]/);
-assert.match(agents, /latest suitable production-supported LTS line/);
-assert.match(agents, /known unresolved critical\s+vulnerability/);
+assert.match(agents, /`develop` is the\s+protected\s+long-lived \*\*Alpha Development\*\*/);
+assert.match(agents, /`\[SEVERITY\]\[Area\] Imperative outcome`/);
+for (const severity of ["CRITICAL", "HIGH", "MEDIUM", "LOW"]) {
+  assert.match(agents, new RegExp(`\\b${severity}\\b`));
+}
+assert.match(agents, /Node 22 baseline/);
+assert.match(agents, /Issue #44 exclusively owns Saturn's back-facing ring-shading correction/);
+assert.match(readme, /\[Repository Standard\]\(REPOSITORY_STANDARD\.md\)/);
+assert.match(provenance, /`AGENTS\.md` is the sole owner of Helios's Repository Standard status/);
+assert.match(provenance, /provenance blockers contributing to its `adopting` state/);
+assert.match(repositoryStandard, /canonical, versionless standard/);
+assert.match(repositoryStandard, /### New repository/);
+assert.match(repositoryStandard, /### Existing repository/);
+assert.match(repositoryStandard, /Do not keep\s+parallel new-project and existing-project prompt files/);
+assert.match(repositoryStandard, /poll periodically for updates/);
+assert.match(repositoryStandard, /explicit, documented owner exception/);
+assert.match(repositoryStandard, /Use `\[SEVERITY\]\[Area\] Imperative outcome`/);
+assert.match(repositoryStandard, /baseline commits and trees/);
+assert.match(repositoryStandard, /latest suitable production-supported LTS line/);
+assert.match(repositoryStandard, /known unresolved critical\s+vulnerability/);
+assert.match(repositoryStandard, /Audit every direct dependency and the\s+relevant transitive graph/);
+assert.match(repositoryStandard, /Bind required checks to their expected\s+trusted CI app or source/);
+assert.match(repositoryStandard, /non-`main` default or production branch/);
+assert.match(repositoryStandard, /direct-to-production\s+model/);
+assert.match(repositoryStandard, /protected `develop` as\s+the long-lived pre-release branch/);
+assert.match(repositoryStandard, /Update affected canonical documentation and intentional mirrors/);
+assert.match(repositoryStandard, /owner-approved visual baseline/);
+assert.match(repositoryStandard, /browser, WebGL/);
+assert.match(repositoryStandard, /Audit the complete final diff and tree/);
+assert.match(repositoryStandard, /unrelated behavior and data/);
+const activeStandardFiles = [
+  agents,
+  repositoryStandard,
+  readme,
+  provenance,
+  auditWorkflow,
+  issueTemplate,
+  pullRequestTemplate,
+].join("\n");
+assert.doesNotMatch(activeStandardFiles, /\bv1\.[01]\b/i);
+assert.doesNotMatch(activeStandardFiles, /issue-74-standard-v1-1/i);
+assert.doesNotMatch(activeStandardFiles, /authorized bootstrap|bootstrap exception/i);
 assert.equal(packageJson.engines.node, "22.x");
 assert.equal(packageJson.devDependencies.playwright, "1.62.1");
 assert.equal(packageLock.packages[""].devDependencies.playwright, "1.62.1");
@@ -69,11 +108,7 @@ assert.match(auditWorkflow, /github\.base_ref == 'main'/);
 assert.match(auditWorkflow, /head\.repo\.full_name != github\.repository/);
 assert.match(auditWorkflow, /github\.head_ref != 'develop'/);
 assert.match(auditWorkflow, /startsWith\(github\.head_ref, 'hotfix\/'\)/);
-assert.match(auditWorkflow, /github\.head_ref == 'agent\/issue-74-standard-v1-1'/);
-assert.match(
-  auditWorkflow,
-  /github\.event\.pull_request\.base\.sha == 'c1f76d63c06853f8012569d2c19df6f499788a3c'/,
-);
+assert.doesNotMatch(auditWorkflow, /issue-74|bootstrap/i);
 assert.equal((pagesWorkflow.match(/branches:\s*\[main\]/g) || []).length, 1);
 assert.doesNotMatch(pagesWorkflow, /branches:\s*\[[^\]]*develop/);
 assert.match(issueTemplate, /title:\s*"\[SEVERITY\]\[Area\] "/);
@@ -98,6 +133,7 @@ for (const field of [
   assert.match(issueTemplate, new RegExp(field));
 }
 assert.match(issueConfig, /blank_issues_enabled:\s*false/);
+assert.match(issueTemplate, /name:\s*Repository issue/);
 assert.match(pullRequestTemplate, /issue branch → develop/);
 assert.match(pullRequestTemplate, /develop → main release/);
 assert.match(pullRequestTemplate, /hotfix\/\* → main/);
@@ -328,6 +364,12 @@ assert.ok(CONFIG.cameraFar > CONFIG.maxDistance);
 
 await stat(path.join(root, "vendor/three.module.min.js"));
 await stat(path.join(root, "vendor/three.core.min.js"));
+await stat(path.join(root, "REPOSITORY_STANDARD.md"));
+await assert.rejects(
+  () => stat(path.join(root, ".github/ISSUE_TEMPLATE/engineering-issue.yml")),
+  (error) => error?.code === "ENOENT",
+  "the retired engineering issue form must not coexist with the Repository issue form",
+);
 await stat(path.join(root, "PROVENANCE.md"));
 await stat(path.join(root, ".nojekyll"));
 await stat(path.join(root, "assets/sky/milky-way.jpg"));

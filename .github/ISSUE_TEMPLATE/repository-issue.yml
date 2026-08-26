@@ -1,4 +1,4 @@
-name: Engineering issue
+name: Repository issue
 description: Report one evidence-backed, independently implementable Helios issue.
 title: "[SEVERITY][Area] "
 body:

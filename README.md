@@ -79,14 +79,15 @@ The first two commands install the pinned test dependency and browser for a clea
 
 ## Contributing
 
-Read [AGENTS.md](AGENTS.md) before contributing. Helios resolves one issue per
-short-lived branch and stages approved work on `develop` (the **Alpha
-Development** integration branch). Task pull requests target `develop`; only an
-owner-tested, fully audited release pull request moves `develop` to protected
-`main`. An explicitly audited `hotfix/*` branch is reserved for a genuine
-production emergency and must be integrated back into `develop`. Use the
-repository issue form and pull request template for the required severity,
-baseline, scope, evidence, risk, and rollback record.
+Read the reusable [Repository Standard](REPOSITORY_STANDARD.md) and the
+Helios-specific [contributor instructions](AGENTS.md) before contributing.
+Helios resolves one issue per short-lived branch and stages approved work on
+`develop` (the **Alpha Development** integration branch). Task pull requests
+target `develop`; only an owner-tested, fully audited release pull request moves
+`develop` to protected `main`. An explicitly audited `hotfix/*` branch is
+reserved for a genuine production emergency and must be integrated back into
+`develop`. Use the repository issue form and pull request template for the
+required severity, baseline, scope, evidence, risk, and rollback record.
 
 ## Credits
 
