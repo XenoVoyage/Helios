@@ -6,7 +6,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { bodyOrientationBasis, findBody } from "../js/bodies.js";
+import { bodyOrientationBasis, findBody, keplerOffset } from "../js/bodies.js";
 import { CONFIG, wheelZoomMultiplier } from "../js/config.js";
 import { cmbSkyOpacity } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
@@ -909,6 +909,105 @@ async function orbitCameraHalfTurn(page) {
   await page.mouse.up();
 }
 
+function saturnLightingViewDrag(backlit) {
+  const saturn = findBody("saturn");
+  const at = keplerOffset(saturn, findBody("sun"), 0);
+  const direction = backlit
+    ? { x: at.x, y: at.y, z: at.z }
+    : { x: -at.x, y: -at.y, z: -at.z };
+  const length = Math.hypot(direction.x, direction.y, direction.z);
+  const targetAzimuth = Math.atan2(direction.x, direction.z);
+  const targetElevation = Math.asin(direction.y / length);
+  return {
+    x: (CONFIG.cameraAzimuth - targetAzimuth) / 0.005,
+    y: (targetElevation - CONFIG.cameraElevation) / 0.004,
+  };
+}
+
+async function captureSaturnLightingView(context, name, backlit, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page);
+  const play = page.locator("#play-button");
+  if (await play.getAttribute("aria-pressed") === "true") {
+    if (touch) await play.tap();
+    else await play.click();
+  }
+  await page.evaluate(() => document.querySelector('[data-body-id="saturn"]').click());
+  await page.locator("#body-card:not([hidden])").waitFor();
+  await page.waitForFunction(() => {
+    const label = document.querySelector('[data-body-id="saturn"]');
+    const match = label?.style.transform.match(
+      /translate\(([-+\d.e]+)px,\s*([-+\d.e]+)px\)$/i,
+    );
+    return !label?.hidden
+      && match
+      && Math.abs(Number(match[1]) - innerWidth / 2) <= 4
+      && Math.abs(Number(match[2]) - innerHeight / 2) <= 4;
+  }, null, { timeout: 20_000 });
+  await page.locator("#card-close").click();
+
+  const delta = saturnLightingViewDrag(backlit);
+  const point = await page.evaluate(({ x, y, isTouch }) => {
+    const viewport = document.querySelector("#viewport");
+    const box = viewport.getBoundingClientRect();
+    const centerY = isTouch ? box.top + Math.min(260, box.height * 0.58) : box.top + box.height / 2;
+    const start = {
+      x: box.left + box.width / 2 - x / 2,
+      y: centerY - y / 2,
+    };
+    const end = { x: start.x + x, y: start.y + y };
+    const inset = 8;
+    const inside = [start, end].every((at) => (
+      at.x > box.left + inset
+      && at.x < box.right - inset
+      && at.y > box.top + inset
+      && at.y < box.bottom - inset
+    ));
+    return inside ? { start, end } : null;
+  }, { ...delta, isTouch: touch });
+  assert.ok(point, `${name} drag stays inside the canvas`);
+
+  if (touch) {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{
+        id: 0,
+        x: point.start.x,
+        y: point.start.y,
+        radiusX: 4,
+        radiusY: 4,
+        force: 1,
+      }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{
+        id: 0,
+        x: point.end.x,
+        y: point.end.y,
+        radiusX: 4,
+        radiusY: 4,
+        force: 1,
+      }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await cdp.detach();
+  } else {
+    await page.mouse.move(point.start.x, point.start.y);
+    await page.mouse.down();
+    await page.mouse.move(point.end.x, point.end.y, { steps: 12 });
+    await page.mouse.up();
+  }
+  await page.waitForTimeout(500);
+  const canvas = await assertRenderedCanvas(page);
+  await saveScreenshot(page, name);
+  assert.deepEqual(errors, [], `${name} has no browser errors`);
+  await page.close();
+  return canvas;
+}
+
 async function assertBodySelectionSweep(page) {
   const bodies = await page.locator(".sky-label").evaluateAll((labels) => (
     labels.map((label) => ({ id: label.dataset.bodyId, name: label.textContent }))
@@ -1352,6 +1451,17 @@ try {
   await auditFarSkyDirections(desktop);
   await captureEarthSolstice(desktop, "earth-june-solstice", "2000-06-21");
   await captureEarthSolstice(desktop, "earth-december-solstice", "2000-12-21", true);
+  const saturnFront = await captureSaturnLightingView(
+    desktop,
+    "saturn-ring-sunward",
+    false,
+  );
+  const saturnBack = await captureSaturnLightingView(
+    desktop,
+    "saturn-ring-anti-solar",
+    true,
+  );
+  assert.notEqual(digest(saturnFront), digest(saturnBack), "Saturn lighting views differ");
   await desktop.close();
 
   const touch = await browser.newContext({
@@ -1440,6 +1550,12 @@ try {
     isMobile: true,
   });
   await auditResponsiveCosmology(compactLandscape, "touch-landscape");
+  await captureSaturnLightingView(
+    compactLandscape,
+    "touch-landscape-saturn-ring-anti-solar",
+    true,
+    true,
+  );
   await compactLandscape.close();
 
   const failure = await browser.newContext({ viewport: { width: 1024, height: 768 } });
