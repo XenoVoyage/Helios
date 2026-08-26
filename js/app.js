@@ -472,6 +472,12 @@ function createRing(body) {
     ringGeo,
     new THREE.MeshStandardMaterial({
       map: ringMap,
+      // A small texture-masked floor approximates light transmitted and
+      // scattered through the rings when their solar-lit face points away.
+      // It is deliberately local to this material, not a global light.
+      emissiveMap: ringMap,
+      emissive: 0x9b856a,
+      emissiveIntensity: 0.14,
       transparent: true,
       alphaTest: 0.08,
       side: THREE.DoubleSide,

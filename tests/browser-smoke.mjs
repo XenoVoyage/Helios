@@ -945,7 +945,9 @@ async function captureSaturnLightingView(context, name, backlit, touch = false) 
       && Math.abs(Number(match[1]) - innerWidth / 2) <= 4
       && Math.abs(Number(match[2]) - innerHeight / 2) <= 4;
   }, null, { timeout: 20_000 });
-  await page.locator("#card-close").click();
+  const close = page.locator("#card-close");
+  if (touch) await close.tap();
+  else await close.click();
 
   const delta = saturnLightingViewDrag(backlit);
   const point = await page.evaluate(({ x, y, isTouch }) => {

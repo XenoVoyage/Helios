@@ -40,7 +40,12 @@ libration terms, the source elements' nodal precession, tides, or perturbations.
 It also does not cast astronomical shadows: the Sun point light supplies the
 day/night terminator while a deliberate ambient fill keeps night sides
 readable. Solar/lunar eclipses and shadow contacts are therefore outside this
-orrery model rather than claimed simulations.
+orrery model rather than claimed simulations. Saturn's standard ring material
+adds a bounded `0.14` emissive floor, masked by the same radial color/alpha map,
+as an illustrative approximation of transmitted and backscattered light. It
+preserves transparent gaps and radial structure on the anti-solar face without
+altering Saturn, the global lights, or exposure; it is not a photometric ring
+scattering or shadow model.
 
 ## Image assets
 
