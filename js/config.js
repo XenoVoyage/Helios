@@ -50,6 +50,8 @@ export const CONFIG = Object.freeze({
   cameraElevation: 0.5,
   cameraAzimuth: 0.55,
   minDistance: 2.4,
+  // Focused zoom stops just outside the rendered globe, not inside it.
+  focusSurfaceClearance: 1.05,
   // Solar overview / Kuiper camera cap. Further zoom is the galaxy layer.
   solarMaxDistance: 1880,
   maxDistance: 2600000,
@@ -120,6 +122,12 @@ export function pinchZoomDistance(startDistance, startGap, gap) {
 /** Mouse wheel and browser pinch both follow the platform's delivered direction. */
 export function wheelZoomMultiplier(deltaY) {
   return Math.exp(deltaY * 0.0016);
+}
+
+/** Camera floor for the currently focused rendered globe. */
+export function minimumFocusDistance(renderedRadius) {
+  const radius = Number.isFinite(renderedRadius) && renderedRadius > 0 ? renderedRadius : 0;
+  return Math.max(CONFIG.minDistance, radius * CONFIG.focusSurfaceClearance);
 }
 
 /** Global canvas shortcuts must yield to native and editable controls. */

@@ -996,6 +996,80 @@ async function assertZoomStress(page) {
   }
 }
 
+async function assertMinimumZoomViews(context, prefix, bodyIds, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page);
+  const play = page.locator("#play-button");
+  if (await play.getAttribute("aria-pressed") === "true") {
+    if (touch) await play.tap();
+    else await play.click();
+  }
+  const canvas = page.locator("#viewport");
+  const cdp = touch ? await context.newCDPSession(page) : null;
+
+  for (const bodyId of bodyIds) {
+    await page.locator("#reset-button").click();
+    await page.evaluate(
+      (id) => document.querySelector(`[data-body-id="${id}"]`).click(),
+      bodyId,
+    );
+    await page.locator("#body-card:not([hidden])").waitFor();
+
+    if (cdp) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [
+          { id: 0, x: 175, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+          { id: 1, x: 215, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+        ],
+      });
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          { id: 0, x: 10, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+          { id: 1, x: 380, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+        ],
+      });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    } else {
+      const point = await canvas.evaluate((viewport) => {
+        const box = viewport.getBoundingClientRect();
+        for (const [x, y] of [[0.5, 0.7], [0.2, 0.6], [0.8, 0.6]]) {
+          const clientX = box.left + box.width * x;
+          const clientY = box.top + box.height * y;
+          if (document.elementFromPoint(clientX, clientY) === viewport) {
+            return { x: clientX, y: clientY };
+          }
+        }
+        return null;
+      });
+      assert.ok(point, `${prefix} ${bodyId} has an unobstructed wheel target`);
+      await page.mouse.move(point.x, point.y);
+      await page.mouse.wheel(0, -10_000);
+    }
+
+    await page.waitForFunction((id) => {
+      const label = document.querySelector(`[data-body-id="${id}"]`);
+      if (!label || label.hidden) return false;
+      const match = label.style.transform.match(
+        /translate\(([-+\d.e]+)px,\s*([-+\d.e]+)px\)$/i,
+      );
+      if (!match) return false;
+      return Math.abs(Number(match[1]) - innerWidth / 2) <= innerWidth * 0.12
+        && Math.abs(Number(match[2]) - innerHeight / 2) <= innerHeight * 0.12;
+    }, bodyId, { timeout: 20_000 });
+    await page.waitForTimeout(250);
+    assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
+    await assertRenderedCanvas(page);
+    await saveScreenshot(page, `${prefix}-minimum-zoom-${bodyId}`);
+  }
+
+  if (cdp) await cdp.detach();
+  assert.deepEqual(errors, [], `${prefix} minimum zoom has no browser errors`);
+  await page.close();
+}
+
 async function saveTritonScreenshot(page, name) {
   await page.waitForFunction(() => {
     const label = document.querySelector('.sky-label[data-body-id="triton"]');
@@ -1352,6 +1426,7 @@ try {
   await auditFarSkyDirections(desktop);
   await captureEarthSolstice(desktop, "earth-june-solstice", "2000-06-21");
   await captureEarthSolstice(desktop, "earth-december-solstice", "2000-12-21", true);
+  await assertMinimumZoomViews(desktop, "desktop", ["sun", "jupiter", "saturn"]);
   await desktop.close();
 
   const touch = await browser.newContext({
@@ -1431,6 +1506,8 @@ try {
   await saveScreenshot(touchPage, "touch-landscape-card");
   assert.deepEqual(touchErrors, []);
   await auditResponsiveCosmology(touch, "touch-portrait");
+  await touchPage.close();
+  await assertMinimumZoomViews(touch, "touch-portrait", ["saturn"], true);
   await touch.close();
 
   const compactLandscape = await browser.newContext({

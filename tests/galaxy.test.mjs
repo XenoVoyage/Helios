@@ -6,10 +6,17 @@ import { fileURLToPath } from "node:url";
 import {
   CONFIG,
   isShortcutTargetInteractive,
+  minimumFocusDistance,
   pinchZoomDistance,
   wheelZoomMultiplier,
 } from "../js/config.js";
-import { visualOrbit } from "../js/bodies.js";
+import {
+  BODIES,
+  findBody,
+  visualBodyRadius,
+  visualOrbit,
+  visualRingRadius,
+} from "../js/bodies.js";
 import {
   CELESTIAL_RENDER_THRESHOLD,
   ANDROMEDA,
@@ -1077,6 +1084,31 @@ test("far-galaxy sky remains camera-attached and tolerates an absent layer", () 
   assert.equal(copiedPosition, camera.position);
   assert.doesNotThrow(() => attachFarGalaxySky(undefined, camera));
   assert.doesNotThrow(() => attachFarGalaxySky(group, undefined));
+});
+
+test("focused zoom stops outside every rendered globe", () => {
+  const raisedFloors = [];
+  for (const body of BODIES) {
+    const radius = visualBodyRadius(body);
+    const floor = minimumFocusDistance(radius);
+    const near = extraZoomCameraNear(floor);
+    assert.ok(
+      floor - radius > near,
+      `${body.id} keeps its rendered surface beyond the near plane`,
+    );
+    assert.ok(Math.max(radius * 7.5, 5.5) >= floor, `${body.id} selection seat stays unchanged`);
+    if (floor > CONFIG.minDistance) raisedFloors.push(body.id);
+  }
+  assert.deepEqual(raisedFloors, ["sun", "jupiter", "saturn"]);
+  assert.equal(minimumFocusDistance(Number.NaN), CONFIG.minDistance);
+  assert.equal(minimumFocusDistance(-1), CONFIG.minDistance);
+
+  const saturn = findBody("saturn");
+  const ringInner = visualRingRadius(saturn, saturn.ringInnerKm);
+  assert.ok(
+    minimumFocusDistance(visualBodyRadius(saturn)) < ringInner,
+    "Saturn's minimum camera remains inside the ring hole",
+  );
 });
 
 test("pinch direction, wheel direction, and shortcut targets follow native behavior", () => {
