@@ -2,9 +2,9 @@ name: Audit
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 permissions:
   contents: read
@@ -19,6 +19,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Enforce production promotion source
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.base_ref == 'main' &&
+          (
+            github.event.pull_request.head.repo.full_name != github.repository ||
+            (
+              github.head_ref != 'develop' &&
+              !startsWith(github.head_ref, 'hotfix/') &&
+              !(
+                github.head_ref == 'agent/issue-74-standard-v1-1' &&
+                github.event.pull_request.base.sha == 'c1f76d63c06853f8012569d2c19df6f499788a3c'
+              )
+            )
+          )
+        run: |
+          echo "Only this repository's develop, an explicitly reviewed hotfix/* branch, or the frozen v1.1 bootstrap may target main."
+          exit 1
+
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

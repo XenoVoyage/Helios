@@ -42,12 +42,19 @@ const provenance = await read("PROVENANCE.md");
 const agents = await read("AGENTS.md");
 const auditWorkflow = await read(".github/workflows/ci.yml");
 const pagesWorkflow = await read(".github/workflows/pages.yml");
+const issueTemplate = await read(".github/ISSUE_TEMPLATE/engineering-issue.yml");
+const issueConfig = await read(".github/ISSUE_TEMPLATE/config.yml");
+const pullRequestTemplate = await read(".github/pull_request_template.md");
 
 assert.equal(version, CONFIG.VERSION);
 assert.match(version, /^v\d{4}\.\d{1,2}\.\d{1,2}[a-z]$/);
 assert.ok(readme.includes(`Version ${version}`));
-assert.match(agents, /\*\*Project Engineering Standard:\*\* v1\.0/);
+assert.match(agents, /\*\*Project Engineering Standard:\*\* v1\.1/);
 assert.match(agents, /\*\*Standard Status:\*\* adopting/);
+assert.match(agents, /`develop` is the\s+protected long-lived \*\*Alpha Development\*\*/);
+assert.match(agents, /\[CRITICAL\|HIGH\|MEDIUM\|LOW\]\[Area\]/);
+assert.match(agents, /latest suitable production-supported LTS line/);
+assert.match(agents, /known unresolved critical\s+vulnerability/);
 assert.equal(packageJson.engines.node, "22.x");
 assert.equal(packageJson.devDependencies.playwright, "1.62.1");
 assert.equal(packageLock.packages[""].devDependencies.playwright, "1.62.1");
@@ -56,6 +63,45 @@ for (const workflow of [auditWorkflow, pagesWorkflow]) {
     assert.match(action[1], /^[0-9a-f]{40}$/, action[0]);
   }
 }
+assert.match(auditWorkflow, /branches:\s*\[main, develop\]/g);
+assert.equal((auditWorkflow.match(/branches:\s*\[main, develop\]/g) || []).length, 2);
+assert.match(auditWorkflow, /github\.base_ref == 'main'/);
+assert.match(auditWorkflow, /head\.repo\.full_name != github\.repository/);
+assert.match(auditWorkflow, /github\.head_ref != 'develop'/);
+assert.match(auditWorkflow, /startsWith\(github\.head_ref, 'hotfix\/'\)/);
+assert.match(auditWorkflow, /github\.head_ref == 'agent\/issue-74-standard-v1-1'/);
+assert.match(
+  auditWorkflow,
+  /github\.event\.pull_request\.base\.sha == 'c1f76d63c06853f8012569d2c19df6f499788a3c'/,
+);
+assert.equal((pagesWorkflow.match(/branches:\s*\[main\]/g) || []).length, 1);
+assert.doesNotMatch(pagesWorkflow, /branches:\s*\[[^\]]*develop/);
+assert.match(issueTemplate, /title:\s*"\[SEVERITY\]\[Area\] "/);
+assert.match(
+  issueTemplate,
+  /id:\s*effort[\s\S]*?validations:\s*\n\s*required:\s*true/,
+);
+for (const severity of ["CRITICAL", "HIGH", "MEDIUM", "LOW"]) {
+  assert.match(issueTemplate, new RegExp(`\\b${severity}\\b`));
+}
+for (const field of [
+  "Discovery baseline and environment",
+  "Implementation base",
+  "Production and visual baseline",
+  "Expected and actual behavior",
+  "Smallest scope and non-goals",
+  "Dependencies and recommended order",
+  "Acceptance criteria",
+  "Verification and visual evidence",
+  "Risks and rollback",
+]) {
+  assert.match(issueTemplate, new RegExp(field));
+}
+assert.match(issueConfig, /blank_issues_enabled:\s*false/);
+assert.match(pullRequestTemplate, /issue branch → develop/);
+assert.match(pullRequestTemplate, /develop → main release/);
+assert.match(pullRequestTemplate, /hotfix\/\* → main/);
+assert.match(pullRequestTemplate, /Candidate commit and tree/);
 assert.match(pagesWorkflow, /cp index\.html styles\.css \.nojekyll LICENSE PROVENANCE\.md _site\//);
 assert.match(pagesWorkflow, /cp -R assets js vendor _site\//);
 assert.match(pagesWorkflow, /path: _site/);
