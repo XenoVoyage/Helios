@@ -77,6 +77,17 @@ The first two commands install the pinned test dependency and browser for a clea
 | Constellations | Choose Off, Major, or All | Choose Off, Major, or All |
 | Overview | Escape or Reset view | Reset view / Overview |
 
+## Contributing
+
+Read [AGENTS.md](AGENTS.md) before contributing. Helios resolves one issue per
+short-lived branch and stages approved work on `develop` (the **Alpha
+Development** integration branch). Task pull requests target `develop`; only an
+owner-tested, fully audited release pull request moves `develop` to protected
+`main`. An explicitly audited `hotfix/*` branch is reserved for a genuine
+production emergency and must be integrated back into `develop`. Use the
+repository issue form and pull request template for the required severity,
+baseline, scope, evidence, risk, and rollback record.
+
 ## Credits
 
 Planet, Sun, Moon, and Ceres maps are [Solar System Scope](https://www.solarsystemscope.com/textures/) textures (CC BY 4.0); that publisher discloses saturation and fictional gap filling, and categorizes its Ceres map as fictional. Most moon maps are from [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources). Triton uses NASA/JPL-Caltech/LPI [PIA18668](https://www.jpl.nasa.gov/images/pia18668-map-of-triton/) with incomplete Voyager coverage and a neutral no-data fill. Bright-star positions are a Hipparcos subset compiled through [HYG](https://www.astronexus.com/projects/hyg). Constellation stick figures are the [IAU / Alan MacRobert figures](https://www.iau.org/public/themes/constellations/) (CC BY 4.0). The Milky Way band is [ESA Gaia DR2](https://sci.esa.int/web/gaia/-/60196-gaia-s-sky-in-colour-equirectangular-projection) (CC BY-SA 3.0 IGO). Andromeda is NASA/JPL-Caltech [Spitzer PIA04921](https://images.nasa.gov/details/PIA04921). Post-Virgo galaxy directions and redshifts are from NASA HEASARC's [2MRS catalog](https://heasarc.gsfc.nasa.gov/w3browse/all/twomassrsc.html), Huchra et al. 2012. Catalog values and scientific sources are recorded beside the data and in [PROVENANCE.md](PROVENANCE.md); that ledger also records transformations, hashes, limitations, and unresolved source versions. Three.js is vendored under MIT.

@@ -1,0 +1,161 @@
+name: Engineering issue
+description: Report one evidence-backed, independently implementable Helios issue.
+title: "[SEVERITY][Area] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search open and closed issues and pull requests first. Replace `SEVERITY` and `Area` in the title. Keep one independently reviewable fix in this issue.
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: Use impact, not implementation difficulty.
+      options:
+        - CRITICAL — immediate release/security/data/scientific-integrity blocker
+        - HIGH — core behavior is materially wrong with no reasonable workaround
+        - MEDIUM — important but recoverable behavior, compatibility, or performance defect
+        - LOW — bounded maintenance, documentation, QA, or hardening issue
+    validations:
+      required: true
+
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: Use one concise owner such as Science, Camera, Accessibility, Performance, Input, Integrity, Documentation, Tooling, or QA.
+      placeholder: Camera
+    validations:
+      required: true
+
+  - type: dropdown
+    id: effort
+    attributes:
+      label: Estimated implementation effort
+      description: Keep effort separate from severity and revise it when evidence changes.
+      options:
+        - Unknown — investigation required
+        - Small — localized owner and regression
+        - Medium — several related owners or interaction states
+        - Large — migration, broad compatibility, or substantial evidence work
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary and impact
+      description: State the problem, affected user or system, and why this severity is justified.
+    validations:
+      required: true
+
+  - type: textarea
+    id: discovery_baseline
+    attributes:
+      label: Discovery baseline and environment
+      description: Record the commit/tree where the issue was confirmed plus OS/device, runtime/browser, viewport/DPR, and relevant configuration.
+      placeholder: |
+        Commit:
+        Tree:
+        Environment:
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation_base
+    attributes:
+      label: Implementation base
+      description: Record the exact `develop` commit/tree from which the future issue branch must start, or latest `main` for an authorized emergency hotfix. Use `Pending selection` until work is authorized.
+      placeholder: |
+        Source branch:
+        Commit:
+        Tree:
+    validations:
+      required: true
+
+  - type: textarea
+    id: production_baseline
+    attributes:
+      label: Production and visual baseline
+      description: Record the current owner-approved `main` commit/tree and visual artifact used to detect unrelated cumulative changes.
+      placeholder: |
+        Main commit:
+        Main tree:
+        Visual artifact:
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected and actual behavior
+      placeholder: |
+        Expected:
+        Actual:
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Reproduction and evidence
+      description: Give minimal deterministic steps, source/test locations, measurements, logs, and primary references. Label measured, inferred, automated, simulated, and physical evidence.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Smallest scope and non-goals
+      description: Define the one owner allowed to change and the approved behavior that must remain untouched.
+      placeholder: |
+        In scope:
+        Out of scope:
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and recommended order
+      description: Link prerequisite or overlapping work. Write `Independent` when none exists.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable, testable completion conditions and focused regressions.
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification and visual evidence
+      description: Require static, HTTP, browser/WebGL, desktop/touch, accessibility/performance/science, and physical checks as applicable. State expected screenshots or pixel parity.
+    validations:
+      required: true
+
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risks and rollback
+      description: Identify likely regressions, containment, and the exact safe rollback.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: declaration
+    attributes:
+      label: Reporter declaration
+      options:
+        - label: I searched open and closed issues and pull requests and am updating the canonical report rather than duplicating it.
+          required: true
+        - label: This issue contains one independently implementable change and clearly identifies non-goals.
+          required: true
+        - label: Evidence claims are labeled honestly and contain no secrets or private data.
+          required: true
