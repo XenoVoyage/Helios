@@ -932,6 +932,7 @@ async function focusedLabelAnchor(page, bodyId) {
     );
     return {
       hidden: label.hidden,
+      transform: label.style.transform,
       x: match ? Number(match[1]) : Number.NaN,
       y: match ? Number(match[2]) : Number.NaN,
       centerX: innerWidth / 2,
@@ -958,16 +959,26 @@ async function assertMovingFocusTracksTarget(context, prefix, touch = false) {
     },
     daysPerSecond,
   );
-  const waitUntilCentered = (bodyId) => page.waitForFunction((id) => {
-    const label = document.querySelector(`[data-body-id="${id}"]`);
-    if (!label || label.hidden) return false;
-    const match = label.style.transform.match(
-      /translate\(([-+\d.e]+)px,\s*([-+\d.e]+)px\)$/i,
-    );
-    if (!match) return false;
-    return Math.abs(Number(match[1]) - innerWidth / 2) <= 4
-      && Math.abs(Number(match[2]) - innerHeight / 2) <= 4;
-  }, bodyId, { timeout: 4_000 });
+  const waitUntilCentered = async (bodyId) => {
+    try {
+      await page.waitForFunction((id) => {
+        const label = document.querySelector(`[data-body-id="${id}"]`);
+        if (!label || label.hidden) return false;
+        const match = label.style.transform.match(
+          /translate\(([-+\d.e]+)px,\s*([-+\d.e]+)px\)$/i,
+        );
+        if (!match) return false;
+        return Math.abs(Number(match[1]) - innerWidth / 2) <= 4
+          && Math.abs(Number(match[2]) - innerHeight / 2) <= 4;
+      }, bodyId, { timeout: 4_000 });
+    } catch (error) {
+      const anchor = await focusedLabelAnchor(page, bodyId);
+      throw new Error(
+        `${prefix} ${bodyId} did not settle at center: ${JSON.stringify(anchor)}`,
+        { cause: error },
+      );
+    }
+  };
   const assertTracked = async (bodyId, rate, samples) => {
     await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), bodyId);
     await waitUntilCentered(bodyId);
