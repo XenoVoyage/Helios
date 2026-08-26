@@ -13,6 +13,8 @@ import {
 } from "../js/cosmic-web.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const EXPECTED_TWOMRS_PAYLOAD_SHA256 =
+  "9c97c9547b88f2f6ab307b9ca733071f0ce12a9549a070cf44be0aac7863b3b9";
 
 test("tracked 2MRS payload matches the licensed source manifest", () => {
   const payload = Buffer.from(TWOMRS_PAYLOAD_BASE64.replace(/\s/g, ""), "base64");
@@ -27,10 +29,11 @@ test("tracked 2MRS payload matches the licensed source manifest", () => {
     TWOMRS_METADATA.sourceSha256,
     "236be982e9a172c55d483d40c38ca38b36a3dc8b8af4f402a0fd045f1b87da6f",
   );
+  assert.equal(TWOMRS_METADATA.payloadSha256, EXPECTED_TWOMRS_PAYLOAD_SHA256);
   assert.equal(payload.length, TWOMRS_METADATA.includedRows * TWOMRS_METADATA.recordBytes);
   assert.equal(
     createHash("sha256").update(payload).digest("hex"),
-    TWOMRS_METADATA.payloadSha256,
+    EXPECTED_TWOMRS_PAYLOAD_SHA256,
   );
 });
 
