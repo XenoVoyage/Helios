@@ -26,6 +26,8 @@ const CMB_LUMINANCE_STDDEV_FLOOR = 12;
 const CMB_WARM_COLOR_COVERAGE_FLOOR = 0.08;
 const CMB_COOL_COLOR_COVERAGE_FLOOR = 0.005;
 const CMB_BLUE_RED_RATIO_CEILING = 1.15;
+const SATURN_BACKSCATTER_LEFT_MEAN_FLOOR = 9.2;
+const SATURN_BACKSCATTER_RIGHT_MEAN_FLOOR = 5.2;
 const child = spawn(process.execPath, ["tests/serve.mjs"], {
   cwd: root,
   env: { ...process.env, PORT: String(port) },
@@ -1004,10 +1006,50 @@ async function captureSaturnLightingView(context, name, backlit, touch = false) 
   }
   await page.waitForTimeout(500);
   const canvas = await assertRenderedCanvas(page);
+  const ringMetrics = backlit && !touch
+    ? await saturnAntiSolarRingMetrics(page, canvas)
+    : null;
   await saveScreenshot(page, name);
   assert.deepEqual(errors, [], `${name} has no browser errors`);
   await page.close();
-  return canvas;
+  return { canvas, ringMetrics };
+}
+
+async function saturnAntiSolarRingMetrics(page, png) {
+  return page.evaluate(async ({ source }) => {
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", reject, { once: true });
+    });
+    image.src = `data:image/png;base64,${source}`;
+    await ready;
+
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const context = surface.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+    const regions = [
+      { name: "left", x: 0.305, y: 0.411, width: 0.098, height: 0.156 },
+      { name: "right", x: 0.59, y: 0.467, width: 0.108, height: 0.189 },
+    ];
+
+    return Object.fromEntries(regions.map((region) => {
+      const x = Math.floor(surface.width * region.x);
+      const y = Math.floor(surface.height * region.y);
+      const width = Math.max(1, Math.floor(surface.width * region.width));
+      const height = Math.max(1, Math.floor(surface.height * region.height));
+      const pixels = context.getImageData(x, y, width, height).data;
+      let luminance = 0;
+      for (let offset = 0; offset < pixels.length; offset += 4) {
+        luminance += pixels[offset] * 0.2126
+          + pixels[offset + 1] * 0.7152
+          + pixels[offset + 2] * 0.0722;
+      }
+      return [region.name, luminance / (pixels.length / 4)];
+    }));
+  }, { source: png.toString("base64") });
 }
 
 async function assertBodySelectionSweep(page) {
@@ -1463,7 +1505,23 @@ try {
     "saturn-ring-anti-solar",
     true,
   );
-  assert.notEqual(digest(saturnFront), digest(saturnBack), "Saturn lighting views differ");
+  console.log(
+    `saturn anti-solar ring mean: left=${saturnBack.ringMetrics.left.toFixed(3)}, `
+      + `right=${saturnBack.ringMetrics.right.toFixed(3)}`,
+  );
+  assert.ok(
+    saturnBack.ringMetrics.left >= SATURN_BACKSCATTER_LEFT_MEAN_FLOOR,
+    "Saturn's left anti-solar ring retains dim texture structure",
+  );
+  assert.ok(
+    saturnBack.ringMetrics.right >= SATURN_BACKSCATTER_RIGHT_MEAN_FLOOR,
+    "Saturn's right anti-solar ring retains dim texture structure",
+  );
+  assert.notEqual(
+    digest(saturnFront.canvas),
+    digest(saturnBack.canvas),
+    "Saturn lighting views differ",
+  );
   await desktop.close();
 
   const touch = await browser.newContext({
