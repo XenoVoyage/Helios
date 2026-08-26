@@ -76,6 +76,7 @@ const world = new THREE.Vector3();
 const projected = new THREE.Vector3();
 const focusPoint = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
+const previousFocusTarget = new THREE.Vector3();
 const constellationViewport = { width: 0, height: 0, topInset: 64, bottomInset: 72 };
 
 const state = {
@@ -873,6 +874,15 @@ function tick(now) {
   const elapsed = elapsedSeconds(now, lastStamp);
   const cameraDt = Math.min(0.05, elapsed);
   lastStamp = now;
+  // Carry only simulated orbital motion into the camera target. Focus changes
+  // keep their existing easing, while the post-Solar scale handoff remains
+  // wholly owned by paintScaleLayer() and placeCamera().
+  const movingFocus = !earthSkyLook
+    && state.focusedId !== "sun"
+    && scaleLayer(state.distance) === "solar"
+    ? nodes.get(state.focusedId)
+    : null;
+  if (movingFocus) movingFocus.mesh.getWorldPosition(previousFocusTarget);
   state.days = advanceSimulationDays(
     state.days,
     elapsed,
@@ -880,6 +890,10 @@ function tick(now) {
     state.playing,
   );
   updateBodies();
+  if (movingFocus) {
+    movingFocus.mesh.getWorldPosition(desiredTarget);
+    focusPoint.add(desiredTarget).sub(previousFocusTarget);
+  }
   asteroidBelt.rotation.y = state.days * (Math.PI * 2) / 1682;
   kuiperBelt.rotation.y = state.days * (Math.PI * 2) / 90560;
   paintScaleLayer();

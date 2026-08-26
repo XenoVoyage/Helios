@@ -925,6 +925,79 @@ async function assertBodySelectionSweep(page) {
   await page.locator("#reset-button").click();
 }
 
+async function focusedLabelAnchor(page, bodyId) {
+  return page.locator(`[data-body-id="${bodyId}"]`).evaluate((label) => {
+    const match = label.style.transform.match(
+      /translate\(([-+\d.e]+)px,\s*([-+\d.e]+)px\)$/i,
+    );
+    return {
+      hidden: label.hidden,
+      x: match ? Number(match[1]) : Number.NaN,
+      y: match ? Number(match[2]) : Number.NaN,
+      centerX: innerWidth / 2,
+      centerY: innerHeight / 2,
+    };
+  });
+}
+
+async function assertMovingFocusTracksTarget(context, prefix, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page);
+  const play = page.locator("#play-button");
+  const activatePlay = () => (touch ? play.tap() : play.click());
+  if (await play.getAttribute("aria-pressed") === "true") await activatePlay();
+
+  const setSpeed = (daysPerSecond) => page.locator("#speed-slider").evaluate(
+    (slider, target) => {
+      const minimum = 1 / 24;
+      const maximum = 400;
+      slider.value = String((Math.log(target) - Math.log(minimum))
+        / (Math.log(maximum) - Math.log(minimum)));
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+    },
+    daysPerSecond,
+  );
+  const waitUntilCentered = (bodyId) => page.waitForFunction((id) => {
+    const label = document.querySelector(`[data-body-id="${id}"]`);
+    if (!label || label.hidden) return false;
+    const match = label.style.transform.match(
+      /translate\(([-+\d.e]+)px,\s*([-+\d.e]+)px\)$/i,
+    );
+    if (!match) return false;
+    return Math.abs(Number(match[1]) - innerWidth / 2) <= 4
+      && Math.abs(Number(match[2]) - innerHeight / 2) <= 4;
+  }, bodyId, { timeout: 4_000 });
+  const assertTracked = async (bodyId, rate, samples) => {
+    await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), bodyId);
+    await waitUntilCentered(bodyId);
+    await setSpeed(rate);
+    await activatePlay();
+    for (let sample = 0; sample < samples; sample += 1) {
+      await page.waitForTimeout(50);
+      const anchor = await focusedLabelAnchor(page, bodyId);
+      assert.equal(anchor.hidden, false, `${prefix} ${bodyId} stays visible at ${rate} d/s`);
+      assert.ok(
+        Math.abs(anchor.x - anchor.centerX) <= 4
+          && Math.abs(anchor.y - anchor.centerY) <= 4,
+        `${prefix} ${bodyId} stays centered at ${rate} d/s: ${JSON.stringify(anchor)}`,
+      );
+    }
+    await activatePlay();
+  };
+
+  if (touch) {
+    await assertTracked("mercury", CONFIG.maxDaysPerSecond, 8);
+  } else {
+    await assertTracked("mercury", 10, 12);
+    await assertTracked("mercury", CONFIG.maxDaysPerSecond, 8);
+    await assertTracked("io", CONFIG.maxDaysPerSecond, 8);
+  }
+  await saveScreenshot(page, `${prefix}-moving-focus`);
+  assert.deepEqual(errors, [], `${prefix} moving focus has no browser errors`);
+  await page.close();
+}
+
 async function assertZoomStress(page) {
   const canvas = page.locator("#viewport");
   const bounds = await canvas.boundingBox();
@@ -1295,6 +1368,7 @@ try {
   assert.equal(await desktopPage.locator("#body-card").getAttribute("hidden"), "");
 
   await assertBodySelectionSweep(desktopPage);
+  await assertMovingFocusTracksTarget(desktop, "desktop");
   await assertConstellationModesAndFreshLabels(desktopPage);
   await assertZoomStress(desktopPage);
 
@@ -1430,6 +1504,7 @@ try {
   await assertCardClearsDock(touchPage, { width: 568, height: 320 });
   await saveScreenshot(touchPage, "touch-landscape-card");
   assert.deepEqual(touchErrors, []);
+  await assertMovingFocusTracksTarget(touch, "touch-portrait", true);
   await auditResponsiveCosmology(touch, "touch-portrait");
   await touch.close();
 
