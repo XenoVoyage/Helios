@@ -5,7 +5,7 @@
 ## Context
 
 - Related issue or decision:
-- PR type: `issue branch → develop`, `develop → main release`, `hotfix/* → main`, or authorized bootstrap
+- PR type: `issue branch → develop`, `develop → main release`, or `hotfix/* → main`
 - Base branch, commit, and tree:
 - Candidate commit and tree:
 - Dependency/order position:
@@ -48,7 +48,7 @@
 - [ ] I read the applicable `AGENTS.md` files and canonical project documentation.
 - [ ] I checked relevant open issues, pull requests, and recent merged work before starting.
 - [ ] An implementation PR contains one issue; a release PR lists only the separately accepted issue PRs included in the frozen promotion.
-- [ ] An issue branch was created from current `develop` and targets `develop`, or this is an explicitly identified release, emergency-hotfix, or bootstrap exception.
+- [ ] An issue branch was created from current `develop` and targets `develop`, or this is an explicitly identified release or emergency hotfix.
 - [ ] The complete diff was compared with the recorded base and approved visual baseline.
 - [ ] The change is the smallest complete solution and contains no unrelated work.
 - [ ] Targeted checks and every required final check passed on the final candidate.

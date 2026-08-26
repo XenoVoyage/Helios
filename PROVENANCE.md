@@ -68,9 +68,10 @@ module hashes before tests pass.
 Playwright `1.62.1` is an exact, lockfile-pinned Apache-2.0 development
 dependency used only by the browser/WebGL smoke test. It is not deployed.
 
-## Adoption gaps
+## Provenance contributions to adoption status
 
-The engineering standard remains `adopting` until the exact HYG snapshot and
-license are identified, inherited image transformation records are recovered
-where practical, and the required physical touch-device review is recorded.
-Unknown provenance is stated here rather than guessed.
+`AGENTS.md` is the sole owner of Helios's Repository Standard status. The
+provenance blockers contributing to its `adopting` state are the unidentified
+exact HYG snapshot/license and the inherited image transformation records that
+remain recoverable. Unknown provenance is stated here rather than guessed;
+non-provenance blockers stay with their canonical owners.
