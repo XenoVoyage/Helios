@@ -5,12 +5,13 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: audit-${{ github.workflow }}-${{ github.ref }}
+  group: audit-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,6 +20,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Enforce manual audit source
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          github.ref != 'refs/heads/main'
+        run: |
+          echo "Manual audits are restricted to main."
+          exit 1
+
       - name: Enforce production promotion source
         if: >-
           github.event_name == 'pull_request' &&
