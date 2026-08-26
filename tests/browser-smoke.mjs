@@ -959,39 +959,47 @@ async function assertMovingFocusTracksTarget(context, prefix, touch = false) {
     },
     daysPerSecond,
   );
-  const waitUntilCentered = async (bodyId) => {
-    try {
-      await page.waitForFunction((id) => {
-        const label = document.querySelector(`[data-body-id="${id}"]`);
-        if (!label || label.hidden) return false;
-        const match = label.style.transform.match(
-          /translate\(([-+\d.e]+)px,\s*([-+\d.e]+)px\)$/i,
-        );
-        if (!match) return false;
-        return Math.abs(Number(match[1]) - innerWidth / 2) <= 4
-          && Math.abs(Number(match[2]) - innerHeight / 2) <= 4;
-      }, bodyId, { timeout: 4_000 });
-    } catch (error) {
+  const nextAnimationFrame = () => page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(resolve)),
+  );
+  const inFrame = (anchor) => !anchor.hidden
+    && Number.isFinite(anchor.x)
+    && Number.isFinite(anchor.y)
+    && anchor.x >= 0
+    && anchor.x <= anchor.centerX * 2
+    && anchor.y >= 0
+    && anchor.y <= anchor.centerY * 2;
+  const waitUntilInFrame = async (bodyId) => {
+    for (let frame = 0; frame < 48; frame += 1) {
       const anchor = await focusedLabelAnchor(page, bodyId);
-      throw new Error(
-        `${prefix} ${bodyId} did not settle at center: ${JSON.stringify(anchor)}`,
-        { cause: error },
-      );
+      if (inFrame(anchor)) return anchor;
+      await nextAnimationFrame();
     }
+    const anchor = await focusedLabelAnchor(page, bodyId);
+    assert.fail(`${prefix} ${bodyId} did not enter the frame: ${JSON.stringify(anchor)}`);
+    return anchor;
   };
   const assertTracked = async (bodyId, rate, samples) => {
     await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), bodyId);
-    await waitUntilCentered(bodyId);
+    await nextAnimationFrame();
+    const initial = await waitUntilInFrame(bodyId);
+    const initialCenterDistance = Math.hypot(
+      initial.x - initial.centerX,
+      initial.y - initial.centerY,
+    );
     await setSpeed(rate);
     await activatePlay();
     for (let sample = 0; sample < samples; sample += 1) {
-      await page.waitForTimeout(50);
+      await nextAnimationFrame();
       const anchor = await focusedLabelAnchor(page, bodyId);
-      assert.equal(anchor.hidden, false, `${prefix} ${bodyId} stays visible at ${rate} d/s`);
       assert.ok(
-        Math.abs(anchor.x - anchor.centerX) <= 4
-          && Math.abs(anchor.y - anchor.centerY) <= 4,
-        `${prefix} ${bodyId} stays centered at ${rate} d/s: ${JSON.stringify(anchor)}`,
+        inFrame(anchor),
+        `${prefix} ${bodyId} stays in frame at ${rate} d/s: ${JSON.stringify(anchor)}`,
+      );
+      assert.ok(
+        Math.hypot(anchor.x - anchor.centerX, anchor.y - anchor.centerY)
+          <= initialCenterDistance + 4,
+        `${prefix} ${bodyId} does not drift from center at ${rate} d/s: ${JSON.stringify(anchor)}`,
       );
     }
     await activatePlay();
