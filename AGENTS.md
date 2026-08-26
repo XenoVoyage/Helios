@@ -1,22 +1,29 @@
 # Helios contributor instructions
 
-Read this file at the start of every task. It is the repository-local contract for human and AI contributors.
+Read this file and [REPOSITORY_STANDARD.md](REPOSITORY_STANDARD.md) at the start
+of every task. Together they are the repository-local contract for human and AI
+contributors. This file supplies the Helios-specific overlay; the linked
+standard owns reusable policy.
 
-**Project Engineering Standard:** v1.1
+**Repository Standard:** [Repository Standard](REPOSITORY_STANDARD.md)
 **Standard Status:** adopting
 
-`adopting` is intentional until the required physical touch-device review and
-the remaining third-party provenance gaps are closed. Do not claim a stronger
-status from automated checks alone.
+`adopting` is intentional until the required physical touch-device review, the
+remaining third-party provenance gaps, and the required-check source binding or
+documented exception are closed. Do not claim `verified` from automated checks
+alone.
 
 ## Priorities
 
 1. Keep the orrery local, private, and working on both desktop and touch.
-2. Ship the smallest complete change. One owner per responsibility.
-3. Preserve published NASA / JPL / IAU / SIMBAD / Planck / NED values. Only the visual scale, the galaxy kpc / cluster Mpc / universe Gpc mapping, and the time slider are allowed to diverge from 1:1.
-4. Resolve one issue at a time through the Alpha Development integration gate,
-   except for the documented emergency hotfix path.
-5. Verify before opening or updating a pull request.
+2. Ship the smallest complete change with one owner per responsibility.
+3. Preserve published NASA, JPL, IAU, SIMBAD, Planck, and NED values. Only the
+   documented visual scale, galaxy kpc/cluster Mpc/universe Gpc mapping, and
+   time slider intentionally diverge from 1:1.
+4. Resolve one issue at a time through protected Alpha Development, except for
+   the documented emergency hotfix path.
+5. Verify the complete frozen candidate before opening or updating a pull
+   request.
 
 ## Ownership
 
@@ -26,172 +33,131 @@ status from automated checks alone.
 | Body catalog, Kepler math, visual mapping | `js/bodies.js` |
 | Simulation clock and date boundary | `js/time.js` |
 | Scene, camera, input, HUD | `js/app.js` |
-| Focus orbit / axis / spin marks | `js/helpers.js` |
+| Focus orbit, axis, and spin marks | `js/helpers.js` |
 | Celestial sphere | `js/sky.js`, `js/sky-catalog.js`, `assets/sky/` |
-| Galactic neighborhood, Local Group, Virgo, 2MRS / outer density, CMB / observable universe | `js/galaxy.js`, `js/galaxy-catalog.js`, `js/cosmic-web.js`, `js/2mrs-data.js` |
+| Galactic neighborhood, Local Group, Virgo, 2MRS, outer density, CMB, and observable universe | `js/galaxy.js`, `js/galaxy-catalog.js`, `js/cosmic-web.js`, `js/2mrs-data.js` |
 | Semantic shell and CSP | `index.html` |
 | Presentation | `styles.css` |
-| Public version label | `VERSION.txt` (`js/config.js` must match) |
+| Public product version | `VERSION.txt` (`js/config.js` must match) |
 | Scientific and asset provenance | `PROVENANCE.md` |
-| Agent contract | `AGENTS.md` |
+| Reusable contributor policy | `REPOSITORY_STANDARD.md` |
+| Helios-specific contributor contract | `AGENTS.md` |
 | Human introduction | `README.md` |
 
 `js/2mrs-data.js` is a generated, hash-verified payload. Read its metadata
-header—not the base64 body—unless the task is specifically catalog regeneration
-or data-integrity work; `scripts/build-2mrs.mjs` is its canonical generator.
+header—not the base64 body—unless the task specifically owns catalog
+regeneration or data integrity. `scripts/build-2mrs.mjs` is its canonical
+generator.
 
-Do not add managers, services, factories, event buses, plugin systems, accounts, telemetry, CDNs, or a physics engine. Split a file only when a new boundary has a small explicit interface.
-
-Public releases use `vYYYY.M.D<suffix>` without zero-padding. Increment the
-lowercase suffix for another release on the same date. `VERSION.txt` is
+Public product releases use `vYYYY.M.D<suffix>` without zero-padding. Increment
+the lowercase suffix for another release on the same date. `VERSION.txt` is
 canonical; `CONFIG.VERSION` and the README badge are intentional mirrors.
 
 ## Product boundaries
 
-- Helios is a local interactive orrery. GitHub Pages serves the repository root from `/Helios/`.
-- Runtime is HTML, CSS, ES modules, and the pinned Three.js modules in `vendor/` (`three.module.min.js` plus its `three.core.min.js` import).
-- Three.js owns graphics primitives only. Orbits, time, and focus live in our modules.
-- Touch is required: one-finger orbit, pinch zoom, tap-to-select, 44px controls, no hover-only UI.
-- Desktop: mouse orbit/zoom, click-to-select, Space / `+` / `-` / Escape.
-- v1 bodies are exactly those listed in `js/bodies.js`: Sun, 8 planets, the Moon, Phobos, Deimos, Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, and Ceres. Do not add extra moons.
+- Helios is a local interactive orrery. GitHub Pages serves the repository root
+  from `/Helios/`.
+- Runtime is HTML, CSS, ES modules, and the pinned Three.js modules in `vendor/`
+  (`three.module.min.js` plus its `three.core.min.js` import). Three.js owns
+  graphics primitives only; orbits, time, and focus remain project modules.
+- Touch is required: one-finger orbit, pinch zoom, tap-to-select, 44px controls,
+  and no hover-only UI. Desktop requires mouse orbit/zoom, click-to-select,
+  Space, `+`, `-`, and Escape.
+- The supported body set is exactly the Sun, eight planets, Moon, Phobos,
+  Deimos, Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, and Ceres as
+  listed in `js/bodies.js`. Do not add extra moons.
+- Do not add accounts, telemetry, runtime CDNs, a physics engine, or speculative
+  application architecture.
+
+## Frozen approved behavior
+
+Unless the selected issue explicitly requires a bounded change, preserve the
+owner-approved J2000 scientific data and object coordinates; Solar System;
+camera and scale transitions; label and visual hierarchy; spherical distant
+sky; 2MRS and cosmic-web transition; warm CMB observable-universe view;
+controls; accessibility; performance; responsive behavior; dependencies;
+product version; provenance; and all unrelated runtime behavior.
+
+Issue #44 exclusively owns Saturn's back-facing ring-shading correction. Do not
+change Saturn ring material, shading, texture, UVs, geometry, lighting, or
+related rendering unless #44 is the selected current issue and its live
+acceptance criteria have been read. Testing Saturn in another issue does not
+activate #44; any unrelated ring delta is a regression.
 
 ## Verification
 
-- From a clean checkout, run `npm ci` and `npx playwright install chromium` before the test suite. CI uses Playwright's `--with-deps` variant on Linux.
-- `npm test` runs the static contract check, body/scale/Kepler tests, HTTP smoke, and browser/WebGL smoke.
-- `npm run test:static` runs the deterministic checks without launching a browser.
-- `npm run serve` is the Pages-equivalent local path: `http://127.0.0.1:4173/Helios/`.
-- Add a regression for a confirmed math or catalog defect.
-- Audit desktop and touch before calling a change done. Browser automation is not physical-device proof.
+- From a clean checkout, run `npm ci` and `npx playwright install chromium`.
+  CI uses Playwright's `--with-deps` variant on Linux.
+- `npm test` runs the static contract, body, scale, Kepler, sky, galaxy,
+  cosmic-web, time, HTTP, browser, WebGL, desktop, and touch-sized checks.
+- `npm run test:static` runs deterministic and HTTP checks without a browser.
+- `npm run serve` serves the Pages-equivalent path at
+  `http://127.0.0.1:4173/Helios/`.
+- Add a focused regression for every confirmed math, catalog, or behavior
+  defect. Inspect console/runtime errors and perform the issue's applicable
+  accessibility, performance, responsive, keyboard, pointer, and touch checks.
+- Compare rendered output with the recorded task base and the owner-approved
+  visual baseline. Browser automation is not physical-device proof.
 
-## Issue workflow
+## Helios issues and release flow
 
-Search open and closed issues and pull requests before filing or implementing
-work. Update the canonical report instead of creating a duplicate. Use the
-repository issue form; its required title is
-`[CRITICAL|HIGH|MEDIUM|LOW][Area] Imperative outcome`.
+Search open and closed issues and pull requests before acting. Use the
+repository issue form and the standard title
+`[SEVERITY][Area] Imperative outcome`, where severity is `CRITICAL`, `HIGH`,
+`MEDIUM`, or `LOW`. Keep one independently testable issue per branch and pull
+request; the issue body is its scope and acceptance contract.
 
-- **Critical:** release-blocking security, privacy, data-loss, availability, or
-  scientific-integrity failure requiring immediate owner attention.
-- **High:** core correctness, accessibility, security, or scientific behavior
-  is materially wrong and has no reasonable workaround.
-- **Medium:** important but recoverable behavior, compatibility, performance,
-  or cross-device defect.
-- **Low:** bounded edge case, maintenance, documentation, QA, or hardening work
-  without current severe user impact.
+`main` is protected owner-approved production. `develop` is the protected
+long-lived **Alpha Development** integration branch. Neither accepts direct
+changes, force pushes, deletion, or bypassed checks. Both require pull requests
+and the exact `Audit / audit` check. GitHub Pages deploys only from `main`.
 
-Every issue must identify the exact baseline commit/tree and environment;
-expected and actual behavior; reproducible evidence; smallest scope and
-explicit non-goals; dependencies and recommended order; objective acceptance
-criteria; test and visual evidence requirements; risks; and rollback. Mark
-measured, inferred, automated, simulated, and physical-device evidence
-honestly. Never include secrets or private data.
-
-Implement one issue per branch and pull request. Order work by dependency first,
-then Critical, High, Medium, and Low severity. Finish the full regression,
-visual, and diff audit for the current issue before starting the next one. If a
-fix reveals a separate problem, file or update a separate issue instead of
-silently expanding scope.
-
-## Dependencies and maintenance
-
-Use the latest suitable production-supported LTS line when an ecosystem offers
-LTS releases; otherwise use the latest suitable stable line. A Current-only,
-preview, release-candidate, or nightly release is compatibility evidence, not
-the production baseline, unless the owner explicitly approves it after the
-full gate. Do not retain an unsupported or end-of-life runtime without a
-documented, time-bounded owner exception.
-
-- Review runtime support/EOL status, advisories, and relevant stable releases at
-  release gates and when a security notice or compatibility need appears.
-- Update one dependency or tightly coupled toolchain group per issue. Read
-  release notes and migration guidance; measure bundle/startup/runtime impact;
-  run the complete gate; and keep a clear rollback. Do not mix upgrades into an
-  unrelated behavioral fix.
-- Add a dependency only when it is genuinely needed and smaller/safer than clear
-  project-owned code. Require an official source, available source code, a
-  compatible free/open-source license or explicit owner exception, active
-  maintenance, security health, useful documentation, and broad ecosystem
-  trust or a documented exception. Popularity is evidence, not proof of safety.
-- Pin and lock reproducible versions. Keep GitHub Actions pinned to immutable
-  commit SHAs with readable version comments. Review material transitive code,
-  licenses, install/build scripts, runtime network behavior, and maintenance
-  cost. Remove dependencies that no longer justify themselves.
-- Do not adopt or retain a dependency with a known unresolved critical
-  vulnerability unless no safer path exists and the owner approves documented
-  compensating controls plus a time-bounded removal or upgrade plan.
-- Treat urgent security fixes separately from routine currency. Never upgrade
-  merely to claim the highest version number, and never retain an unsupported
-  runtime without an owner-approved, time-bounded reason.
-
-## Cleanup policy
-
-- Preserve behavior and the approved visual baseline unless a confirmed issue requires a documented delta.
-- Delete code or assets only after proving they have no runtime, test, documentation, or provenance owner.
-- Prefer removing a false claim or unused abstraction over expanding the implementation to justify it.
-- Keep one canonical owner and verify every intentional mirror. Do not add speculative compatibility layers.
-- Record primary evidence and transformations in `PROVENANCE.md`; never invent missing scientific data or imagery.
-
-## Definition of done
-
-- The diff is the smallest complete fix, with no unrelated feature or visual redesign.
-- `npm test` passes from a clean checkout on Node 22, including the browser/WebGL smoke.
-- The complete branch diff is compared with the frozen base; expected visual or behavioral changes are listed.
-- Normal desktop and touch-sized rendered evidence is reviewed. Physical-device observations remain separately labeled.
-- Documentation, provenance, version mirrors, tests, and the `Audit / audit` required check match the candidate.
-- The issue remains the only behavior owner for the branch, and a final audit
-  confirms that unrelated approved behavior is unchanged.
-
-## Git and release flow
-
-`main` is the protected, owner-approved production branch. `develop` is the
-protected long-lived **Alpha Development** integration branch. Neither branch
-accepts direct changes, force-pushes, deletion, or bypassed checks. GitHub Pages
-deploys only from `main`.
-
-After the v1.1 bootstrap is merged and `develop` is created from that exact
-`main` commit:
-
-1. Refresh `develop`, confirm its commit/tree and open work, and choose the next
-   dependency-ready issue.
-2. Create `agent/issue-<number>-<description>` from the latest `develop`. Do not
-   reuse a branch or combine issues.
-3. Open a draft pull request back to `develop`. Required CI, the full issue
-   acceptance gate, complete diff audit, and owner approval must pass before the
-   owner merges it.
-4. Delete the merged short-lived branch explicitly after proving it is merged,
-   has no open PR or unique commit, is not protected/default/release, and is
-   unused by a worktree. Do not enable repository-wide automatic deletion
-   unless protected `develop` is proven exempt.
-5. Re-audit `develop`, complete owner Alpha testing, and promote the accepted
-   issue through the release path before beginning the next issue. The owner
-   may explicitly authorize a small ordered batch of independent issues, but
-   each issue still receives its own branch, PR, acceptance gate, and audit.
-
-For a production release, freeze new issue work, run the complete integrated
-desktop/touch/WebGL/visual audit on `develop`, record owner testing, and open a
-release pull request from `develop` to `main`. The promotion candidate must pass
-`Audit / audit` before owner merge. After merge, both the new `main` Audit and
-Pages deployment must pass before the release is declared complete. Verify that
-`develop` is contained in `main` and tree-equivalent to the released content;
-do not manufacture an empty synchronization PR. If `main` gained a hotfix,
-release-only change, or other main-only content, merge it back into `develop`
-through a reviewed non-force workflow before new issue work.
-
-The v1.1 bootstrap pull request is the one documented exception: it targets
-`main` under the existing v1.0 workflow so CI can be taught about `develop`.
-Only after that PR is owner-approved and merged should the owner create and
-protect `develop` at the exact new `main` revision.
+1. Refresh protected `develop`; confirm its commit/tree, passing Audit, and open
+   work; then select the next dependency-ready issue.
+2. Create `agent/issue-<number>-<description>` from that exact `develop` head.
+   Do not reuse a branch or combine issues.
+3. Open a draft pull request to `develop`. The issue gate, complete diff and
+   visual audit, required checks, and explicit owner approval must pass before
+   owner integration.
+4. Prove the merged task branch is inactive, unprotected, has no open pull
+   request or unique commit, and is unused before deleting it. Never delete
+   `main`, `develop`, a release branch, or unique work.
+5. Re-audit exact `develop`, complete owner Alpha testing, and promote the
+   accepted issue through a protected `develop` to `main` release pull request
+   before starting the next issue unless the owner explicitly authorizes a
+   small ordered independent group.
+6. After owner merge, require the new exact-main Audit and Pages deployment,
+   verify production, and prove `develop` is contained in `main` and
+   tree-equivalent. Synchronize genuine main-only hotfix or release content back
+   through reviewed non-force history; never manufacture an empty sync pull
+   request.
 
 An emergency production fix uses `hotfix/issue-<number>-<description>` from the
-latest `main`, follows the same draft-PR, full-audit, and owner-approval gate,
-and is then synchronized into `develop` before any other issue work. Do not use
-the hotfix path for routine priority or convenience.
+latest `main`, follows the same draft-PR, complete-audit, and owner-approval
+gate, and is integrated into `develop` before other work. It is not a routine
+shortcut.
 
-Agents must not merge and must not change GitHub repository settings. The owner
-must protect both `main` and `develop` with pull requests, blocked deletion and
-force-pushes, and the required `Audit / audit` check.
+Agents must not merge or change repository settings. The owner controls
+protection and merge approval. Draft pull requests must record their type and
+base, issue, base and candidate commits/trees, files, commands/results, desktop
+and touch evidence, visual comparison, risks, rollback, and unavailable manual
+or physical verification.
 
-Draft PRs must identify their type and base, issue, base/candidate commit and
-tree, changed files, exact commands/results, desktop/touch and visual evidence,
-risks, rollback, and any unavailable manual or physical verification.
+## Cleanup and definition of done
+
+- Delete code or assets only after proving they have no runtime, test,
+  documentation, provenance, build, or deployment owner. Preserve unfamiliar,
+  unrelated, or unclear work.
+- Record primary evidence and transformations in `PROVENANCE.md`; never invent
+  missing scientific data or imagery.
+- The diff is the smallest complete fix, contains no unrelated redesign, and
+  accounts for every changed, added, generated, and deleted file.
+- `npm test` passes from a clean checkout on the Node 22 baseline declared in
+  `package.json` and the workflows, including browser/WebGL checks. CI on the
+  exact candidate is authoritative.
+- Documentation, provenance, product-version mirrors, tests, templates,
+  workflows, and `Audit / audit` agree with the candidate.
+- Desktop and touch-sized rendered evidence is reviewed. Physical observations
+  remain separately labelled.
+- A final audit proves this issue is the only behavior owner for the branch and
+  all unrelated approved behavior remains unchanged.

@@ -27,15 +27,11 @@ jobs:
             github.event.pull_request.head.repo.full_name != github.repository ||
             (
               github.head_ref != 'develop' &&
-              !startsWith(github.head_ref, 'hotfix/') &&
-              !(
-                github.head_ref == 'agent/issue-74-standard-v1-1' &&
-                github.event.pull_request.base.sha == 'c1f76d63c06853f8012569d2c19df6f499788a3c'
-              )
+              !startsWith(github.head_ref, 'hotfix/')
             )
           )
         run: |
-          echo "Only this repository's develop, an explicitly reviewed hotfix/* branch, or the frozen v1.1 bootstrap may target main."
+          echo "Only this repository's develop or an explicitly reviewed hotfix/* branch may target main."
           exit 1
 
       - name: Check out repository
