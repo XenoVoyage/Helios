@@ -1386,18 +1386,21 @@ try {
   await touchPage.setViewportSize({ width: 390, height: 844 });
 
   const cdp = await touch.newCDPSession(touchPage);
+  // Pinch on empty canvas. Ceres's corrected J2000 seat places its 44px
+  // label over the former (70, 320) start, which selected Ceres instead
+  // of zooming.
   await cdp.send("Input.dispatchTouchEvent", {
     type: "touchStart",
     touchPoints: [
-      { id: 0, x: 70, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-      { id: 1, x: 320, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 0, x: 70, y: 240, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 1, x: 320, y: 240, radiusX: 4, radiusY: 4, force: 1 },
     ],
   });
   await cdp.send("Input.dispatchTouchEvent", {
     type: "touchMove",
     touchPoints: [
-      { id: 0, x: 165, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-      { id: 1, x: 225, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 0, x: 165, y: 240, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 1, x: 225, y: 240, radiusX: 4, radiusY: 4, force: 1 },
     ],
   });
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });

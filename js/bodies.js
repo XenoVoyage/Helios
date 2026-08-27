@@ -57,7 +57,8 @@ function orientationJ2000(bodyId, spinDirection, primeMeridianDeg = null) {
  *
  * Physical numbers follow the NASA planetary fact sheet where it and JPL
  * agree, and JPL SSD satellite phys_par (IAU WGCCRE 2015) for moons.
- * Heliocentric Kepler angles stay J2000 approximations, not Horizons.
+ * Heliocentric Kepler angles stay J2000 approximations, not Horizons,
+ * except Ceres, which uses one geometric Horizons J2000 snapshot.
  */
 export const BODIES = Object.freeze([
   {
@@ -225,14 +226,17 @@ export const BODIES = Object.freeze([
     name: "Ceres",
     kind: "dwarf",
     parent: "sun",
-    radiusKm: 473,
-    orbitAu: 2.769165,
-    eccentricity: 0.0758,
-    inclinationDeg: 10.59,
-    nodeDeg: 80.31,
-    periDeg: 73.47,
-    meanAnomalyDeg: 95.99,
-    orbitDays: 1681.63,
+    // JPL Horizons JPL#48/DE441 geometric osculating elements at
+    // JD 2451545.0 TDB, Sun center, ecliptic J2000, AU-days. Mean
+    // radius is JPL SSD phys_par 469.7 km, not the inherited 473 km.
+    radiusKm: 469.7,
+    orbitAu: 2.766496019994375,
+    eccentricity: 0.07837562647163041,
+    inclinationDeg: 10.58336045805628,
+    nodeDeg: 80.49435747295276,
+    periDeg: 73.92286274285223,
+    meanAnomalyDeg: 6.176654513180486,
+    orbitDays: 1680.712776442072,
     rotationHours: 9.074,
     tiltDeg: 4,
     orientationJ2000: orientationJ2000("ceres", 1),
