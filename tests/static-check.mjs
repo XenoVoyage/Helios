@@ -104,6 +104,21 @@ for (const workflow of [auditWorkflow, pagesWorkflow]) {
 }
 assert.match(auditWorkflow, /branches:\s*\[main, develop\]/g);
 assert.equal((auditWorkflow.match(/branches:\s*\[main, develop\]/g) || []).length, 2);
+assert.equal((auditWorkflow.match(/^  workflow_dispatch:\s*$/gm) || []).length, 1);
+assert.match(
+  auditWorkflow,
+  /group:\s*audit-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'workflow_dispatch' && github\.run_id \|\| github\.ref \}\}/,
+);
+assert.match(auditWorkflow, /cancel-in-progress:\s*true/);
+assert.match(
+  auditWorkflow,
+  /github\.event_name == 'workflow_dispatch' &&\s*github\.ref != 'refs\/heads\/main'/,
+);
+assert.match(auditWorkflow, /Manual audits are restricted to main\./);
+assert.doesNotMatch(
+  auditWorkflow,
+  /group:\s*audit-\$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}/,
+);
 assert.match(auditWorkflow, /github\.base_ref == 'main'/);
 assert.match(auditWorkflow, /head\.repo\.full_name != github\.repository/);
 assert.match(auditWorkflow, /github\.head_ref != 'develop'/);
