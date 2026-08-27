@@ -273,7 +273,6 @@ test("physical catalog matches published NASA / JPL figures", () => {
   assert.equal(findBody("uranus").radiusKm, 25362);
   assert.equal(findBody("neptune").radiusKm, 24622);
   assert.equal(findBody("pluto").radiusKm, 1188.3);
-  assert.equal(findBody("ceres").radiusKm, 473);
 
   // JPL SSD sats/phys_par mean radii (IAU WGCCRE 2015), except Io 1821.6
   // which keeps the NASA Galilean fact-sheet rounding of 1821.49.
@@ -329,6 +328,40 @@ test("physical catalog matches published NASA / JPL figures", () => {
   assert.equal(findBody("titan").periDeg, 78.3);
   assert.equal(findBody("titan").meanAnomalyDeg, 11.7);
   assert.equal(findBody("titan").nodeDeg, 78.6);
+});
+
+test("Ceres J2000 row matches one JPL Horizons geometric snapshot", () => {
+  const ceres = findBody("ceres");
+  assert.equal(ceres.radiusKm, 469.7);
+  assert.equal(ceres.orbitAu, 2.766496019994375);
+  assert.equal(ceres.eccentricity, 0.07837562647163041);
+  assert.equal(ceres.inclinationDeg, 10.58336045805628);
+  assert.equal(ceres.nodeDeg, 80.49435747295276);
+  assert.equal(ceres.periDeg, 73.92286274285223);
+  assert.equal(ceres.meanAnomalyDeg, 6.176654513180486);
+  assert.equal(ceres.orbitDays, 1680.712776442072);
+  assert.equal(ceres.rotationHours, 9.074);
+  assert.equal(ceres.tiltDeg, 4);
+  assert.deepEqual(ceres.orientationJ2000, {
+    poleRaDeg: 291.418,
+    poleDecDeg: 66.764,
+    primeMeridianDeg: null,
+    spinDirection: 1,
+  });
+  assert.equal(ceres.texture, "assets/textures/ceres.jpg");
+
+  const at = keplerOffset(ceres, findBody("sun"), 0);
+  const compressed = visualOrbit(ceres.orbitAu);
+  const scale = ceres.orbitAu / compressed;
+  const sceneAu = { x: at.x * scale, y: at.y * scale, z: at.z * scale };
+  const expected = {
+    x: -2.379327705915647,
+    y: 0.4630055715902157,
+    z: -0.7954860388931395,
+  };
+  assert.ok(Math.abs(sceneAu.x - expected.x) < 1e-12, `Ceres X ${sceneAu.x}`);
+  assert.ok(Math.abs(sceneAu.y - expected.y) < 1e-12, `Ceres Y ${sceneAu.y}`);
+  assert.ok(Math.abs(sceneAu.z - expected.z) < 1e-12, `Ceres Z ${sceneAu.z}`);
 });
 
 test("Kepler's equation recovers a circular and an eccentric orbit", () => {
@@ -422,7 +455,7 @@ test("heliocentric axes and Saturn's ring plane use static J2000 PCK poles", () 
 
   for (const [id, expectedTilt, tolerance] of [
     ["mercury", 0.034, 0.001],
-    ["ceres", 4.033, 0.01],
+    ["ceres", 4.003, 0.01],
     ["saturn", 26.73, 0.01],
     ["uranus", 97.77, 0.01],
     ["pluto", 119.6, 0.1],
