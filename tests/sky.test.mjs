@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,7 @@ import {
   ANDROMEDA,
   CONSTELLATION_LINES,
   MAJOR_CONSTELLATIONS,
+  STAR_NAMES,
   STARS,
 } from "../js/sky-catalog.js";
 import {
@@ -152,10 +154,39 @@ test("IAU Galactic axes form a right-handed J2000 scene frame", () => {
 });
 
 test("catalog is a few thousand brightest Hipparcos stars and the far plane clears the sky", () => {
-  assert.ok(STARS.length > 3000 && STARS.length < 8000);
+  assert.equal(STARS.length, 5043);
   assert.ok(STARS.every((row) => row[0] > 0 && Number.isFinite(row[1]) && Number.isFinite(row[2])));
   assert.ok(CONFIG.cameraFar > CONFIG.skyRadius);
   assert.equal(CONFIG.VERSION, "v2026.8.23a");
+});
+
+test("bright-star subset identity is the HYG v3.1-v3.4 Hipparcos selection", async () => {
+  const hips = STARS.map((row) => row[0]);
+  assert.equal(STARS.length, 5043);
+  assert.equal(new Set(hips).size, 5043);
+  assert.deepEqual(hips, [...hips].sort((a, b) => a - b));
+  assert.equal(Object.keys(STAR_NAMES).length, 334);
+  assert.equal(STAR_NAMES[55203], "Alula Australis");
+  assert.equal(STAR_NAMES[7751], "p Eridani");
+  assert.equal(STAR_NAMES[84405], "Guniibuu");
+  assert.equal(STAR_NAMES[43587], "Copernicus");
+  assert.equal(STAR_NAMES[10826], "Mira");
+  assert.deepEqual(STARS.find((row) => row[0] === 55203), [55203, 169.54677, 31.52878, 4.33, 0.59]);
+  assert.deepEqual(STARS.find((row) => row[0] === 7751), [7751, 24.94753, -56.1964, 5.76, 0.88]);
+  assert.deepEqual(STARS.find((row) => row[0] === 10826), [10826, 34.83663, -2.97764, 6.47, 0.97]);
+  assert.deepEqual(STARS.find((row) => row[0] === 32349), [32349, 101.28722, -16.71612, -1.44, 0.01]);
+  assert.deepEqual(STARS.find((row) => row[0] === 26220), [26220, 83.81592, -5.38732, 4.98, 0.3]);
+  assert.deepEqual(STARS.find((row) => row[0] === 32609), [32609, 102.05111, 55.70419, 5.54, 0.3]);
+  assert.deepEqual(STARS.filter((row) => row[3] > 6).map((row) => row[0]), [10826]);
+  assert.ok(CONSTELLATION_LINES.some((item) => item.paths.flat().includes(55203)));
+  assert.ok(CONSTELLATION_LINES.some((item) => item.paths.flat().includes(10826)));
+  const catalog = await readFile(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "../js/sky-catalog.js"),
+  );
+  assert.equal(
+    createHash("sha256").update(catalog).digest("hex"),
+    "e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34",
+  );
 });
 
 test("constellation names stay readable at overview", () => {
