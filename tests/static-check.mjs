@@ -62,6 +62,25 @@ assert.match(agents, /Issue #44 exclusively owns Saturn's back-facing ring-shadi
 assert.match(readme, /\[Repository Standard\]\(REPOSITORY_STANDARD\.md\)/);
 assert.match(provenance, /`AGENTS\.md` is the sole owner of Helios's Repository Standard status/);
 assert.match(provenance, /provenance blockers contributing to its `adopting` state/);
+assert.match(provenance, /hyg_v31\.csv\.gz/);
+assert.match(provenance, /hyg_v34\.csv\.gz/);
+assert.match(provenance, /CC BY-SA 2\.5/);
+assert.match(provenance, /HIP 55203/);
+assert.match(provenance, /600ce39342ee1452da5fdd9d9b7b8f51a1e1b5f7892abeace61f7c56f4382fce/);
+assert.match(provenance, /b39c1d6dbab932bb624965241b6a13995886370781b9a398d0f1fb36d098b325/);
+assert.match(provenance, /193dee77cbfef7179bf1eb6188cfdede9fd0d622760e4bc658ab775c1965c375/);
+assert.match(provenance, /01736aeafecb7f5082c9d2bbed1c6bb36bb9ea6bc4c9ebb3429ed2e8a3a0a4e1/);
+assert.match(provenance, /e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34/);
+assert.match(provenance, /inherited image\s+transformation records/);
+assert.doesNotMatch(
+  provenance,
+  /exact upstream HYG release and its matching license version were not retained/,
+);
+assert.match(readme, /v3\.1–v3\.4 \(CC BY-SA 2\.5\)/);
+assert.equal(
+  await sha256("js/sky-catalog.js"),
+  "e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34",
+);
 assert.match(repositoryStandard, /canonical, versionless standard/);
 assert.match(repositoryStandard, /### New repository/);
 assert.match(repositoryStandard, /### Existing repository/);
