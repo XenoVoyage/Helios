@@ -58,6 +58,7 @@ import {
   orreryScale,
   requestedGalaxyLook,
   scaleLayer,
+  sceneHierarchyId,
   setGalaxyLayerVisible,
   skyBandBrightness,
   solarSystemHandoffSceneOffset,
@@ -154,6 +155,7 @@ function boot() {
   ui.helperAxis = $("helper-axis");
   ui.helperSpin = $("helper-spin");
   ui.status = $("status-live");
+  ui.sceneContext = $("scene-context");
   ui.unsupported = $("unsupported");
   ui.version = $("version-label");
   ui.dock = $("dock");
@@ -692,6 +694,7 @@ function selectBody(id) {
   bindSelectionHelpers();
   paintCard();
   say(`Focused ${node.body.name}`);
+  paintSceneSemantics();
 }
 
 function clearSelection() {
@@ -845,6 +848,48 @@ function say(message) {
   ui.status.textContent = message;
 }
 
+const SCENE_HIERARCHY_ANNOUNCEMENTS = {
+  solar: "Solar system.",
+  transition: "Leaving the solar system toward the Milky Way.",
+  milkyway: "Milky Way. The Sun sits in the Orion Arm.",
+  neighborhood: "Nearby galaxies.",
+  localgroup: "Local Group.",
+  virgo: "Virgo Cluster. The Local Group is a nearby family; Virgo is the nearest large cluster.",
+  virgoSupercluster: "Local (Virgo) Supercluster.",
+  laniakea: "Laniakea Supercluster.",
+  web: "2MRS galaxy distribution. Approximate redshift distances, with no invented links.",
+  cmb: "Cosmic microwave background. The illustrative CMB shell is becoming visible.",
+  universe: "Schematic observable universe. The illustrative CMB shell shares the outer display radius.",
+  earthsky: "Earth sky. Focused on Earth.",
+};
+
+function sceneSemantics() {
+  if (earthSkyLook) {
+    const announcement = SCENE_HIERARCHY_ANNOUNCEMENTS.earthsky;
+    return { id: "earthsky", description: announcement, announcement };
+  }
+  const id = sceneHierarchyId(state.distance);
+  const announcement = SCENE_HIERARCHY_ANNOUNCEMENTS[id];
+  let description = announcement;
+  if (id === "solar") {
+    const focused = findBody(state.focusedId);
+    const focusName = focused.id === "sun" ? "the Sun" : focused.name;
+    description = `${announcement} Focused on ${focusName}.`;
+  }
+  return { id, description, announcement };
+}
+
+function paintSceneSemantics() {
+  const { id, description, announcement } = sceneSemantics();
+  if (ui.sceneContext.textContent !== description) {
+    ui.sceneContext.textContent = description;
+  }
+  if (lastHierarchyId !== null && id !== lastHierarchyId && announcement) {
+    say(announcement);
+  }
+  lastHierarchyId = id;
+}
+
 function resize() {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -948,7 +993,7 @@ function fadeBodyNode(node, factor) {
   }
 }
 
-let lastScaleLayer = "solar";
+let lastHierarchyId = null;
 
 function ensureGalaxyLayer() {
   if (galaxy || !scene || earthSkyLook) return galaxy;
@@ -960,6 +1005,7 @@ function ensureGalaxyLayer() {
 
 function paintScaleLayer() {
   if (earthSkyLook) {
+    paintSceneSemantics();
     document.documentElement.dataset.heliosReady = "1";
     return;
   }
@@ -996,17 +1042,7 @@ function paintScaleLayer() {
   if (helpers && galactic > 0.5) {
     setHelperVisibility(helpers, { selected: false, orbit: false, axis: false, spin: false });
   }
-  const layer = scaleLayer(state.distance);
-  if (layer !== lastScaleLayer) {
-    lastScaleLayer = layer;
-    if (layer === "milkyway") say("Milky Way. The Sun sits in the Orion Arm.");
-    else if (layer === "neighborhood") say("Nearby galaxies.");
-    else if (layer === "localgroup") say("Local Group.");
-    else if (layer === "virgo") say("Virgo Cluster. The Local Group is a nearby family; Virgo is the nearest large cluster.");
-    else if (layer === "web") say("2MRS galaxy distribution. Approximate redshift distances, with no invented links.");
-    else if (layer === "universe") say("Schematic observable universe. The illustrative CMB shell shares the outer display radius.");
-    else if (layer === "solar") say("Solar system.");
-  }
+  paintSceneSemantics();
   document.documentElement.dataset.heliosReady = "1";
 }
 

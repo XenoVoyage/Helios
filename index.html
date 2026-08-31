@@ -17,9 +17,7 @@
     <a id="skip-link" class="skip-link" href="#dock">Skip to time controls</a>
 
     <main id="stage">
-      <canvas id="viewport" tabindex="0" aria-label="Interactive solar system">
-        Helios needs a browser with canvas and WebGL support.
-      </canvas>
+      <canvas id="viewport" tabindex="0" role="img" aria-label="Helios scene" aria-describedby="scene-context"></canvas>
       <div id="labels" class="labels" aria-label="World labels"></div>
 
       <header class="topbar">
@@ -87,6 +85,7 @@
       href="./PROVENANCE.md"
       aria-label="Credits, licenses, and scientific provenance"
     >Helios</a>
+    <p id="scene-context" class="visually-hidden"></p>
     <div id="status-live" class="visually-hidden" role="status" aria-live="polite"></div>
   </body>
 </html>

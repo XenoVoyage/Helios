@@ -81,6 +81,7 @@ import {
   orbitLineOpacity,
   orreryScale,
   scaleLayer,
+  sceneHierarchyId,
   semanticLabelOpacities,
   semanticLabelRow,
   semanticLabelScale,
@@ -420,6 +421,19 @@ test("scale layer switches after the solar camera cap and reset stays solar", ()
   assert.equal(scaleLayer(CONFIG.virgoViewDistance), "virgo");
   assert.equal(scaleLayer(CONFIG.webViewDistance), "web");
   assert.equal(scaleLayer(CONFIG.universeViewDistance), "universe");
+  assert.equal(sceneHierarchyId(CONFIG.cameraDistance), "solar");
+  assert.equal(sceneHierarchyId(CONFIG.solarMaxDistance), "solar");
+  assert.equal(
+    sceneHierarchyId((CONFIG.solarMaxDistance + CONFIG.handoffViewDistance) / 2),
+    "transition",
+  );
+  assert.equal(sceneHierarchyId(CONFIG.handoffViewDistance), "milkyway");
+  assert.equal(sceneHierarchyId(CONFIG.mwViewDistance), "milkyway");
+  assert.equal(sceneHierarchyId(CONFIG.neighborhoodViewDistance), "neighborhood");
+  assert.equal(sceneHierarchyId(CONFIG.localGroupViewDistance), "localgroup");
+  assert.equal(sceneHierarchyId(CONFIG.virgoViewDistance), "virgo");
+  assert.equal(sceneHierarchyId(CONFIG.webViewDistance), "web");
+  assert.equal(sceneHierarchyId(CONFIG.universeViewDistance), "universe");
   assert.equal(solarOpacity(CONFIG.cameraDistance), 1);
   assert.equal(galaxyOpacity(CONFIG.cameraDistance), 0);
   assert.equal(solarOpacity(CONFIG.galaxyFadeEnd), 0);
@@ -742,6 +756,60 @@ test("semantic labels roll up from galaxies to superclusters, then clear for the
     );
     assert.ok(dominant >= 0.48, `a dominant semantic label remains through ${distance}`);
   }
+});
+
+test("accessible hierarchy ids distinguish the visual scientific sequence", () => {
+  const span = CONFIG.webViewDistance - CONFIG.virgoViewDistance;
+  const sequence = [];
+  const samples = [
+    CONFIG.cameraDistance,
+    CONFIG.solarMaxDistance,
+    (CONFIG.solarMaxDistance + CONFIG.handoffViewDistance) / 2,
+    CONFIG.handoffViewDistance,
+    CONFIG.mwViewDistance,
+    CONFIG.neighborhoodViewDistance,
+    CONFIG.localGroupViewDistance,
+    CONFIG.virgoViewDistance,
+    CONFIG.virgoViewDistance + span * 0.12,
+    CONFIG.virgoViewDistance + span * 0.3,
+    CONFIG.virgoViewDistance + span * 0.55,
+    CONFIG.webViewDistance,
+    CONFIG.universeViewDistance,
+  ];
+  for (let distance = CONFIG.cameraDistance; distance <= CONFIG.universeViewDistance; distance += 250) {
+    samples.push(distance);
+  }
+  for (const distance of samples.sort((a, b) => a - b)) {
+    const id = sceneHierarchyId(distance);
+    if (sequence.at(-1) !== id) sequence.push(id);
+  }
+  assert.deepEqual(sequence, [
+    "solar",
+    "transition",
+    "milkyway",
+    "neighborhood",
+    "localgroup",
+    "virgo",
+    "virgoSupercluster",
+    "laniakea",
+    "web",
+    "cmb",
+    "universe",
+  ]);
+  assert.equal(
+    sceneHierarchyId(CONFIG.virgoViewDistance + span * 0.55),
+    "laniakea",
+    "the preweb seat names Laniakea, not 2MRS",
+  );
+  assert.equal(sceneHierarchyId(CONFIG.webViewDistance), "web");
+  const firstCmb = samples.find((distance) => sceneHierarchyId(distance) === "cmb");
+  assert.ok(firstCmb > CONFIG.webViewDistance, "CMB is named only after the 2MRS web seat");
+  assert.ok(firstCmb < CONFIG.universeViewDistance, "CMB is named before the universe seat");
+  assert.notEqual(
+    sceneHierarchyId(firstCmb),
+    sceneHierarchyId(CONFIG.universeViewDistance),
+    "the warm observable-universe view is distinct from the CMB approach",
+  );
 });
 
 test("trail marks: one display-offset Solar System particle, no lingering Sun badge", async () => {
