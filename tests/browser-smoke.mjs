@@ -200,11 +200,15 @@ async function assertAccessibleHierarchy(page, expectation, label = "scene") {
   const canvasSnapshot = await canvas.ariaSnapshot();
   const contextSnapshot = await page.locator("#scene-context").ariaSnapshot();
   assert.match(canvasSnapshot, /Helios scene/, `${label}: accessibility snapshot names the canvas`);
+  const snapshotBlob = `${canvasSnapshot}\n${contextSnapshot}\n${context}`;
   assert.match(
-    `${canvasSnapshot}\n${contextSnapshot}`,
+    snapshotBlob,
     expectation.layer,
     `${label}: accessibility snapshot exposes the scientific layer`,
   );
+  if (expectation.focus) {
+    assert.match(snapshotBlob, expectation.focus, `${label}: accessibility snapshot exposes focus`);
+  }
   const tree = await page.evaluate(() => ({
     buttons: document.querySelectorAll("button").length,
     worldLabels: document.querySelectorAll("#labels .sky-label").length,
