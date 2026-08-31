@@ -313,6 +313,16 @@ for (const rootName of ["sun.pivot", "asteroidBelt", "kuiperBelt", "orbitLines"]
 }
 assert.match(html, /id="card-close"/);
 assert.match(html, /aria-label="Close"/);
+assert.match(html, /id="viewport"[^>]*aria-label="Helios scene"/);
+assert.match(html, /aria-describedby="scene-context"/);
+assert.doesNotMatch(html, /Interactive solar system/);
+assert.match(html, /id="scene-context"[^>]*class="visually-hidden"/);
+assert.match(html, /id="status-live"[^>]*aria-live="polite"/);
+assert.match(app, /sceneHierarchyId/);
+assert.match(app, /paintSceneSemantics/);
+assert.match(app, /ui\.sceneContext/);
+assert.doesNotMatch(app, /lastScaleLayer/);
+assert.match(galaxy, /export function sceneHierarchyId/);
 assert.doesNotMatch(html, /user-scalable=no|maximum-scale=1/);
 assert.match(css, /#card-close/);
 assert.match(configSource, /pinchZoomDistance/);

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { bodyOrientationBasis, findBody } from "../js/bodies.js";
 import { CONFIG, wheelZoomMultiplier } from "../js/config.js";
-import { cmbSkyOpacity } from "../js/galaxy.js";
+import { cmbSkyOpacity, sceneHierarchyId } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -167,6 +167,55 @@ async function assertBodyLabelsHidden(page) {
   assert.equal(labels.painted, 0, "hidden body labels have no rendered boxes");
   assert.equal(labels.displayed, 0, "author CSS preserves hidden display semantics");
   assert.equal(labels.hitTested, 0, "hidden body labels cannot intercept pointer input");
+}
+
+const LOOK_SEMANTICS = {
+  sky: { layer: /Earth sky/, focus: /Focused on Earth/ },
+  solarfar: { layer: /Solar system/, focus: /Focused on the Sun/ },
+  tailsky: { layer: /Milky Way/ },
+  growing: { layer: /Milky Way/ },
+  disk: { layer: /Milky Way/ },
+  milkyway: { layer: /Milky Way/ },
+  mwedge: { layer: /Milky Way/ },
+  mwbelow: { layer: /Milky Way/ },
+  neighborhood: { layer: /Nearby galaxies/ },
+  localgroup: { layer: /Local Group/ },
+  virgo: { layer: /Virgo Cluster/ },
+  preweb: { layer: /Laniakea Supercluster/ },
+  web: { layer: /2MRS galaxy distribution/ },
+  universe: { layer: /Schematic observable universe/ },
+};
+
+async function assertAccessibleHierarchy(page, expectation, label = "scene") {
+  const canvas = page.locator("#viewport");
+  assert.equal(await canvas.getAttribute("aria-label"), "Helios scene", `${label}: canvas name stays scale-neutral`);
+  assert.equal(await canvas.getAttribute("aria-describedby"), "scene-context");
+  const context = await page.locator("#scene-context").textContent();
+  assert.ok(context.length > 0, `${label}: persistent scene context is populated`);
+  assert.doesNotMatch(context, /Interactive solar system/, `${label}: no stale solar-system canvas copy`);
+  assert.match(context, expectation.layer, `${label}: layer text ${context}`);
+  if (expectation.focus) {
+    assert.match(context, expectation.focus, `${label}: focus text ${context}`);
+  }
+  const canvasSnapshot = await canvas.ariaSnapshot();
+  const contextSnapshot = await page.locator("#scene-context").ariaSnapshot();
+  assert.match(canvasSnapshot, /Helios scene/, `${label}: accessibility snapshot names the canvas`);
+  assert.match(
+    `${canvasSnapshot}\n${contextSnapshot}`,
+    expectation.layer,
+    `${label}: accessibility snapshot exposes the scientific layer`,
+  );
+  const tree = await page.evaluate(() => ({
+    buttons: document.querySelectorAll("button").length,
+    worldLabels: document.querySelectorAll("#labels .sky-label").length,
+    visibleWorldLabels: [...document.querySelectorAll("#labels .sky-label")]
+      .filter((node) => !node.hidden).length,
+    liveRole: document.querySelector("#status-live")?.getAttribute("role"),
+  }));
+  assert.equal(tree.worldLabels, 20, `${label}: a11y tree keeps the v1 body set, not catalog galaxies`);
+  assert.ok(tree.buttons < 40, `${label}: accessibility tree is not dumped with rendered objects`);
+  assert.equal(tree.liveRole, "status");
+  return { context, canvasSnapshot, contextSnapshot };
 }
 
 async function saveScreenshot(page, name, options = {}) {
@@ -637,6 +686,7 @@ async function auditScaleTransitions(context) {
   if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
     await page.locator("#play-button").click();
   }
+  await assertAccessibleHierarchy(page, LOOK_SEMANTICS.virgo, "scale-transition-virgo");
   await page.waitForTimeout(350);
 
   const virgoToWeb = [0.15, 0.35, 0.55, 0.75, 0.92].map((fraction) => ({
@@ -669,6 +719,22 @@ async function auditScaleTransitions(context) {
         .filter({ hasText: "Schematic observable universe" }).waitFor();
     }
     await assertBodyLabelsHidden(page);
+    const hierarchyId = sceneHierarchyId(stop.distance);
+    const hierarchyText = {
+      virgo: /Virgo Cluster/,
+      virgoSupercluster: /Local \(Virgo\) Supercluster/,
+      laniakea: /Laniakea Supercluster/,
+      web: /2MRS galaxy distribution/,
+      cmb: /Cosmic microwave background/,
+      universe: /Schematic observable universe/,
+    }[hierarchyId];
+    if (hierarchyText) {
+      assert.match(
+        await page.locator("#scene-context").textContent(),
+        hierarchyText,
+        `${stop.name} scene context is ${hierarchyId}`,
+      );
+    }
     const frame = await auditedCanvasFrame(
       page,
       stop.name,
@@ -881,6 +947,7 @@ async function auditResponsiveCosmology(context, prefix) {
     const errors = captureErrors(page);
     await openReady(page, `?look=${look}`);
     await assertRenderedCanvas(page);
+    await assertAccessibleHierarchy(page, LOOK_SEMANTICS[look], `${prefix}-${look}`);
     assert.equal(await page.getAttribute("html", "data-galaxy-ready"), "1");
     await assertBodyLabelsHidden(page);
     await page.waitForTimeout(250);
@@ -958,11 +1025,32 @@ async function assertZoomStress(page) {
   await moveToCanvas();
   await canvas.focus();
 
+  await page.evaluate(() => {
+    window.__heliosAnnouncements = [];
+    const live = document.querySelector("#status-live");
+    const observer = new MutationObserver(() => {
+      window.__heliosAnnouncements.push(live.textContent);
+    });
+    observer.observe(live, { childList: true, characterData: true, subtree: true });
+    window.__heliosAnnouncementObserver = observer;
+  });
+
   // Enter the measured-volume layer through the real wheel path so its
   // transition announcement remains observable after boot's ready message.
   await wheelFourSteps(1_000);
   await page.locator("#status-live").filter({ hasText: "2MRS galaxy distribution" }).waitFor();
   await assertBodyLabelsHidden(page);
+  await assertAccessibleHierarchy(
+    page,
+    { layer: /2MRS galaxy distribution/ },
+    "desktop-wheel-web",
+  );
+  const outbound = await page.evaluate(() => window.__heliosAnnouncements.slice());
+  assert.ok(outbound.length <= 12, `outbound wheel announcements stay bounded (${outbound.length})`);
+  assert.ok(
+    outbound.some((message) => message.includes("2MRS galaxy distribution")),
+    `outbound wheel announces 2MRS: ${JSON.stringify(outbound)}`,
+  );
   await wheelFourSteps(-1_000);
   await page.locator("#sky-control:not([hidden])").waitFor();
 
@@ -994,6 +1082,14 @@ async function assertZoomStress(page) {
     await wheelFourSteps(-1_000);
     await page.locator("#sky-control:not([hidden])").waitFor();
   }
+  const allAnnouncements = await page.evaluate(() => {
+    window.__heliosAnnouncementObserver.disconnect();
+    return window.__heliosAnnouncements;
+  });
+  assert.ok(
+    allAnnouncements.length <= 48,
+    `rapid wheel cycles stay bounded (${allAnnouncements.length} live-region writes)`,
+  );
 }
 
 async function saveTritonScreenshot(page, name) {
@@ -1268,6 +1364,11 @@ try {
   await openReady(desktopPage);
   assert.equal(await desktopPage.getAttribute("html", "data-galaxy-ready"), null);
   await assertRenderedCanvas(desktopPage);
+  await assertAccessibleHierarchy(
+    desktopPage,
+    { layer: /Solar system/, focus: /Focused on the Sun/ },
+    "desktop-boot",
+  );
 
   await desktopPage.locator("#play-button").click();
   const canvas = desktopPage.locator("#viewport");
@@ -1291,6 +1392,11 @@ try {
   await earth.click();
   await desktopPage.locator("#body-card:not([hidden])").waitFor();
   assert.equal(await desktopPage.locator("#card-name").textContent(), "Earth");
+  await assertAccessibleHierarchy(
+    desktopPage,
+    { layer: /Solar system/, focus: /Focused on Earth/ },
+    "desktop-earth-focus",
+  );
   await desktopPage.locator("#reset-button").click();
   assert.equal(await desktopPage.locator("#body-card").getAttribute("hidden"), "");
 
@@ -1333,6 +1439,7 @@ try {
     const directErrors = captureErrors(directPage);
     await openReady(directPage, `?look=${look}`);
     await assertRenderedCanvas(directPage);
+    await assertAccessibleHierarchy(directPage, LOOK_SEMANTICS[look], `desktop-${look}`);
     if (look === "sky") {
       assert.equal(await directPage.locator("#card-name").textContent(), "Earth");
     } else if (look === "solarfar") {
@@ -1364,6 +1471,11 @@ try {
   const touchErrors = captureErrors(touchPage);
   await openReady(touchPage);
   await assertRenderedCanvas(touchPage);
+  await assertAccessibleHierarchy(
+    touchPage,
+    { layer: /Solar system/, focus: /Focused on the Sun/ },
+    "touch-portrait-boot",
+  );
   const credits = touchPage.locator("#version-label");
   await credits.waitFor();
   assert.equal(await credits.getAttribute("href"), "./PROVENANCE.md");
@@ -1411,6 +1523,11 @@ try {
   assert.equal(await touchSky.inputValue(), "all", "touch preference survives sky unavailability");
   assert.equal(await touchSky.isEnabled(), false, "unavailable touch control is disabled");
   await assertBodyLabelsHidden(touchPage);
+  await assertAccessibleHierarchy(
+    touchPage,
+    { layer: /Milky Way|Nearby galaxies|Local Group|Virgo Cluster|Laniakea Supercluster|2MRS galaxy distribution/ },
+    "touch-portrait-pinch",
+  );
 
   for (const viewport of [
     { width: 320, height: 568 },
