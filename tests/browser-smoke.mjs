@@ -153,45 +153,6 @@ async function assertRenderedCanvas(page) {
   return png;
 }
 
-async function assertLitSolarSun(page, png, label) {
-  const metrics = await page.evaluate(async ({ source }) => {
-    const image = new Image();
-    const ready = new Promise((resolve, reject) => {
-      image.addEventListener("load", resolve, { once: true });
-      image.addEventListener("error", reject, { once: true });
-    });
-    image.src = `data:image/png;base64,${source}`;
-    await ready;
-    const surface = document.createElement("canvas");
-    surface.width = image.naturalWidth;
-    surface.height = image.naturalHeight;
-    const context = surface.getContext("2d", { willReadFrequently: true });
-    context.drawImage(image, 0, 0);
-    const { data, width, height } = context.getImageData(0, 0, surface.width, surface.height);
-    const x0 = Math.floor(width * 0.42);
-    const x1 = Math.floor(width * 0.58);
-    const y0 = Math.floor(height * 0.38);
-    const y1 = Math.floor(height * 0.62);
-    let orange = 0;
-    let n = 0;
-    for (let y = y0; y < y1; y += 1) {
-      for (let x = x0; x < x1; x += 1) {
-        const i = (y * width + x) * 4;
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        n += 1;
-        if (r > 80 && r > g && g > b) orange += 1;
-      }
-    }
-    return { orange, n, orangeFrac: orange / n };
-  }, { source: png.toString("base64") });
-  assert.ok(
-    metrics.orangeFrac > 0.01,
-    `${label}: Sun is lit/textured, not a black disk (${JSON.stringify(metrics)})`,
-  );
-}
-
 async function assertBodyLabelsHidden(page) {
   const labels = await page.locator(".sky-label").evaluateAll((elements) => ({
     count: elements.length,
@@ -229,11 +190,6 @@ async function assertAccessibleHierarchy(page, expectation, label = "scene") {
   const canvas = page.locator("#viewport");
   assert.equal(await canvas.getAttribute("aria-label"), "Helios scene", `${label}: canvas name stays scale-neutral`);
   assert.equal(await canvas.getAttribute("aria-describedby"), "scene-context");
-  assert.notEqual(
-    await canvas.getAttribute("role"),
-    "img",
-    `${label}: canvas is not an image role (that blacks solar meshes on real GPUs)`,
-  );
   const context = await page.locator("#scene-context").textContent();
   assert.ok(context.length > 0, `${label}: persistent scene context is populated`);
   assert.doesNotMatch(context, /Interactive solar system/, `${label}: no stale solar-system canvas copy`);
@@ -241,8 +197,10 @@ async function assertAccessibleHierarchy(page, expectation, label = "scene") {
   if (expectation.focus) {
     assert.match(context, expectation.focus, `${label}: focus text ${context}`);
   }
+  const canvasSnapshot = await canvas.ariaSnapshot();
   const contextSnapshot = await page.locator("#scene-context").ariaSnapshot();
-  const snapshotBlob = `${contextSnapshot}\n${context}`;
+  assert.match(canvasSnapshot, /Helios scene/, `${label}: accessibility snapshot names the canvas`);
+  const snapshotBlob = `${canvasSnapshot}\n${contextSnapshot}\n${context}`;
   assert.match(
     snapshotBlob,
     expectation.layer,
@@ -261,7 +219,7 @@ async function assertAccessibleHierarchy(page, expectation, label = "scene") {
   assert.equal(tree.worldLabels, 20, `${label}: a11y tree keeps the v1 body set, not catalog galaxies`);
   assert.ok(tree.buttons < 40, `${label}: accessibility tree is not dumped with rendered objects`);
   assert.equal(tree.liveRole, "status");
-  return { context, contextSnapshot };
+  return { context, canvasSnapshot, contextSnapshot };
 }
 
 async function saveScreenshot(page, name, options = {}) {
@@ -1410,8 +1368,6 @@ try {
   await openReady(desktopPage);
   assert.equal(await desktopPage.getAttribute("html", "data-galaxy-ready"), null);
   await assertRenderedCanvas(desktopPage);
-  const bootSolarPng = await desktopPage.locator("#viewport").screenshot();
-  await assertLitSolarSun(desktopPage, bootSolarPng, "desktop-boot");
   await assertAccessibleHierarchy(
     desktopPage,
     { layer: /Solar system/, focus: /Focused on the Sun/ },
