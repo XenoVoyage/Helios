@@ -4,6 +4,7 @@ import {
   describeDaysPerSecond,
   formatDaysPerSecond,
   isShortcutTargetInteractive,
+  minimumFocusDistance,
   pinchZoomDistance,
   wheelZoomMultiplier,
 } from "./config.js";
@@ -648,7 +649,8 @@ function pointerGap() {
 }
 
 function zoomTo(distance) {
-  const next = clamp(distance, CONFIG.minDistance, CONFIG.maxDistance);
+  const focusedRadius = nodes.get(state.focusedId)?.radius ?? 0;
+  const next = clamp(distance, minimumFocusDistance(focusedRadius), CONFIG.maxDistance);
   if (next > CONFIG.solarMaxDistance) ensureGalaxyLayer();
   if (next > CONFIG.solarMaxDistance && state.distance <= CONFIG.solarMaxDistance) {
     state.focusedId = "sun";
@@ -689,7 +691,7 @@ function selectBody(id) {
   state.focusedId = id;
   state.selectedId = id;
   const ideal = Math.max(node.radius * 7.5, 5.5);
-  state.distance = clamp(ideal, CONFIG.minDistance, CONFIG.maxDistance);
+  state.distance = clamp(ideal, minimumFocusDistance(node.radius), CONFIG.maxDistance);
   paintConstellations();
   bindSelectionHelpers();
   paintCard();

@@ -6,10 +6,17 @@ import { fileURLToPath } from "node:url";
 import {
   CONFIG,
   isShortcutTargetInteractive,
+  minimumFocusDistance,
   pinchZoomDistance,
   wheelZoomMultiplier,
 } from "../js/config.js";
-import { visualOrbit } from "../js/bodies.js";
+import {
+  BODIES,
+  findBody,
+  visualBodyRadius,
+  visualOrbit,
+  visualRingRadius,
+} from "../js/bodies.js";
 import {
   CELESTIAL_RENDER_THRESHOLD,
   ANDROMEDA,
@@ -1145,6 +1152,67 @@ test("far-galaxy sky remains camera-attached and tolerates an absent layer", () 
   assert.equal(copiedPosition, camera.position);
   assert.doesNotThrow(() => attachFarGalaxySky(undefined, camera));
   assert.doesNotThrow(() => attachFarGalaxySky(group, undefined));
+});
+
+test("focused zoom stops outside every rendered globe", () => {
+  const raisedFloors = [];
+  assert.equal(BODIES.length, 20, "geometry assertions cover the complete focus set");
+  for (const body of BODIES) {
+    const radius = visualBodyRadius(body);
+    const floor = minimumFocusDistance(radius);
+    const near = extraZoomCameraNear(floor);
+    assert.ok(
+      floor - radius > near,
+      `${body.id} keeps its rendered surface beyond the near plane`,
+    );
+    assert.ok(Math.max(radius * 7.5, 5.5) >= floor, `${body.id} selection seat stays unchanged`);
+    if (floor > CONFIG.minDistance) raisedFloors.push(body.id);
+    else assert.equal(floor, CONFIG.minDistance, `${body.id} retains the global close floor`);
+  }
+  assert.equal(CONFIG.minDistance, 2.4);
+  assert.equal(CONFIG.focusSurfaceClearance, 1.05);
+  assert.deepEqual(raisedFloors, ["sun", "jupiter", "saturn"]);
+
+  const sunFloor = minimumFocusDistance(visualBodyRadius(findBody("sun")));
+  const jupiterFloor = minimumFocusDistance(visualBodyRadius(findBody("jupiter")));
+  const saturnFloor = minimumFocusDistance(visualBodyRadius(findBody("saturn")));
+  assert.equal(sunFloor, visualBodyRadius(findBody("sun")) * CONFIG.focusSurfaceClearance);
+  assert.equal(jupiterFloor, visualBodyRadius(findBody("jupiter")) * CONFIG.focusSurfaceClearance);
+  assert.equal(saturnFloor, visualBodyRadius(findBody("saturn")) * CONFIG.focusSurfaceClearance);
+  assert.ok(sunFloor > CONFIG.minDistance);
+  assert.ok(jupiterFloor > CONFIG.minDistance);
+  assert.ok(saturnFloor > CONFIG.minDistance);
+  assert.equal(minimumFocusDistance(Number.NaN), CONFIG.minDistance);
+  assert.equal(minimumFocusDistance(-1), CONFIG.minDistance);
+
+  const saturn = findBody("saturn");
+  const ringInner = visualRingRadius(saturn, saturn.ringInnerKm);
+  assert.ok(saturnFloor < ringInner, "Saturn's minimum camera remains inside the ring hole");
+
+  let distance = 80;
+  for (let step = 0; step < 48; step += 1) {
+    const next = Math.min(
+      CONFIG.maxDistance,
+      Math.max(sunFloor, distance * wheelZoomMultiplier(-800)),
+    );
+    assert.ok(next <= distance + 1e-12, "inbound wheel saturates monotonically");
+    assert.ok(next >= sunFloor);
+    distance = next;
+  }
+  assert.equal(distance, sunFloor);
+  const reverse = Math.min(
+    CONFIG.maxDistance,
+    Math.max(sunFloor, distance * wheelZoomMultiplier(800)),
+  );
+  assert.ok(reverse > sunFloor, "outbound wheel leaves the floor immediately");
+  assert.ok(
+    pinchZoomDistance(100, 40, 800) < sunFloor,
+    "an extreme pinch-out reaches the focused floor",
+  );
+  assert.ok(
+    pinchZoomDistance(100, 40, 39) > sunFloor,
+    "reversing the same pinch leaves the floor immediately",
+  );
 });
 
 test("pinch direction, wheel direction, and shortcut targets follow native behavior", () => {
