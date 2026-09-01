@@ -294,6 +294,9 @@ assert.doesNotMatch(app, /milkyWayTailSeat/, "no tail seat: orbit input stays li
 assert.doesNotMatch(app, /extraZoomTailMix/);
 assert.match(app, /pinchZoomDistance/);
 assert.match(app, /wheelZoomMultiplier/);
+assert.match(app, /minimumFocusDistance/);
+assert.match(configSource, /minimumFocusDistance/);
+assert.match(configSource, /focusSurfaceClearance/);
 assert.match(app, /clearSelection/);
 assert.match(app, /function showUnsupported/);
 assert.match(app, /ui\.version\.hidden = true/);
