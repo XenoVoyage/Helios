@@ -1149,25 +1149,71 @@ async function assertMinimumZoomViews(context, prefix, bodyIds, touch = false) {
       await page.mouse.wheel(0, -10_000);
     }
 
-    await page.waitForFunction((id) => {
-      const label = document.querySelector(`[data-body-id="${id}"]`);
-      if (!label || label.hidden) return false;
-      const match = label.style.transform.match(
-        /translate\(([-\d.eE]+)px,\s*([-\d.eE]+)px\)$/,
-      );
-      if (!match) return false;
-      return Math.abs(Number(match[1]) - innerWidth / 2) <= innerWidth * 0.12
-        && Math.abs(Number(match[2]) - innerHeight / 2) <= innerHeight * 0.12;
-    }, bodyId, { timeout: 20_000 });
+    await waitForCenteredBodyLabel(page, bodyId);
     await page.waitForTimeout(250);
     assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
     await assertRenderedCanvas(page);
+    await assertFocusedGlobeSurfaceVisible(page, `${prefix} ${bodyId}`);
     await saveScreenshot(page, `${prefix}-minimum-zoom-${bodyId}`);
   }
 
   if (cdp) await cdp.detach();
   assert.deepEqual(errors, [], `${prefix} minimum zoom has no browser errors`);
   await page.close();
+}
+
+async function waitForCenteredBodyLabel(page, bodyId) {
+  await page.waitForFunction((id) => {
+    const label = document.querySelector(`[data-body-id="${id}"]`);
+    if (!label || label.hidden) return false;
+    const match = label.style.transform.match(
+      /translate\(([-\d.eE]+)px,\s*([-\d.eE]+)px\)$/,
+    );
+    if (!match) return false;
+    return Math.abs(Number(match[1]) - innerWidth / 2) <= innerWidth * 0.12
+      && Math.abs(Number(match[2]) - innerHeight / 2) <= innerHeight * 0.12;
+  }, bodyId, { timeout: 20_000 });
+}
+
+async function assertFocusedGlobeSurfaceVisible(page, label) {
+  const png = await page.locator("#viewport").screenshot();
+  const metrics = await page.evaluate(async (source) => {
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", reject, { once: true });
+    });
+    image.src = `data:image/png;base64,${source}`;
+    await ready;
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const context = surface.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+    const x = Math.floor(surface.width * 0.4);
+    const y = Math.floor(surface.height * 0.4);
+    const width = Math.max(1, Math.floor(surface.width * 0.2));
+    const height = Math.max(1, Math.floor(surface.height * 0.2));
+    const pixels = context.getImageData(x, y, width, height).data;
+    let luminance = 0;
+    let dark = 0;
+    let samples = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      const value = 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+      luminance += value;
+      if (value < 8) dark += 1;
+      samples += 1;
+    }
+    return { mean: luminance / samples, dark: dark / samples };
+  }, png.toString("base64"));
+  assert.ok(
+    metrics.mean > 40,
+    `${label} closest view shows globe surface (mean=${metrics.mean.toFixed(1)})`,
+  );
+  assert.ok(
+    metrics.dark < 0.05,
+    `${label} closest view is not an inside-sphere void (dark=${metrics.dark.toFixed(3)})`,
+  );
 }
 
 async function assertSaturnRingReferenceViews(context) {
@@ -1182,10 +1228,12 @@ async function assertSaturnRingReferenceViews(context) {
   await page.evaluate(() => document.querySelector('[data-body-id="saturn"]').click());
   await page.locator("#body-card:not([hidden])").waitFor();
   assert.equal(await page.locator("#card-name").textContent(), "Saturn");
+  await waitForCenteredBodyLabel(page, "saturn");
   await page.waitForTimeout(250);
   await assertRenderedCanvas(page);
   await saveScreenshot(page, "desktop-saturn-rings-front");
   await orbitCameraHalfTurn(page);
+  await waitForCenteredBodyLabel(page, "saturn");
   await page.waitForTimeout(250);
   await assertRenderedCanvas(page);
   await saveScreenshot(page, "desktop-saturn-rings-back");
