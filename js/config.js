@@ -139,8 +139,9 @@ export function parentGlobeClearance(renderedRadius, near) {
 }
 
 /**
- * Slide a point out of a parent globe along the parent radial.
- * Already-clear points are unchanged so non-colliding seats stay put.
+ * Keep a moon-focused camera outside its parent globe.
+ * Clear seats stay put. Interior seats slide around the parent on the
+ * moon-orbit sphere so zoom cannot flip through the center.
  */
 export function resolveParentGlobePoint(
   cameraX,
@@ -156,30 +157,81 @@ export function resolveParentGlobePoint(
   fallbackZ = 0,
 ) {
   const safe = parentGlobeClearance(renderedRadius, near);
-  let dx = cameraX - parentX;
-  let dy = cameraY - parentY;
-  let dz = cameraZ - parentZ;
-  let dist = Math.hypot(dx, dy, dz);
+  const dx = cameraX - parentX;
+  const dy = cameraY - parentY;
+  const dz = cameraZ - parentZ;
+  const dist = Math.hypot(dx, dy, dz);
   if (!(safe > 0) || dist >= safe) {
     return { x: cameraX, y: cameraY, z: cameraZ };
   }
-  if (dist < 1e-12) {
-    dx = fallbackX;
-    dy = fallbackY;
-    dz = fallbackZ;
-    dist = Math.hypot(dx, dy, dz);
-    if (dist < 1e-12) {
-      dx = 1;
-      dy = 0;
-      dz = 0;
-      dist = 1;
+
+  const sep = Math.hypot(fallbackX, fallbackY, fallbackZ);
+  const ox = cameraX - parentX - fallbackX;
+  const oy = cameraY - parentY - fallbackY;
+  const oz = cameraZ - parentZ - fallbackZ;
+  const radius = Math.hypot(ox, oy, oz);
+  if (sep > 1e-12 && radius > 1e-12) {
+    const dhatX = fallbackX / sep;
+    const dhatY = fallbackY / sep;
+    const dhatZ = fallbackZ / sep;
+    const ux = ox / radius;
+    const uy = oy / radius;
+    const uz = oz / radius;
+    const uDot = ux * dhatX + uy * dhatY + uz * dhatZ;
+    const k = (safe * safe - sep * sep - radius * radius) / (2 * radius * sep);
+    if (k <= 1) {
+      const need = k < -1 ? -1 : k;
+      if (uDot < need) {
+        let px = ux - dhatX * uDot;
+        let py = uy - dhatY * uDot;
+        let pz = uz - dhatZ * uDot;
+        let plen = Math.hypot(px, py, pz);
+        if (plen < 1e-12) {
+          if (Math.abs(dhatY) < 0.9) {
+            px = dhatZ;
+            py = 0;
+            pz = -dhatX;
+          } else {
+            px = 0;
+            py = dhatZ;
+            pz = -dhatY;
+          }
+          plen = Math.hypot(px, py, pz);
+        }
+        px /= plen;
+        py /= plen;
+        pz /= plen;
+        const slide = Math.sqrt(Math.max(0, 1 - need * need));
+        return {
+          x: parentX + fallbackX + (dhatX * need + px * slide) * radius,
+          y: parentY + fallbackY + (dhatY * need + py * slide) * radius,
+          z: parentZ + fallbackZ + (dhatZ * need + pz * slide) * radius,
+        };
+      }
     }
   }
-  const scale = safe / dist;
+
+  let rx = dx;
+  let ry = dy;
+  let rz = dz;
+  let rd = dist;
+  if (rd < 1e-12) {
+    rx = fallbackX;
+    ry = fallbackY;
+    rz = fallbackZ;
+    rd = sep;
+    if (rd < 1e-12) {
+      rx = 1;
+      ry = 0;
+      rz = 0;
+      rd = 1;
+    }
+  }
+  const scale = safe / rd;
   return {
-    x: parentX + dx * scale,
-    y: parentY + dy * scale,
-    z: parentZ + dz * scale,
+    x: parentX + rx * scale,
+    y: parentY + ry * scale,
+    z: parentZ + rz * scale,
   };
 }
 

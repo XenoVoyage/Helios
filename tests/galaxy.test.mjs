@@ -1277,7 +1277,9 @@ test("focused moon cameras stay outside the parent globe", () => {
   assert.equal(pushed.y, 0);
   assert.equal(pushed.z, 0);
   const fromCenter = resolveParentGlobePoint(0, 0, 0, 0, 0, 0, 1, 0.05, 4, 0, 0);
-  assert.ok(Math.abs(fromCenter.x - 1.05) < 1e-12);
+  assert.ok(Math.abs(Math.hypot(fromCenter.x, fromCenter.y, fromCenter.z) - 1.05) < 1e-12);
+  assert.ok(fromCenter.x > 0, "a centered seat slides toward the moon, not through the parent");
+  assert.ok(Math.hypot(fromCenter.y, fromCenter.z) > 0.5, "a centered seat leaves the parent axis");
 
   const colliding = [];
   const azimuths = 48;
@@ -1434,6 +1436,111 @@ test("focused moon cameras stay outside the parent globe", () => {
     const span = Math.hypot(before.x - after.x, before.y - after.y, before.z - after.z);
     assert.ok(span < 2 * safe + distance * step * 4, `${sample.id} orbit stays continuous`);
   }
+});
+
+test("parent-facing moon zoom stays continuous through the parent globe", () => {
+  const moons = BODIES.filter((body) => body.kind === "moon");
+  assert.equal(moons.length, 9, "zoom sweep covers every catalog moon");
+  const crossed = [];
+  for (const moon of moons) {
+    const parent = findBody(moon.parent);
+    const parentRadius = visualBodyRadius(parent);
+    const moonRadius = visualBodyRadius(moon);
+    const moonOffset = moonWorldOffset(moon, 0);
+    const sep = Math.hypot(moonOffset.x, moonOffset.y, moonOffset.z);
+    const towardParentAzimuth = Math.atan2(-moonOffset.x, -moonOffset.z);
+    const towardParentElevation = Math.asin(Math.max(-1, Math.min(1, -moonOffset.y / sep)));
+    assert.ok(towardParentElevation >= -1.2 && towardParentElevation <= 1.2);
+    const nearAtMin = extraZoomCameraNear(CONFIG.minDistance);
+    const safeAtMin = parentGlobeClearance(parentRadius, nearAtMin);
+    const samples = [];
+    for (let distance = CONFIG.minDistance; distance <= CONFIG.solarMaxDistance; distance *= 1.01) {
+      samples.push(distance);
+    }
+    for (const radius of [sep - safeAtMin, sep, sep + safeAtMin, Math.hypot(sep, safeAtMin)]) {
+      if (radius >= CONFIG.minDistance && radius <= CONFIG.solarMaxDistance) samples.push(radius);
+    }
+    samples.push(CONFIG.solarMaxDistance);
+    samples.sort((a, b) => a - b);
+
+    let previous = null;
+    let desiredInside = false;
+    for (const distance of samples) {
+      const near = extraZoomCameraNear(distance);
+      const safe = parentGlobeClearance(parentRadius, near);
+      const radius = extraZoomCameraDistance(distance);
+      const resolved = parentClearCamera(
+        moonOffset,
+        distance,
+        towardParentAzimuth,
+        towardParentElevation,
+        parentRadius,
+        near,
+      );
+      const resolvedDist = Math.hypot(resolved.x, resolved.y, resolved.z);
+      const moonDist = Math.hypot(
+        resolved.x - moonOffset.x,
+        resolved.y - moonOffset.y,
+        resolved.z - moonOffset.z,
+      );
+      assert.ok(resolvedDist + 1e-9 >= safe, `${moon.id} zoom stays outside ${parent.id}`);
+      assert.ok(
+        moonDist > moonRadius + near,
+        `${moon.id} zoom stays outside the focused globe`,
+      );
+      const orbit = focusOrbitOffset(distance, towardParentAzimuth, towardParentElevation);
+      const desiredDist = Math.hypot(
+        moonOffset.x + orbit.x,
+        moonOffset.y + orbit.y,
+        moonOffset.z + orbit.z,
+      );
+      if (desiredDist < safe) {
+        desiredInside = true;
+        assert.ok(
+          Math.abs(moonDist - radius) < 1e-9,
+          `${moon.id} interior seat keeps its moon-orbit radius`,
+        );
+        if (desiredDist < 1e-9) {
+          const side = resolved.x * moonOffset.x + resolved.y * moonOffset.y + resolved.z * moonOffset.z;
+          assert.ok(side > 0, `${moon.id} crossing stays on the moon side of ${parent.id}`);
+        }
+      }
+      const reversed = parentClearCamera(
+        moonOffset,
+        distance,
+        towardParentAzimuth,
+        towardParentElevation,
+        parentRadius,
+        near,
+      );
+      assert.deepEqual(reversed, resolved, `${moon.id} zoom response is stateless`);
+      if (previous) {
+        const move = Math.hypot(
+          resolved.x - previous.x,
+          resolved.y - previous.y,
+          resolved.z - previous.z,
+        );
+        const radiusDelta = Math.abs(radius - previous.radius);
+        if (desiredDist < safe * 2 || previous.desiredDist < safe * 2) {
+          assert.ok(
+            move < safe * 1.2,
+            `${moon.id} zoom does not flip through ${parent.id} (move=${move})`,
+          );
+        }
+        assert.ok(
+          move < radiusDelta * 20 + 0.05,
+          `${moon.id} zoom stays continuous (move=${move}, dr=${radiusDelta})`,
+        );
+      }
+      previous = { ...resolved, radius, desiredDist };
+    }
+    if (desiredInside) crossed.push(moon.id);
+    else assert.equal(moon.id, "phobos", "only Phobos never enters Mars on this alignment");
+  }
+  assert.deepEqual(
+    crossed,
+    ["moon", "deimos", "io", "europa", "ganymede", "callisto", "titan", "triton"],
+  );
 });
 
 test("pinch direction, wheel direction, and shortcut targets follow native behavior", () => {
