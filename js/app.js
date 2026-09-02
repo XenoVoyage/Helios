@@ -6,6 +6,7 @@ import {
   isShortcutTargetInteractive,
   minimumFocusDistance,
   pinchZoomDistance,
+  resolveParentGlobePoint,
   wheelZoomMultiplier,
 } from "./config.js";
 import { advanceSimulationDays, elapsedSeconds, simulationDateLabel } from "./time.js";
@@ -78,6 +79,7 @@ const world = new THREE.Vector3();
 const projected = new THREE.Vector3();
 const focusPoint = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
+const parentPoint = new THREE.Vector3();
 const constellationViewport = { width: 0, height: 0, topInset: 64, bottomInset: 72 };
 
 const state = {
@@ -958,14 +960,35 @@ function placeCamera(blend) {
   // Orbit input stays live at every zoom; extra-zoom never seats or
   // locks the camera, it only remaps the orbit radius.
   const radius = extraZoomCameraDistance(state.distance);
+  const near = extraZoomCameraNear(state.distance);
   const cosE = Math.cos(state.elevation);
   camera.position.set(
     focusPoint.x + radius * cosE * Math.sin(state.azimuth),
     focusPoint.y + radius * Math.sin(state.elevation),
     focusPoint.z + radius * cosE * Math.cos(state.azimuth),
   );
+  if (focused.body.kind === "moon" && focused.body.parent) {
+    const parentNode = nodes.get(focused.body.parent);
+    if (parentNode) {
+      parentNode.mesh.getWorldPosition(parentPoint);
+      const resolved = resolveParentGlobePoint(
+        camera.position.x,
+        camera.position.y,
+        camera.position.z,
+        parentPoint.x,
+        parentPoint.y,
+        parentPoint.z,
+        parentNode.radius,
+        near,
+        focusPoint.x - parentPoint.x,
+        focusPoint.y - parentPoint.y,
+        focusPoint.z - parentPoint.z,
+      );
+      camera.position.set(resolved.x, resolved.y, resolved.z);
+    }
+  }
   camera.lookAt(focusPoint);
-  camera.near = extraZoomCameraNear(state.distance);
+  camera.near = near;
   camera.far = CONFIG.cameraFar;
   camera.updateProjectionMatrix();
   attachSkyToCamera(celestial, camera);
