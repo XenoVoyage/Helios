@@ -173,6 +173,15 @@ test("bright-star subset identity is the HYG v3.1-v3.4 Hipparcos selection", asy
   assert.equal(STAR_NAMES[10826], "Mira");
   assert.deepEqual(STARS.find((row) => row[0] === 55203), [55203, 169.54677, 31.52878, 4.33, 0.59]);
   assert.deepEqual(STARS.find((row) => row[0] === 7751), [7751, 24.94753, -56.1964, 5.76, 0.88]);
+  // HYG v3.1–v3.4 have one duplicate HIP. First 7751 row is unnamed and
+  // supplies Helios numbers; the later named row is p Eridani at different
+  // ra/dec/mag/ci and is not used for coordinates.
+  const hyg7751FirstRaHours = 1.663169;
+  const hyg7751Later = { raHours: 1.663003, dec: -56.19462, mag: 5.8, ci: 0.86, proper: "p Eridani" };
+  assert.equal(Number((hyg7751FirstRaHours * 15).toFixed(5)), 24.94753);
+  assert.notEqual(Number((hyg7751Later.raHours * 15).toFixed(5)), 24.94753);
+  assert.notEqual(hyg7751Later.mag, 5.76);
+  assert.equal(hyg7751Later.proper, STAR_NAMES[7751]);
   assert.deepEqual(STARS.find((row) => row[0] === 10826), [10826, 34.83663, -2.97764, 6.47, 0.97]);
   assert.deepEqual(STARS.find((row) => row[0] === 32349), [32349, 101.28722, -16.71612, -1.44, 0.01]);
   assert.deepEqual(STARS.find((row) => row[0] === 26220), [26220, 83.81592, -5.38732, 4.98, 0.3]);

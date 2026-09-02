@@ -1308,6 +1308,43 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     await saveScreenshot(page, `${prefix}-moon-parent-close-${bodyId}`);
 
     if (cdp) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [
+          { id: 0, x: 10, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+          { id: 1, x: 380, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+        ],
+      });
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          { id: 0, x: 175, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+          { id: 1, x: 215, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+        ],
+      });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    } else {
+      const point = await canvas.evaluate((viewport) => {
+        const box = viewport.getBoundingClientRect();
+        const clientX = box.left + box.width * 0.5;
+        const clientY = box.top + box.height * 0.7;
+        return { x: clientX, y: clientY };
+      });
+      await page.mouse.move(point.x, point.y);
+      await page.mouse.wheel(0, 800);
+      await page.mouse.wheel(0, 800);
+    }
+    await waitForCenteredBodyLabel(page, bodyId);
+    await page.waitForTimeout(250);
+    assert.equal(
+      await page.locator("#card-name").textContent(),
+      findBody(bodyId).name,
+      `${prefix} ${bodyId} zoom through the parent keeps the moon focused`,
+    );
+    await assertRenderedCanvas(page);
+    await saveScreenshot(page, `${prefix}-moon-parent-cross-${bodyId}`);
+
+    if (cdp) {
       await touchOrbitBy(cdp, viewport, -towardParent.dx, -towardParent.dy);
     } else {
       await orbitCameraDrag(page, -towardParent.dxFrac, -towardParent.dyFrac);

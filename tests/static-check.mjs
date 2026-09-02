@@ -66,6 +66,11 @@ assert.match(provenance, /hyg_v31\.csv\.gz/);
 assert.match(provenance, /hyg_v34\.csv\.gz/);
 assert.match(provenance, /CC BY-SA 2\.5/);
 assert.match(provenance, /HIP 55203/);
+assert.match(provenance, /HIP 7751/);
+assert.match(provenance, /p Eridani/);
+assert.match(provenance, /first non-empty `proper`/);
+assert.match(provenance, /2026-09-02/);
+assert.doesNotMatch(provenance, /identical, field-for-field, to a first-HIP/);
 assert.match(provenance, /600ce39342ee1452da5fdd9d9b7b8f51a1e1b5f7892abeace61f7c56f4382fce/);
 assert.match(provenance, /b39c1d6dbab932bb624965241b6a13995886370781b9a398d0f1fb36d098b325/);
 assert.match(provenance, /193dee77cbfef7179bf1eb6188cfdede9fd0d622760e4bc658ab775c1965c375/);
@@ -77,6 +82,8 @@ assert.doesNotMatch(
   /exact upstream HYG release and its matching license version were not retained/,
 );
 assert.match(readme, /v3\.1–v3\.4 \(CC BY-SA 2\.5\)/);
+assert.match(readme, /Ceres's stored heliocentric state is one Horizons/);
+assert.doesNotMatch(readme, /not JPL Horizons or a perturbation ephemeris/);
 assert.equal(
   await sha256("js/sky-catalog.js"),
   "e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34",
