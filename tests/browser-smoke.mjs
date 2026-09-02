@@ -6,7 +6,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { bodyOrientationBasis, findBody } from "../js/bodies.js";
+import { bodyOrientationBasis, findBody, keplerOffset, moonOrbitAttachment } from "../js/bodies.js";
 import { CONFIG, wheelZoomMultiplier } from "../js/config.js";
 import { cmbSkyOpacity, sceneHierarchyId } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
@@ -995,6 +995,61 @@ async function orbitCameraDrag(page, dxFrac, dyFrac = 0) {
   await page.mouse.up();
 }
 
+function moonWorldOffset(body, days) {
+  const parent = findBody(body.parent);
+  const offset = keplerOffset(body, parent, days);
+  if (moonOrbitAttachment(body) !== "parent-equatorial") return offset;
+  const basis = bodyOrientationBasis(parent);
+  return {
+    x: offset.x * basis.xAxis.x + offset.y * basis.zAxis.x - offset.z * basis.yAxis.x,
+    y: offset.x * basis.xAxis.y + offset.y * basis.zAxis.y - offset.z * basis.yAxis.y,
+    z: offset.x * basis.xAxis.z + offset.y * basis.zAxis.z - offset.z * basis.yAxis.z,
+  };
+}
+
+function parentFacingPointerDelta(bodyId, width, height) {
+  const moon = findBody(bodyId);
+  const offset = moonWorldOffset(moon, 0);
+  const sep = Math.hypot(offset.x, offset.y, offset.z) || 1;
+  const targetAzimuth = Math.atan2(-offset.x, -offset.z);
+  const targetElevation = Math.max(
+    -1.2,
+    Math.min(1.2, Math.asin(Math.max(-1, Math.min(1, -offset.y / sep)))),
+  );
+  let deltaAzimuth = targetAzimuth - CONFIG.cameraAzimuth;
+  while (deltaAzimuth > Math.PI) deltaAzimuth -= Math.PI * 2;
+  while (deltaAzimuth < -Math.PI) deltaAzimuth += Math.PI * 2;
+  const deltaElevation = targetElevation - CONFIG.cameraElevation;
+  return {
+    dx: -deltaAzimuth / 0.005,
+    dy: deltaElevation / 0.004,
+    dxFrac: (-deltaAzimuth / 0.005) / width,
+    dyFrac: (deltaElevation / 0.004) / height,
+  };
+}
+
+async function touchOrbitBy(cdp, viewport, dx, dy) {
+  let remainX = dx;
+  let remainY = dy;
+  for (let step = 0; step < 4 && (Math.abs(remainX) > 2 || Math.abs(remainY) > 2); step += 1) {
+    const startX = viewport.width * 0.5;
+    const startY = viewport.height * 0.55;
+    const endX = Math.max(24, Math.min(viewport.width - 24, startX + remainX));
+    const endY = Math.max(24, Math.min(viewport.height - 24, startY + remainY));
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ id: 0, x: startX, y: startY, radiusX: 4, radiusY: 4, force: 1 }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ id: 0, x: endX, y: endY, radiusX: 4, radiusY: 4, force: 1 }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    remainX -= endX - startX;
+    remainY -= endY - startY;
+  }
+}
+
 async function assertBodySelectionSweep(page) {
   const bodies = await page.locator(".sky-label").evaluateAll((labels) => (
     labels.map((label) => ({ id: label.dataset.bodyId, name: label.textContent }))
@@ -1238,18 +1293,13 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     await assertRenderedCanvas(page);
     await saveScreenshot(page, `${prefix}-moon-parent-min-${bodyId}`);
 
+    const viewport = page.viewportSize();
+    assert.ok(viewport);
+    const towardParent = parentFacingPointerDelta(bodyId, viewport.width, viewport.height);
     if (cdp) {
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchStart",
-        touchPoints: [{ id: 0, x: 220, y: 420, radiusX: 4, radiusY: 4, force: 1 }],
-      });
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchMove",
-        touchPoints: [{ id: 0, x: 40, y: 360, radiusX: 4, radiusY: 4, force: 1 }],
-      });
-      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await touchOrbitBy(cdp, viewport, towardParent.dx, towardParent.dy);
     } else {
-      await orbitCameraDrag(page, 0.42, -0.12);
+      await orbitCameraDrag(page, towardParent.dxFrac, towardParent.dyFrac);
     }
     await waitForCenteredBodyLabel(page, bodyId);
     await page.waitForTimeout(250);
@@ -1258,17 +1308,9 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     await saveScreenshot(page, `${prefix}-moon-parent-close-${bodyId}`);
 
     if (cdp) {
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchStart",
-        touchPoints: [{ id: 0, x: 40, y: 360, radiusX: 4, radiusY: 4, force: 1 }],
-      });
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchMove",
-        touchPoints: [{ id: 0, x: 220, y: 420, radiusX: 4, radiusY: 4, force: 1 }],
-      });
-      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await touchOrbitBy(cdp, viewport, -towardParent.dx, -towardParent.dy);
     } else {
-      await orbitCameraDrag(page, -0.42, 0.12);
+      await orbitCameraDrag(page, -towardParent.dxFrac, -towardParent.dyFrac);
     }
     await waitForCenteredBodyLabel(page, bodyId);
     await page.waitForTimeout(250);
