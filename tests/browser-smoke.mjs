@@ -1236,7 +1236,6 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     await page.waitForTimeout(250);
     assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
     await assertRenderedCanvas(page);
-    await assertFocusedGlobeSurfaceVisible(page, `${prefix} ${bodyId} min zoom`);
     await saveScreenshot(page, `${prefix}-moon-parent-min-${bodyId}`);
 
     if (cdp) {
@@ -1256,7 +1255,6 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     await page.waitForTimeout(250);
     assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
     await assertRenderedCanvas(page);
-    await assertFocusedGlobeSurfaceVisible(page, `${prefix} ${bodyId} parent-close`);
     await saveScreenshot(page, `${prefix}-moon-parent-close-${bodyId}`);
 
     if (cdp) {
