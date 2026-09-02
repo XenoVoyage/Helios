@@ -130,6 +130,59 @@ export function minimumFocusDistance(renderedRadius) {
   return Math.max(CONFIG.minDistance, radius * CONFIG.focusSurfaceClearance);
 }
 
+/** Camera / near-plane standoff from a parent globe center. */
+export function parentGlobeClearance(renderedRadius, near) {
+  const radius = Number.isFinite(renderedRadius) && renderedRadius > 0 ? renderedRadius : 0;
+  if (!(radius > 0)) return 0;
+  const clip = Number.isFinite(near) && near > 0 ? near : 0;
+  return Math.max(radius * CONFIG.focusSurfaceClearance, radius + clip);
+}
+
+/**
+ * Slide a point out of a parent globe along the parent radial.
+ * Already-clear points are unchanged so non-colliding seats stay put.
+ */
+export function resolveParentGlobePoint(
+  cameraX,
+  cameraY,
+  cameraZ,
+  parentX,
+  parentY,
+  parentZ,
+  renderedRadius,
+  near,
+  fallbackX = 0,
+  fallbackY = 0,
+  fallbackZ = 0,
+) {
+  const safe = parentGlobeClearance(renderedRadius, near);
+  let dx = cameraX - parentX;
+  let dy = cameraY - parentY;
+  let dz = cameraZ - parentZ;
+  let dist = Math.hypot(dx, dy, dz);
+  if (!(safe > 0) || dist >= safe) {
+    return { x: cameraX, y: cameraY, z: cameraZ };
+  }
+  if (dist < 1e-12) {
+    dx = fallbackX;
+    dy = fallbackY;
+    dz = fallbackZ;
+    dist = Math.hypot(dx, dy, dz);
+    if (dist < 1e-12) {
+      dx = 1;
+      dy = 0;
+      dz = 0;
+      dist = 1;
+    }
+  }
+  const scale = safe / dist;
+  return {
+    x: parentX + dx * scale,
+    y: parentY + dy * scale,
+    z: parentZ + dz * scale,
+  };
+}
+
 /** Global canvas shortcuts must yield to native and editable controls. */
 export function isShortcutTargetInteractive(target) {
   for (let node = target; node; node = node.parentElement) {
