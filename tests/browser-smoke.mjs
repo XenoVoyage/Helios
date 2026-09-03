@@ -1608,8 +1608,7 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
 async function assertCenteredCanvasPicksMoon(page, bodyId, prefix, cdp) {
   const canvas = page.locator("#viewport");
   await saveScreenshot(page, `${prefix}-moon-parent-pick-target-${bodyId}`);
-  if (cdp) await page.locator("#card-close").tap();
-  else await page.locator("#card-close").click();
+  await page.locator("#card-close").click();
   await page.locator("#body-card[hidden]").waitFor({ state: "attached" });
   await page.locator(".sky-label").evaluateAll((labels) => {
     for (const label of labels) label.style.pointerEvents = "none";
