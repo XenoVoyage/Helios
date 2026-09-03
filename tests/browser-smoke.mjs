@@ -2144,8 +2144,23 @@ try {
     assert.equal(await touchSky.isEnabled(), true);
     assert.equal(await touchSky.inputValue(), "all");
   }
-  await touchPage.locator("#reset-button").click();
   await touchPage.setViewportSize({ width: 390, height: 844 });
+  for (const bodyId of ["moon", "phobos", "io", "triton"]) {
+    await touchPage.locator("#reset-button").click();
+    await touchPage.evaluate(
+      (id) => document.querySelector(`[data-body-id="${id}"]`).click(),
+      bodyId,
+    );
+    await touchPage.locator("#body-card:not([hidden])").waitFor();
+    await touchPage.locator("#card-close").tap();
+    await touchPage.locator("#body-card[hidden]").waitFor({ state: "attached" });
+    assert.equal(
+      await touchPage.locator("#status-live").textContent(),
+      "Selection cleared",
+      `touch ${bodyId} close control clears the selection`,
+    );
+  }
+  await touchPage.locator("#reset-button").click();
 
   const cdp = await touch.newCDPSession(touchPage);
   // Pinch on empty canvas. Ceres's corrected J2000 seat places its 44px
