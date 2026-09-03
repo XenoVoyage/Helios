@@ -83,6 +83,7 @@ assert.doesNotMatch(
 );
 assert.match(readme, /v3\.1–v3\.4 \(CC BY-SA 2\.5\)/);
 assert.match(readme, /Ceres's stored heliocentric state is one Horizons/);
+assert.match(readme, /Neptune's six orbital elements are one JPL Approximate Positions Table 1/);
 assert.doesNotMatch(readme, /not JPL Horizons or a perturbation ephemeris/);
 assert.equal(
   await sha256("js/sky-catalog.js"),
@@ -240,6 +241,12 @@ assert.match(provenance, /2451545\.0 TDB/);
 assert.match(provenance, /geometric osculating-element snapshot/);
 assert.match(provenance, /Ecliptic of J2000\.0/);
 assert.match(provenance, /469\.7 km/);
+assert.match(provenance, /JPL Approximate Positions of the Planets/);
+assert.match(provenance, /Table 1/);
+assert.match(provenance, /1800 AD – 2050 AD/);
+assert.match(provenance, /mean ecliptic and equinox of J2000/);
+assert.match(provenance, /Derived `ω = ϖ − Ω/);
+assert.match(provenance, /Derived `M = L − ϖ/);
 assert.match(provenance, /No inpainting or synthetic terrain/);
 assert.match(provenance, /doi:10\.1093\/mnras\/staa1946/);
 assert.match(galaxyCatalog, /doi:10\.1093\/mnras\/staa1946/);
