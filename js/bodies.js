@@ -58,7 +58,9 @@ function orientationJ2000(bodyId, spinDirection, primeMeridianDeg = null) {
  * Physical numbers follow the NASA planetary fact sheet where it and JPL
  * agree, and JPL SSD satellite phys_par (IAU WGCCRE 2015) for moons.
  * Heliocentric Kepler angles stay J2000 approximations, not Horizons,
- * except Ceres, which uses one geometric Horizons J2000 snapshot.
+ * except Ceres, which uses one geometric Horizons J2000 snapshot, and
+ * Neptune, whose six orbital elements come from one JPL Approximate
+ * Positions Table 1 J2000 snapshot at T=0.
  */
 export const BODIES = Object.freeze([
   {
@@ -409,13 +411,17 @@ export const BODIES = Object.freeze([
     name: "Neptune",
     kind: "planet",
     parent: "sun",
+    // JPL Approximate Positions Table 1 at T=0 (JD 2451545.0), mean
+    // ecliptic and equinox of J2000, valid 1800 AD – 2050 AD. ω and M
+    // are derived from L and the longitude of perihelion. Period,
+    // radius, spin, pole, and texture stay on their existing owners.
     radiusKm: 24622,
-    orbitAu: 30.068963,
-    eccentricity: 0.0086,
-    inclinationDeg: 1.77,
-    nodeDeg: 131.784,
-    periDeg: 273.219,
-    meanAnomalyDeg: 256.228,
+    orbitAu: 30.06992276,
+    eccentricity: 0.00859048,
+    inclinationDeg: 1.77004347,
+    nodeDeg: 131.78422574,
+    periDeg: 273.18053653,
+    meanAnomalyDeg: 259.91520804,
     orbitDays: 60189,
     rotationHours: 16.11,
     tiltDeg: 28.32,

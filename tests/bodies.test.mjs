@@ -330,6 +330,40 @@ test("physical catalog matches published NASA / JPL figures", () => {
   assert.equal(findBody("titan").nodeDeg, 78.6);
 });
 
+test("Neptune J2000 row matches one JPL Approximate Positions Table 1 snapshot", () => {
+  const neptune = findBody("neptune");
+  assert.equal(neptune.radiusKm, 24622);
+  assert.equal(neptune.orbitAu, 30.06992276);
+  assert.equal(neptune.eccentricity, 0.00859048);
+  assert.equal(neptune.inclinationDeg, 1.77004347);
+  assert.equal(neptune.nodeDeg, 131.78422574);
+  assert.equal(neptune.periDeg, 273.18053653);
+  assert.equal(neptune.meanAnomalyDeg, 259.91520804);
+  assert.equal(neptune.orbitDays, 60189);
+  assert.equal(neptune.rotationHours, 16.11);
+  assert.equal(neptune.tiltDeg, 28.32);
+  assert.deepEqual(neptune.orientationJ2000, {
+    poleRaDeg: 299.3337389588,
+    poleDecDeg: 42.9503590218,
+    primeMeridianDeg: null,
+    spinDirection: 1,
+  });
+  assert.equal(neptune.texture, "assets/textures/neptune.jpg");
+
+  const at = keplerOffset(neptune, findBody("sun"), 0);
+  const compressed = visualOrbit(neptune.orbitAu);
+  const scale = neptune.orbitAu / compressed;
+  const sceneAu = { x: at.x * scale, y: at.y * scale, z: at.z * scale };
+  const expected = {
+    x: 16.804762811918863,
+    y: 0.12740321008663313,
+    z: 24.99270986023979,
+  };
+  assert.ok(Math.abs(sceneAu.x - expected.x) < 1e-12, `Neptune X ${sceneAu.x}`);
+  assert.ok(Math.abs(sceneAu.y - expected.y) < 1e-12, `Neptune Y ${sceneAu.y}`);
+  assert.ok(Math.abs(sceneAu.z - expected.z) < 1e-12, `Neptune Z ${sceneAu.z}`);
+});
+
 test("Ceres J2000 row matches one JPL Horizons geometric snapshot", () => {
   const ceres = findBody("ceres");
   assert.equal(ceres.radiusKm, 469.7);
