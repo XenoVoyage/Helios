@@ -709,14 +709,15 @@ function clearSelection() {
 }
 
 function resetView() {
-  state.focusedId = "sun";
+  state.focusedId = earthSkyLook ? "earth" : "sun";
   state.selectedId = null;
   state.azimuth = CONFIG.cameraAzimuth;
   state.elevation = CONFIG.cameraElevation;
   state.distance = CONFIG.cameraDistance;
   paintCard();
   paintConstellations();
-  say("Returned to the overview");
+  paintSceneSemantics();
+  say(earthSkyLook ? "Returned to the Earth sky" : "Returned to the overview");
 }
 
 function changeConstellationMode() {
@@ -864,13 +865,19 @@ const SCENE_HIERARCHY_ANNOUNCEMENTS = {
   web: "2MRS galaxy distribution. Approximate redshift distances, with no invented links.",
   cmb: "Cosmic microwave background. The illustrative CMB shell is becoming visible.",
   universe: "Schematic observable universe. The illustrative CMB shell shares the outer display radius.",
-  earthsky: "Earth sky. Focused on Earth.",
+  earthsky: "Earth sky.",
 };
 
 function sceneSemantics() {
   if (earthSkyLook) {
     const announcement = SCENE_HIERARCHY_ANNOUNCEMENTS.earthsky;
-    return { id: "earthsky", description: announcement, announcement };
+    const focused = findBody(state.focusedId);
+    const focusName = focused.id === "sun" ? "the Sun" : focused.name;
+    return {
+      id: "earthsky",
+      description: `${announcement} Focused on ${focusName}.`,
+      announcement,
+    };
   }
   const id = sceneHierarchyId(state.distance);
   const announcement = SCENE_HIERARCHY_ANNOUNCEMENTS[id];
