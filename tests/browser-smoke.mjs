@@ -1224,12 +1224,137 @@ async function assertMinimumZoomViews(context, prefix, bodyIds, touch = false) {
     assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
     await assertRenderedCanvas(page);
     await assertFocusedGlobeSurfaceVisible(page, `${prefix} ${bodyId}`);
+    await assertPersistentChromeContrast(page, `${prefix} ${bodyId}`);
     await saveScreenshot(page, `${prefix}-minimum-zoom-${bodyId}`);
   }
 
   if (cdp) await cdp.detach();
   assert.deepEqual(errors, [], `${prefix} minimum zoom has no browser errors`);
   await page.close();
+}
+
+async function assertPersistentChromeContrast(page, label) {
+  const audit = await page.evaluate(() => {
+    const parseColor = (value) => {
+      const channels = value.match(/[\d.]+/g)?.map(Number);
+      if (!channels || channels.length < 3) throw new Error(`Unsupported CSS color: ${value}`);
+      return {
+        red: channels[0],
+        green: channels[1],
+        blue: channels[2],
+        alpha: channels[3] ?? 1,
+      };
+    };
+    const composite = (foreground, background) => ({
+      red: foreground.red * foreground.alpha + background.red * (1 - foreground.alpha),
+      green: foreground.green * foreground.alpha
+        + background.green * (1 - foreground.alpha),
+      blue: foreground.blue * foreground.alpha + background.blue * (1 - foreground.alpha),
+      alpha: 1,
+    });
+    const linearChannel = (value) => {
+      const channel = value / 255;
+      return channel <= 0.04045
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4;
+    };
+    const luminance = (color) => (
+      0.2126 * linearChannel(color.red)
+      + 0.7152 * linearChannel(color.green)
+      + 0.0722 * linearChannel(color.blue)
+    );
+    const contrast = (first, second) => {
+      const firstLuminance = luminance(first);
+      const secondLuminance = luminance(second);
+      return (Math.max(firstLuminance, secondLuminance) + 0.05)
+        / (Math.min(firstLuminance, secondLuminance) + 0.05);
+    };
+    const whiteCanvas = { red: 255, green: 255, blue: 255, alpha: 1 };
+    const effectiveBackground = (element, root) => {
+      const ancestry = [];
+      let current = element;
+      while (current && current !== root) {
+        ancestry.push(current);
+        current = current.parentElement;
+      }
+      if (current !== root) throw new Error("Contrast root is not an ancestor");
+      ancestry.push(root);
+      return ancestry.reverse().reduce((background, item) => (
+        composite(parseColor(getComputedStyle(item).backgroundColor), background)
+      ), whiteCanvas);
+    };
+    const textPairs = [
+      [".topbar .eyebrow", ".topbar"],
+      [".topbar h1", ".topbar"],
+      [".topbar .clock", ".topbar"],
+      ["#play-button", "#dock"],
+      ["#slower-button", "#dock"],
+      ["#faster-button", "#dock"],
+      ["#speed-readout", "#dock"],
+      ["#sky-mode", "#dock"],
+      ["#reset-button", "#dock"],
+      ["#version-label", "#version-label"],
+    ].map(([selector, rootSelector]) => {
+      const element = document.querySelector(selector);
+      const root = document.querySelector(rootSelector);
+      if (!element || !root) throw new Error(`Missing contrast target: ${selector}`);
+      const background = effectiveBackground(element, root);
+      const foreground = composite(parseColor(getComputedStyle(element).color), background);
+      return { selector, ratio: contrast(foreground, background) };
+    });
+    const controlBoundaries = [...document.querySelectorAll("#dock button, #sky-mode")]
+      .map((element) => {
+        const root = document.querySelector("#dock");
+        const outer = effectiveBackground(root, root);
+        const inner = effectiveBackground(element, root);
+        // CSS backgrounds paint beneath translucent borders by default, so
+        // evaluate the real border color against both adjacent surfaces.
+        const border = composite(parseColor(getComputedStyle(element).borderTopColor), inner);
+        return {
+          selector: `#${element.id}`,
+          ratio: Math.min(contrast(border, outer), contrast(border, inner)),
+        };
+      });
+    const dockBackground = effectiveBackground(
+      document.querySelector("#dock"),
+      document.querySelector("#dock"),
+    );
+    const sliderAccent = parseColor(getComputedStyle(
+      document.querySelector("#speed-slider"),
+    ).accentColor);
+    const backing = [".topbar", "#dock", "#version-label"].map((selector) => {
+      const shadow = getComputedStyle(document.querySelector(selector)).boxShadow;
+      const lengths = shadow.match(/-?[\d.]+px/g)?.map(Number.parseFloat) ?? [];
+      return { selector, spread: lengths[3] ?? 0 };
+    });
+    return {
+      textPairs,
+      controls: [
+        ...controlBoundaries,
+        { selector: "#speed-slider accent", ratio: contrast(sliderAccent, dockBackground) },
+      ],
+      backing,
+    };
+  });
+
+  for (const result of audit.textPairs) {
+    assert.ok(
+      result.ratio >= 4.5,
+      `${label} ${result.selector} worst-case text contrast is ${result.ratio}`,
+    );
+  }
+  for (const result of audit.controls) {
+    assert.ok(
+      result.ratio >= 3,
+      `${label} ${result.selector} worst-case control contrast is ${result.ratio}`,
+    );
+  }
+  for (const result of audit.backing) {
+    assert.ok(
+      result.spread >= 6,
+      `${label} ${result.selector} backing covers its ${result.spread}px focus-ring halo`,
+    );
+  }
 }
 
 async function assertMoonParentCloseViews(context, prefix, touch = false) {

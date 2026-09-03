@@ -8,6 +8,7 @@
   --magenta: #ff57d8;
   --ink: #f3f8fb;
   --ink-dim: #a1b1bd;
+  --chrome-backing: rgba(2, 5, 12, 0.82);
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   --dock-clearance: 44px;
   font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif;
@@ -109,12 +110,13 @@ body {
 }
 
 .topbar,
-.dock {
+.dock,
+.version {
   position: absolute;
   z-index: 3;
-  background: none;
+  background: var(--chrome-backing);
   border: none;
-  box-shadow: none;
+  box-shadow: 0 0 0 6px var(--chrome-backing);
 }
 
 .card,
@@ -250,7 +252,7 @@ button {
 select {
   min-width: 168px;
   padding: 0 10px;
-  border: 1px solid rgba(255, 87, 216, 0.62);
+  border: 1px solid rgba(255, 87, 216, 0.82);
   border-radius: 12px;
   color: #f7d6ff;
   background: rgba(255, 87, 216, 0.12);
