@@ -1768,7 +1768,7 @@ async function captureTriton(page) {
   await page.locator("#card-close").click();
   await orbitCameraHalfTurn(page);
   await page.mouse.wheel(0, -1_200);
-  await page.waitForTimeout(500);
+  await waitForMoonCameraSettled(page);
   await saveTritonScreenshot(page, "triton-rotation-a");
   await page.locator("#speed-slider").evaluate((slider) => {
     const minimum = 1 / 24;
@@ -1781,7 +1781,7 @@ async function captureTriton(page) {
   await page.locator("#play-button").click();
   await page.waitForTimeout(500);
   await page.locator("#play-button").click();
-  await page.waitForTimeout(1_500);
+  await waitForMoonCameraSettled(page);
   await saveTritonScreenshot(page, "triton-rotation-b");
 }
 
