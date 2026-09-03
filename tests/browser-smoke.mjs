@@ -548,6 +548,52 @@ async function dispatchWheelZoom(page, from, to) {
   }, deltaY);
 }
 
+async function waitForTwoAnimationFrames(page) {
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
+    requestAnimationFrame(resolve);
+  })));
+}
+
+async function unobstructedCanvasPoint(page, candidates, spread = 0) {
+  return page.locator("#viewport").evaluate((viewport, options) => {
+    const box = viewport.getBoundingClientRect();
+    for (const [x, y] of options.candidates) {
+      const clientX = box.left + box.width * x;
+      const clientY = box.top + box.height * y;
+      if ([-options.spread, 0, options.spread].every((offset) => (
+        document.elementFromPoint(clientX + offset, clientY) === viewport
+      ))) {
+        return { x: clientX, y: clientY };
+      }
+    }
+    return null;
+  }, { candidates, spread });
+}
+
+async function touchPinch(page, cdp, startGap, endGap, label) {
+  const spread = Math.max(startGap, endGap) / 2;
+  const center = await unobstructedCanvasPoint(
+    page,
+    [[0.5, 0.38], [0.5, 0.52], [0.5, 0.28], [0.5, 0.65]],
+    spread,
+  );
+  assert.ok(center, `${label} has an unobstructed pinch corridor`);
+  const touches = (gap) => [
+    { id: 0, x: center.x - gap / 2, y: center.y, radiusX: 4, radiusY: 4, force: 1 },
+    { id: 1, x: center.x + gap / 2, y: center.y, radiusX: 4, radiusY: 4, force: 1 },
+  ];
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: touches(startGap),
+  });
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: touches(endGap),
+  });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await waitForTwoAnimationFrames(page);
+}
+
 async function assertConstellationModesAndFreshLabels(page) {
   const select = page.locator("#sky-mode");
   const control = page.locator("#sky-control");
@@ -1028,8 +1074,12 @@ async function orbitCameraHalfTurn(page) {
 async function orbitCameraDrag(page, dxFrac, dyFrac = 0) {
   const box = await page.locator("#viewport").boundingBox();
   assert.ok(box);
-  const startX = box.x + box.width * 0.28;
-  const startY = box.y + box.height * 0.55;
+  const start = await unobstructedCanvasPoint(page, [
+    [0.28, 0.45], [0.72, 0.45], [0.5, 0.35], [0.15, 0.35], [0.85, 0.35],
+  ]);
+  assert.ok(start, "moon orbit drag has an unobstructed canvas start");
+  const startX = start.x;
+  const startY = start.y;
   await page.mouse.move(startX, startY);
   await page.mouse.down();
   await page.mouse.move(
@@ -1038,6 +1088,7 @@ async function orbitCameraDrag(page, dxFrac, dyFrac = 0) {
     { steps: 12 },
   );
   await page.mouse.up();
+  await waitForTwoAnimationFrames(page);
 }
 
 function moonWorldOffset(body, days) {
@@ -1045,10 +1096,13 @@ function moonWorldOffset(body, days) {
   const offset = keplerOffset(body, parent, days);
   if (moonOrbitAttachment(body) !== "parent-equatorial") return offset;
   const basis = bodyOrientationBasis(parent);
+  const xAxis = equatorialVectorToScene(basis.xAxis);
+  const yAxis = equatorialVectorToScene(basis.yAxis);
+  const zAxis = equatorialVectorToScene(basis.zAxis);
   return {
-    x: offset.x * basis.xAxis.x + offset.y * basis.zAxis.x - offset.z * basis.yAxis.x,
-    y: offset.x * basis.xAxis.y + offset.y * basis.zAxis.y - offset.z * basis.yAxis.y,
-    z: offset.x * basis.xAxis.z + offset.y * basis.zAxis.z - offset.z * basis.yAxis.z,
+    x: offset.x * xAxis.x + offset.y * zAxis.x - offset.z * yAxis.x,
+    y: offset.x * xAxis.y + offset.y * zAxis.y - offset.z * yAxis.y,
+    z: offset.x * xAxis.z + offset.y * zAxis.z - offset.z * yAxis.z,
   };
 }
 
@@ -1073,12 +1127,22 @@ function parentFacingPointerDelta(bodyId, width, height) {
   };
 }
 
-async function touchOrbitBy(cdp, viewport, dx, dy) {
+async function touchOrbitBy(page, cdp, viewport, dx, dy) {
   let remainX = dx;
   let remainY = dy;
-  for (let step = 0; step < 4 && (Math.abs(remainX) > 2 || Math.abs(remainY) > 2); step += 1) {
-    const startX = viewport.width * 0.5;
-    const startY = viewport.height * 0.55;
+  for (let step = 0; step < 12 && (Math.abs(remainX) > 2 || Math.abs(remainY) > 2); step += 1) {
+    const startXFraction = remainX < -2 ? 0.86 : remainX > 2 ? 0.14 : 0.5;
+    const startYFraction = remainY < -2 ? 0.78 : remainY > 2 ? 0.22 : 0.4;
+    const start = await unobstructedCanvasPoint(page, [
+      [startXFraction, startYFraction],
+      [startXFraction, 0.4],
+      [0.5, startYFraction],
+      [startXFraction, 0.55],
+      [0.5, 0.35],
+    ]);
+    assert.ok(start, "moon touch orbit has an unobstructed canvas start");
+    const startX = start.x;
+    const startY = start.y;
     const endX = Math.max(24, Math.min(viewport.width - 24, startX + remainX));
     const endY = Math.max(24, Math.min(viewport.height - 24, startY + remainY));
     await cdp.send("Input.dispatchTouchEvent", {
@@ -1093,6 +1157,11 @@ async function touchOrbitBy(cdp, viewport, dx, dy) {
     remainX -= endX - startX;
     remainY -= endY - startY;
   }
+  assert.ok(
+    Math.abs(remainX) <= 2 && Math.abs(remainY) <= 2,
+    `moon touch orbit applies its full delta (remaining ${remainX}, ${remainY})`,
+  );
+  await waitForTwoAnimationFrames(page);
 }
 
 async function assertBodySelectionSweep(page) {
@@ -1232,21 +1301,7 @@ async function assertMinimumZoomViews(context, prefix, bodyIds, touch = false) {
     await page.locator("#body-card:not([hidden])").waitFor();
 
     if (cdp) {
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchStart",
-        touchPoints: [
-          { id: 0, x: 175, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-          { id: 1, x: 215, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-        ],
-      });
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchMove",
-        touchPoints: [
-          { id: 0, x: 10, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-          { id: 1, x: 380, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-        ],
-      });
-      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await touchPinch(page, cdp, 40, 370, `${prefix} ${bodyId} minimum zoom`);
     } else {
       const point = await canvas.evaluate((viewport) => {
         const box = viewport.getBoundingClientRect();
@@ -1264,6 +1319,8 @@ async function assertMinimumZoomViews(context, prefix, bodyIds, touch = false) {
       await page.mouse.wheel(0, -10_000);
     }
 
+    await waitForTwoAnimationFrames(page);
+    await waitForMoonCameraSettled(page);
     await waitForCenteredBodyLabel(page, bodyId);
     await page.waitForTimeout(250);
     assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
@@ -1405,16 +1462,29 @@ async function assertPersistentChromeContrast(page, label) {
 async function assertMoonParentCloseViews(context, prefix, touch = false) {
   const page = await context.newPage();
   const errors = captureErrors(page);
+  await page.addInitScript(() => {
+    const observer = new MutationObserver(() => {
+      if (document.documentElement?.dataset.heliosReady !== "1") return;
+      const play = document.querySelector("#play-button");
+      if (play?.getAttribute("aria-pressed") === "true") play.click();
+      globalThis.__heliosPausedAtReady = play?.getAttribute("aria-pressed") === "false";
+      observer.disconnect();
+    });
+    observer.observe(document, {
+      attributes: true,
+      attributeFilter: ["data-helios-ready"],
+      subtree: true,
+    });
+  });
   await openReady(page);
   const play = page.locator("#play-button");
-  if (await play.getAttribute("aria-pressed") === "true") {
-    if (touch) await play.tap();
-    else await play.click();
-  }
+  assert.equal(await play.getAttribute("aria-pressed"), "false");
+  assert.equal(await page.evaluate(() => globalThis.__heliosPausedAtReady), true);
   const canvas = page.locator("#viewport");
   const cdp = touch ? await context.newCDPSession(page) : null;
-  const colliding = ["moon", "io", "triton"];
-  const bodies = touch ? colliding : [...colliding, "europa"];
+  const bodies = touch
+    ? ["moon", "phobos", "io", "triton"]
+    : ["moon", "phobos", "deimos", "io", "europa", "ganymede", "callisto", "titan", "triton"];
 
   for (const bodyId of bodies) {
     await page.locator("#reset-button").click();
@@ -1425,21 +1495,7 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     await page.locator("#body-card:not([hidden])").waitFor();
 
     if (cdp) {
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchStart",
-        touchPoints: [
-          { id: 0, x: 175, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-          { id: 1, x: 215, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-        ],
-      });
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchMove",
-        touchPoints: [
-          { id: 0, x: 10, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-          { id: 1, x: 380, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-        ],
-      });
-      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await touchPinch(page, cdp, 40, 370, `${prefix} ${bodyId} parent close zoom`);
     } else {
       const point = await canvas.evaluate((viewport) => {
         const box = viewport.getBoundingClientRect();
@@ -1457,6 +1513,15 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
       await page.mouse.wheel(0, -10_000);
     }
 
+    if (bodyId === "io") {
+      assert.equal(await canvas.getAttribute("aria-busy"), "true");
+      await waitForTwoAnimationFrames(page);
+      await saveScreenshot(page, `${prefix}-moon-parent-transition-${bodyId}-start`);
+      await page.waitForTimeout(350);
+      assert.equal(await canvas.getAttribute("aria-busy"), "true");
+      await saveScreenshot(page, `${prefix}-moon-parent-transition-${bodyId}-mid`);
+    }
+    await waitForMoonCameraSettled(page);
     await waitForCenteredBodyLabel(page, bodyId);
     await page.waitForTimeout(250);
     assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
@@ -1467,10 +1532,11 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     assert.ok(viewport);
     const towardParent = parentFacingPointerDelta(bodyId, viewport.width, viewport.height);
     if (cdp) {
-      await touchOrbitBy(cdp, viewport, towardParent.dx, towardParent.dy);
+      await touchOrbitBy(page, cdp, viewport, towardParent.dx, towardParent.dy);
     } else {
       await orbitCameraDrag(page, towardParent.dxFrac, towardParent.dyFrac);
     }
+    await waitForMoonCameraSettled(page);
     await waitForCenteredBodyLabel(page, bodyId);
     await page.waitForTimeout(250);
     assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
@@ -1478,21 +1544,7 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     await saveScreenshot(page, `${prefix}-moon-parent-close-${bodyId}`);
 
     if (cdp) {
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchStart",
-        touchPoints: [
-          { id: 0, x: 10, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-          { id: 1, x: 380, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-        ],
-      });
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchMove",
-        touchPoints: [
-          { id: 0, x: 175, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-          { id: 1, x: 215, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-        ],
-      });
-      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await touchPinch(page, cdp, 370, 40, `${prefix} ${bodyId} parent crossing zoom`);
     } else {
       const point = await canvas.evaluate((viewport) => {
         const box = viewport.getBoundingClientRect();
@@ -1504,6 +1556,13 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
       await page.mouse.wheel(0, 800);
       await page.mouse.wheel(0, 800);
     }
+    assert.equal(
+      await canvas.getAttribute("aria-busy"),
+      "true",
+      `${prefix} ${bodyId} parent-crossing zoom uses a continuous flight`,
+    );
+    await waitForTwoAnimationFrames(page);
+    await waitForMoonCameraSettled(page);
     await waitForCenteredBodyLabel(page, bodyId);
     await page.waitForTimeout(250);
     assert.equal(
@@ -1515,10 +1574,11 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     await saveScreenshot(page, `${prefix}-moon-parent-cross-${bodyId}`);
 
     if (cdp) {
-      await touchOrbitBy(cdp, viewport, -towardParent.dx, -towardParent.dy);
+      await touchOrbitBy(page, cdp, viewport, -towardParent.dx, -towardParent.dy);
     } else {
       await orbitCameraDrag(page, -towardParent.dxFrac, -towardParent.dyFrac);
     }
+    await waitForMoonCameraSettled(page);
     await waitForCenteredBodyLabel(page, bodyId);
     await page.waitForTimeout(250);
     assert.equal(
@@ -1528,6 +1588,16 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     );
     await assertRenderedCanvas(page);
     await saveScreenshot(page, `${prefix}-moon-parent-reverse-${bodyId}`);
+
+    if (cdp) {
+      await touchOrbitBy(page, cdp, viewport, towardParent.dx, towardParent.dy);
+    } else {
+      await orbitCameraDrag(page, towardParent.dxFrac, towardParent.dyFrac);
+    }
+    await waitForMoonCameraSettled(page);
+    await waitForCenteredBodyLabel(page, bodyId, 0.25);
+    await page.waitForTimeout(250);
+    await assertCenteredCanvasPicksMoon(page, bodyId, prefix, cdp);
   }
 
   if (cdp) await cdp.detach();
@@ -1535,17 +1605,66 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
   await page.close();
 }
 
-async function waitForCenteredBodyLabel(page, bodyId) {
-  await page.waitForFunction((id) => {
+async function assertCenteredCanvasPicksMoon(page, bodyId, prefix, cdp) {
+  const canvas = page.locator("#viewport");
+  await saveScreenshot(page, `${prefix}-moon-parent-pick-target-${bodyId}`);
+  if (cdp) await page.locator("#card-close").tap();
+  else await page.locator("#card-close").click();
+  await page.locator("#body-card[hidden]").waitFor({ state: "attached" });
+  await page.locator(".sky-label").evaluateAll((labels) => {
+    for (const label of labels) label.style.pointerEvents = "none";
+  });
+  const bounds = await canvas.boundingBox();
+  assert.ok(bounds);
+  const x = bounds.x + bounds.width / 2;
+  const y = bounds.y + bounds.height / 2;
+  if (cdp) {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ id: 0, x, y, radiusX: 4, radiusY: 4, force: 1 }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  } else {
+    await page.mouse.click(x, y);
+  }
+  await waitForTwoAnimationFrames(page);
+  await page.locator("#body-card:not([hidden])").waitFor();
+  assert.equal(
+    await page.locator("#card-name").textContent(),
+    findBody(bodyId).name,
+    `${prefix} ${bodyId} real center ${cdp ? "tap" : "click"} raycasts the focused moon`,
+  );
+  assert.equal(
+    await page.locator("#status-live").textContent(),
+    `Focused ${findBody(bodyId).name}`,
+  );
+  await waitForMoonCameraSettled(page);
+  await saveScreenshot(page, `${prefix}-moon-parent-picked-${bodyId}`);
+  await page.locator(".sky-label").evaluateAll((labels) => {
+    for (const label of labels) label.style.pointerEvents = "";
+  });
+}
+
+async function waitForCenteredBodyLabel(page, bodyId, tolerance = 2) {
+  await page.waitForFunction(({ id, tolerance }) => {
     const label = document.querySelector(`[data-body-id="${id}"]`);
     if (!label || label.hidden) return false;
     const match = label.style.transform.match(
       /translate\(([-\d.eE]+)px,\s*([-\d.eE]+)px\)$/,
     );
     if (!match) return false;
-    return Math.abs(Number(match[1]) - innerWidth / 2) <= innerWidth * 0.12
-      && Math.abs(Number(match[2]) - innerHeight / 2) <= innerHeight * 0.12;
-  }, bodyId, { timeout: 20_000 });
+    return Math.abs(Number(match[1]) - innerWidth / 2) <= tolerance
+      && Math.abs(Number(match[2]) - innerHeight / 2) <= tolerance;
+  }, { id: bodyId, tolerance }, { timeout: 20_000 });
+}
+
+async function waitForMoonCameraSettled(page) {
+  await page.waitForFunction(
+    () => document.querySelector("#viewport")?.getAttribute("aria-busy") === "false",
+    null,
+    { timeout: 20_000 },
+  );
+  await waitForTwoAnimationFrames(page);
 }
 
 async function assertFocusedGlobeSurfaceVisible(page, label) {
@@ -2030,24 +2149,7 @@ try {
   await touchPage.setViewportSize({ width: 390, height: 844 });
 
   const cdp = await touch.newCDPSession(touchPage);
-  // Pinch on empty canvas. Ceres's corrected J2000 seat places its 44px
-  // label over the former (70, 320) start, which selected Ceres instead
-  // of zooming.
-  await cdp.send("Input.dispatchTouchEvent", {
-    type: "touchStart",
-    touchPoints: [
-      { id: 0, x: 70, y: 240, radiusX: 4, radiusY: 4, force: 1 },
-      { id: 1, x: 320, y: 240, radiusX: 4, radiusY: 4, force: 1 },
-    ],
-  });
-  await cdp.send("Input.dispatchTouchEvent", {
-    type: "touchMove",
-    touchPoints: [
-      { id: 0, x: 165, y: 240, radiusX: 4, radiusY: 4, force: 1 },
-      { id: 1, x: 225, y: 240, radiusX: 4, radiusY: 4, force: 1 },
-    ],
-  });
-  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await touchPinch(touchPage, cdp, 250, 60, "touch portrait galaxy pinch");
   await touchPage.waitForFunction(
     () => document.documentElement.dataset.galaxyReady === "1"
       && document.querySelector("#sky-control").hidden,

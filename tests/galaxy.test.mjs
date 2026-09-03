@@ -7,8 +7,12 @@ import {
   CONFIG,
   isShortcutTargetInteractive,
   minimumFocusDistance,
+  moonFocusFlightPoint,
   parentGlobeClearance,
+  parentGlobeMaximumEndpointAngle,
+  parentGlobeMaximumViewAngle,
   pinchZoomDistance,
+  resetParentGlobeContinuity,
   resolveParentGlobePoint,
   wheelZoomMultiplier,
 } from "../js/config.js";
@@ -17,6 +21,7 @@ import {
   bodyOrientationBasis,
   findBody,
   keplerOffset,
+  keplerOrbitNormal,
   moonOrbitAttachment,
   visualBodyRadius,
   visualOrbit,
@@ -27,6 +32,7 @@ import {
   ANDROMEDA,
   equatorialToGalactic,
   equatorialToScene,
+  equatorialVectorToScene,
   galacticToScene,
 } from "../js/sky.js";
 import {
@@ -1225,10 +1231,28 @@ function moonWorldOffset(body, days) {
   const offset = keplerOffset(body, parent, days);
   if (moonOrbitAttachment(body) !== "parent-equatorial") return offset;
   const basis = bodyOrientationBasis(parent);
+  const xAxis = equatorialVectorToScene(basis.xAxis);
+  const yAxis = equatorialVectorToScene(basis.yAxis);
+  const zAxis = equatorialVectorToScene(basis.zAxis);
   return {
-    x: offset.x * basis.xAxis.x + offset.y * basis.zAxis.x - offset.z * basis.yAxis.x,
-    y: offset.x * basis.xAxis.y + offset.y * basis.zAxis.y - offset.z * basis.yAxis.y,
-    z: offset.x * basis.xAxis.z + offset.y * basis.zAxis.z - offset.z * basis.yAxis.z,
+    x: offset.x * xAxis.x + offset.y * zAxis.x - offset.z * yAxis.x,
+    y: offset.x * xAxis.y + offset.y * zAxis.y - offset.z * yAxis.y,
+    z: offset.x * xAxis.z + offset.y * zAxis.z - offset.z * yAxis.z,
+  };
+}
+
+function moonWorldOrbitNormal(body) {
+  const parent = findBody(body.parent);
+  const normal = keplerOrbitNormal(body, parent);
+  if (moonOrbitAttachment(body) !== "parent-equatorial") return normal;
+  const basis = bodyOrientationBasis(parent);
+  const xAxis = equatorialVectorToScene(basis.xAxis);
+  const yAxis = equatorialVectorToScene(basis.yAxis);
+  const zAxis = equatorialVectorToScene(basis.zAxis);
+  return {
+    x: normal.x * xAxis.x + normal.y * zAxis.x - normal.z * yAxis.x,
+    y: normal.x * xAxis.y + normal.y * zAxis.y - normal.z * yAxis.y,
+    z: normal.x * xAxis.z + normal.y * zAxis.z - normal.z * yAxis.z,
   };
 }
 
@@ -1242,7 +1266,15 @@ function focusOrbitOffset(distance, azimuth, elevation) {
   };
 }
 
-function parentClearCamera(moonOffset, distance, azimuth, elevation, parentRadius, near) {
+function parentClearCamera(
+  moonOffset,
+  distance,
+  azimuth,
+  elevation,
+  parentRadius,
+  near,
+  options = null,
+) {
   const orbit = focusOrbitOffset(distance, azimuth, elevation);
   return resolveParentGlobePoint(
     moonOffset.x + orbit.x,
@@ -1256,6 +1288,55 @@ function parentClearCamera(moonOffset, distance, azimuth, elevation, parentRadiu
     moonOffset.x,
     moonOffset.y,
     moonOffset.z,
+    options,
+  );
+}
+
+function moonSightlineSquaredMargin(camera, moonOffset, visibility, moonRadius = 0) {
+  const vx = camera.x - moonOffset.x;
+  const vy = camera.y - moonOffset.y;
+  const vz = camera.z - moonOffset.z;
+  const radius = Math.hypot(vx, vy, vz);
+  if (!(radius > moonRadius)) return -Infinity;
+  const ux = vx / radius;
+  const uy = vy / radius;
+  const uz = vz / radius;
+  const taper = 1 - (moonRadius / radius) ** 2;
+  const linear = moonOffset.x * ux + moonOffset.y * uy + moonOffset.z * uz
+    + (visibility + moonRadius) * moonRadius / radius;
+  const start = Math.max(0, Math.min(radius, -linear / taper));
+  const cx = moonOffset.x + ux * start;
+  const cy = moonOffset.y + uy * start;
+  const cz = moonOffset.z + uz * start;
+  const corridorRadius = visibility + moonRadius * (1 - start / radius);
+  return cx * cx + cy * cy + cz * cz - corridorRadius * corridorRadius;
+}
+
+function assertMoonCameraClear(
+  camera,
+  moonOffset,
+  requestedRadius,
+  parentRadius,
+  moonRadius,
+  near,
+  label,
+) {
+  const endpoint = Math.hypot(camera.x, camera.y, camera.z);
+  const safe = parentGlobeClearance(parentRadius, near);
+  assert.ok(endpoint + 1e-9 >= safe, `${label} camera clears the parent endpoint`);
+  const radius = Math.hypot(
+    camera.x - moonOffset.x,
+    camera.y - moonOffset.y,
+    camera.z - moonOffset.z,
+  );
+  assert.ok(
+    Math.abs(radius - requestedRadius) <= 1e-9 * Math.max(1, requestedRadius),
+    `${label} preserves the requested moon distance`,
+  );
+  const visibility = parentGlobeClearance(parentRadius, 0);
+  assert.ok(
+    moonSightlineSquaredMargin(camera, moonOffset, visibility, moonRadius) >= -1e-8,
+    `${label} keeps the rendered moon sightline clear`,
   );
 }
 
@@ -1277,9 +1358,26 @@ test("focused moon cameras stay outside the parent globe", () => {
   assert.equal(pushed.y, 0);
   assert.equal(pushed.z, 0);
   const fromCenter = resolveParentGlobePoint(0, 0, 0, 0, 0, 0, 1, 0.05, 4, 0, 0);
-  assert.ok(Math.abs(Math.hypot(fromCenter.x, fromCenter.y, fromCenter.z) - 1.05) < 1e-12);
+  assert.ok(Math.hypot(fromCenter.x, fromCenter.y, fromCenter.z) >= 1.05);
+  assert.ok(moonSightlineSquaredMargin(fromCenter, { x: 4, y: 0, z: 0 }, 1.05) >= -1e-12);
   assert.ok(fromCenter.x > 0, "a centered seat slides toward the moon, not through the parent");
   assert.ok(Math.hypot(fromCenter.y, fromCenter.z) > 0.5, "a centered seat leaves the parent axis");
+  const degenerate = resolveParentGlobePoint(0, 0, 0, 0, 0, 0, 1, 0.05);
+  assert.deepEqual(degenerate, { x: 1.05, y: 0, z: 0 });
+  const invalidFocus = resolveParentGlobePoint(
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0.05,
+    Number.NaN,
+    Number.NaN,
+    Number.NaN,
+  );
+  assert.deepEqual(invalidFocus, { x: 1.05, y: 0, z: 0 });
 
   const colliding = [];
   const azimuths = 48;
@@ -1293,7 +1391,6 @@ test("focused moon cameras stay outside the parent globe", () => {
     const safe = parentGlobeClearance(parentRadius, near);
     assert.equal(distance, CONFIG.minDistance, `${moon.id} keeps the global close floor`);
     let hitCollision = false;
-    let untouched = true;
     for (const phase of [0, 0.25, 0.5, 0.75]) {
       const days = Math.abs(moon.orbitDays) * phase;
       const moonOffset = moonWorldOffset(moon, days);
@@ -1334,20 +1431,28 @@ test("focused moon cameras stay outside the parent globe", () => {
             moonDist > moonRadius + near,
             `${moon.id} collision slide stays outside the focused globe`,
           );
-          if (desiredDist >= safe) {
+          const visibility = parentGlobeClearance(parentRadius, 0);
+          assert.ok(
+            moonSightlineSquaredMargin(resolved, moonOffset, visibility) >= -1e-8,
+            `${moon.id} center sightline clears ${parent.id}`,
+          );
+          const desiredSightlineClear = moonSightlineSquaredMargin(
+            desired,
+            moonOffset,
+            visibility,
+          ) >= 0;
+          if (desiredDist >= safe && desiredSightlineClear) {
             assert.equal(resolved.x, desired.x, `${moon.id} safe azimuth keeps its seat`);
             assert.equal(resolved.y, desired.y);
             assert.equal(resolved.z, desired.z);
-          } else {
+          } else if (desiredDist < safe) {
             hitCollision = true;
-            untouched = false;
             assert.ok(Math.abs(resolvedDist - safe) < 1e-9);
           }
         }
       }
     }
     if (hitCollision) colliding.push(moon.id);
-    else assert.equal(untouched, true, `${moon.id} min-zoom seats stay unchanged`);
   }
   assert.deepEqual(colliding, ["moon", "io", "triton"]);
 
@@ -1386,15 +1491,6 @@ test("focused moon cameras stay outside the parent globe", () => {
     );
     const safe = parentGlobeClearance(parentRadius, near);
     assert.ok(Math.abs(Math.hypot(resolved.x, resolved.y, resolved.z) - safe) < 1e-9);
-    const reversed = parentClearCamera(
-      moonOffset,
-      distance,
-      towardParentAzimuth,
-      towardParentElevation,
-      parentRadius,
-      near,
-    );
-    assert.deepEqual(reversed, resolved, `${sample.id} collision response is stateless`);
     const clearAzimuth = towardParentAzimuth + Math.PI;
     const clearOrbit = focusOrbitOffset(distance, clearAzimuth, towardParentElevation);
     const clearDesired = {
@@ -1416,26 +1512,1026 @@ test("focused moon cameras stay outside the parent globe", () => {
       moonOffset.z,
     );
     assert.deepEqual(clearResolved, clearDesired, `${sample.id} opposite angle is unchanged`);
-    const step = 0.02;
-    const before = parentClearCamera(
-      moonOffset,
-      distance,
-      towardParentAzimuth - step,
-      towardParentElevation,
-      parentRadius,
-      near,
-    );
-    const after = parentClearCamera(
-      moonOffset,
-      distance,
-      towardParentAzimuth + step,
-      towardParentElevation,
-      parentRadius,
-      near,
-    );
-    const span = Math.hypot(before.x - after.x, before.y - after.y, before.z - after.z);
-    assert.ok(span < 2 * safe + distance * step * 4, `${sample.id} orbit stays continuous`);
   }
+});
+
+test("moon focus acquisition is stable across display refresh rates", () => {
+  const moon = findBody("europa");
+  const parent = findBody(moon.parent);
+  const moonOffset = moonWorldOffset(moon, 0);
+  const moonRadius = visualBodyRadius(moon);
+  const parentRadius = visualBodyRadius(parent);
+  const near = extraZoomCameraNear(CONFIG.minDistance);
+  const separation = Math.hypot(moonOffset.x, moonOffset.y, moonOffset.z);
+  const axis = {
+    x: moonOffset.x / separation,
+    y: moonOffset.y / separation,
+    z: moonOffset.z / separation,
+  };
+  const rawStart = focusOrbitOffset(
+    CONFIG.cameraDistance,
+    CONFIG.cameraAzimuth,
+    CONFIG.cameraElevation,
+  );
+  const startCandidate = {
+    x: moonOffset.x + rawStart.x,
+    y: moonOffset.y + rawStart.y,
+    z: moonOffset.z + rawStart.z,
+  };
+  const safeStart = resolveParentGlobePoint(
+    startCandidate.x,
+    startCandidate.y,
+    startCandidate.z,
+    0,
+    0,
+    0,
+    parentRadius,
+    near,
+    moonOffset.x,
+    moonOffset.y,
+    moonOffset.z,
+    { moonRadius },
+  );
+  const start = {
+    x: safeStart.x - moonOffset.x,
+    y: safeStart.y - moonOffset.y,
+    z: safeStart.z - moonOffset.z,
+  };
+  const rawTarget = parentAxisSeat(
+    moonOffset,
+    CONFIG.minDistance,
+    0,
+    tangentToAxis(axis),
+  );
+  const orbitNormal = moonWorldOrbitNormal(moon);
+  const startCap = parentGlobeMaximumViewAngle(
+    separation,
+    Math.hypot(start.x, start.y, start.z),
+    parentRadius,
+    near,
+    moonRadius,
+  );
+  const targetCap = parentGlobeMaximumViewAngle(
+    separation,
+    CONFIG.minDistance,
+    parentRadius,
+    near,
+    moonRadius,
+  );
+  const run = (refreshRate, seconds) => {
+    const route = {};
+    const continuity = {};
+    let point = start;
+    const frames = Math.round(refreshRate * seconds);
+    for (let frame = 0; frame < frames; frame += 1) {
+      const guardedTarget = resolveParentGlobePoint(
+        rawTarget.x,
+        rawTarget.y,
+        rawTarget.z,
+        0,
+        0,
+        0,
+        parentRadius,
+        near,
+        moonOffset.x,
+        moonOffset.y,
+        moonOffset.z,
+        { moonRadius, continuity, key: moon.id },
+      );
+      const target = {
+        x: guardedTarget.x - moonOffset.x,
+        y: guardedTarget.y - moonOffset.y,
+        z: guardedTarget.z - moonOffset.z,
+      };
+      point = moonFocusFlightPoint(
+        route,
+        start,
+        target,
+        moonOffset,
+        1 / refreshRate,
+        parentGlobeClearance(moonRadius, near),
+        startCap,
+        targetCap,
+        orbitNormal,
+      );
+      assertMoonCameraClear(
+        {
+          x: moonOffset.x + point.x,
+          y: moonOffset.y + point.y,
+          z: moonOffset.z + point.z,
+        },
+        moonOffset,
+        Math.hypot(point.x, point.y, point.z),
+        parentRadius,
+        moonRadius,
+        near,
+        `Europa ${refreshRate} Hz focus frame ${frame}`,
+      );
+    }
+    return { point, done: route.done };
+  };
+
+  for (const seconds of [1 / 6, 0.5, 1, 2, 4]) {
+    const samples = [30, 60, 144].map((refreshRate) => run(refreshRate, seconds));
+    for (const sample of samples.slice(1)) {
+      assert.ok(
+        Math.hypot(
+          sample.point.x - samples[0].point.x,
+          sample.point.y - samples[0].point.y,
+          sample.point.z - samples[0].point.z,
+        ) < 1e-9,
+        `${seconds}s focus seat is refresh-rate independent`,
+      );
+      assert.equal(sample.done, samples[0].done);
+    }
+  }
+});
+
+test("hidden Io acquisition tightens its sightline cap without a jump", () => {
+  const moon = findBody("io");
+  const parent = findBody(moon.parent);
+  const parentRadius = visualBodyRadius(parent);
+  const moonRadius = visualBodyRadius(moon);
+  const near = extraZoomCameraNear(5.5);
+  const frameSeconds = 1 / 60;
+  const startDay = 0.5073460101855686;
+  const startDirection = {
+    x: 0.5682395213815248,
+    y: 0.006583761423826218,
+    z: 0.8228368613677987,
+  };
+  const startDistance = 157.28041766956449;
+  const startCamera = {
+    x: startDirection.x * startDistance,
+    y: startDirection.y * startDistance,
+    z: startDirection.z * startDistance,
+  };
+  const targetDirection = {
+    x: 0.15790476658051636,
+    y: 0.844350263942033,
+    z: -0.5119948402788564,
+  };
+  const route = {};
+  const orbitNormal = moonWorldOrbitNormal(moon);
+  let previousDirection = null;
+  let previousAxis = null;
+  let switchedToFullSightline = false;
+  let doneCamera = null;
+  let doneMoonOffset = null;
+
+  for (let frame = 0; frame < 360; frame += 1) {
+    const days = startDay
+      + frame * frameSeconds * CONFIG.defaultDaysPerSecond;
+    const moonOffset = moonWorldOffset(moon, days);
+    const separation = Math.hypot(moonOffset.x, moonOffset.y, moonOffset.z);
+    const axis = {
+      x: moonOffset.x / separation,
+      y: moonOffset.y / separation,
+      z: moonOffset.z / separation,
+    };
+    if (!route.ready) {
+      const safeStart = resolveParentGlobePoint(
+        startCamera.x,
+        startCamera.y,
+        startCamera.z,
+        0,
+        0,
+        0,
+        parentRadius,
+        near,
+      );
+      route.fixtureStart = {
+        x: safeStart.x - moonOffset.x,
+        y: safeStart.y - moonOffset.y,
+        z: safeStart.z - moonOffset.z,
+      };
+      const visibleStart = resolveParentGlobePoint(
+        safeStart.x,
+        safeStart.y,
+        safeStart.z,
+        0,
+        0,
+        0,
+        parentRadius,
+        near,
+        moonOffset.x,
+        moonOffset.y,
+        moonOffset.z,
+        { moonRadius, orbitNormal },
+      );
+      route.startVisible = Math.hypot(
+        visibleStart.x - safeStart.x,
+        visibleStart.y - safeStart.y,
+        visibleStart.z - safeStart.z,
+      ) <= 1e-9;
+    }
+
+    const rawTarget = {
+      x: moonOffset.x + targetDirection.x * 5.5,
+      y: moonOffset.y + targetDirection.y * 5.5,
+      z: moonOffset.z + targetDirection.z * 5.5,
+    };
+    const guardedTarget = resolveParentGlobePoint(
+      rawTarget.x,
+      rawTarget.y,
+      rawTarget.z,
+      0,
+      0,
+      0,
+      parentRadius,
+      near,
+      moonOffset.x,
+      moonOffset.y,
+      moonOffset.z,
+      { moonRadius, orbitNormal },
+    );
+    const targetOffset = {
+      x: guardedTarget.x - moonOffset.x,
+      y: guardedTarget.y - moonOffset.y,
+      z: guardedTarget.z - moonOffset.z,
+    };
+    const startRadius = route.ready
+      ? route.startRadius
+      : Math.hypot(route.fixtureStart.x, route.fixtureStart.y, route.fixtureStart.z);
+    const targetRadius = route.ready
+      ? route.targetRadius
+      : Math.hypot(targetOffset.x, targetOffset.y, targetOffset.z);
+    const startCap = route.startVisible
+      ? parentGlobeMaximumViewAngle(
+        separation,
+        startRadius,
+        parentRadius,
+        near,
+        moonRadius,
+      )
+      : parentGlobeMaximumEndpointAngle(
+        separation,
+        startRadius,
+        parentRadius,
+        near,
+      );
+    const targetCap = parentGlobeMaximumViewAngle(
+      separation,
+      targetRadius,
+      parentRadius,
+      near,
+      moonRadius,
+    );
+    const visibleBeforeFrame = route.startVisible;
+    const flightOffset = moonFocusFlightPoint(
+      route,
+      route.fixtureStart,
+      targetOffset,
+      moonOffset,
+      frameSeconds,
+      parentGlobeClearance(moonRadius, near),
+      startCap,
+      targetCap,
+      orbitNormal,
+    );
+    const radius = Math.hypot(flightOffset.x, flightOffset.y, flightOffset.z);
+    const camera = {
+      x: moonOffset.x + flightOffset.x,
+      y: moonOffset.y + flightOffset.y,
+      z: moonOffset.z + flightOffset.z,
+    };
+    const angle = Math.acos(Math.max(-1, Math.min(1, (
+      flightOffset.x * moonOffset.x
+        + flightOffset.y * moonOffset.y
+        + flightOffset.z * moonOffset.z
+    ) / (radius * separation))));
+    if (
+      !route.startVisible
+      && angle <= parentGlobeMaximumViewAngle(
+        separation,
+        radius,
+        parentRadius,
+        near,
+        moonRadius,
+      ) + 1e-10
+    ) {
+      route.startVisible = true;
+    }
+    switchedToFullSightline ||= !visibleBeforeFrame && route.startVisible;
+
+    assert.ok(
+      Math.hypot(camera.x, camera.y, camera.z) + 1e-9
+        >= parentGlobeClearance(parentRadius, near),
+      `Io hidden-start frame ${frame} keeps its camera outside Jupiter`,
+    );
+    if (route.startVisible) {
+      assertMoonCameraClear(
+        camera,
+        moonOffset,
+        radius,
+        parentRadius,
+        moonRadius,
+        near,
+        `Io hidden-start frame ${frame}`,
+      );
+    }
+    const direction = {
+      x: flightOffset.x / radius,
+      y: flightOffset.y / radius,
+      z: flightOffset.z / radius,
+    };
+    if (previousDirection) {
+      const viewMove = Math.acos(Math.max(-1, Math.min(1, dot(
+        direction,
+        previousDirection,
+      ))));
+      const axisMove = Math.acos(Math.max(-1, Math.min(1, dot(axis, previousAxis))));
+      assert.ok(
+        viewMove <= axisMove
+          + CONFIG.moonFocusAngularRateRadiansPerSecond * frameSeconds
+          + 1e-8,
+        `Io hidden-start frame ${frame} stays inside its angular continuity budget`,
+      );
+    }
+    previousDirection = direction;
+    previousAxis = axis;
+    if (route.done) {
+      doneCamera = camera;
+      doneMoonOffset = moonOffset;
+      break;
+    }
+  }
+
+  assert.equal(switchedToFullSightline, true, "the fixture reaches the stricter cap");
+  assert.equal(route.done, true, "the hidden-start route settles");
+  const handoff = resolveParentGlobePoint(
+    doneCamera.x,
+    doneCamera.y,
+    doneCamera.z,
+    0,
+    0,
+    0,
+    parentRadius,
+    near,
+    doneMoonOffset.x,
+    doneMoonOffset.y,
+    doneMoonOffset.z,
+    { moonRadius, orbitNormal },
+  );
+  assert.ok(
+    Math.hypot(
+      handoff.x - doneCamera.x,
+      handoff.y - doneCamera.y,
+      handoff.z - doneCamera.z,
+    ) < 1e-9,
+    "the hidden-start route hands off without projection",
+  );
+});
+
+test("guarded moon zoom flights stay continuous in both radial directions", () => {
+  const nearDistance = CONFIG.minDistance;
+  const farDistance = 1000;
+  const frameSeconds = 1 / 60;
+
+  const runLeg = (moon, moonOffset, startOffset, targetDistance, label) => {
+    const parent = findBody(moon.parent);
+    const parentRadius = visualBodyRadius(parent);
+    const moonRadius = visualBodyRadius(moon);
+    const orbitNormal = moonWorldOrbitNormal(moon);
+    const separation = Math.hypot(moonOffset.x, moonOffset.y, moonOffset.z);
+    const startRadius = Math.hypot(startOffset.x, startOffset.y, startOffset.z);
+    const startDirection = {
+      x: startOffset.x / startRadius,
+      y: startOffset.y / startRadius,
+      z: startOffset.z / startRadius,
+    };
+    const targetRadius = extraZoomCameraDistance(targetDistance);
+    const startNear = extraZoomCameraNear(startRadius);
+    const targetNear = extraZoomCameraNear(targetDistance);
+    const rawTarget = {
+      x: moonOffset.x + startDirection.x * targetRadius,
+      y: moonOffset.y + startDirection.y * targetRadius,
+      z: moonOffset.z + startDirection.z * targetRadius,
+    };
+    const guardedTarget = resolveParentGlobePoint(
+      rawTarget.x,
+      rawTarget.y,
+      rawTarget.z,
+      0,
+      0,
+      0,
+      parentRadius,
+      targetNear,
+      moonOffset.x,
+      moonOffset.y,
+      moonOffset.z,
+      { moonRadius, orbitNormal },
+    );
+    const targetOffset = {
+      x: guardedTarget.x - moonOffset.x,
+      y: guardedTarget.y - moonOffset.y,
+      z: guardedTarget.z - moonOffset.z,
+    };
+    const route = { startVisible: true };
+    let previousDirection = startDirection;
+    let previousRadius = startRadius;
+    let finalOffset = null;
+
+    for (let frame = 1; frame <= 360; frame += 1) {
+      const flightOffset = moonFocusFlightPoint(
+        route,
+        startOffset,
+        targetOffset,
+        moonOffset,
+        frameSeconds,
+        parentGlobeClearance(moonRadius, startNear),
+        parentGlobeMaximumViewAngle(
+          separation,
+          startRadius,
+          parentRadius,
+          startNear,
+          moonRadius,
+        ),
+        parentGlobeMaximumViewAngle(
+          separation,
+          targetRadius,
+          parentRadius,
+          targetNear,
+          moonRadius,
+        ),
+        orbitNormal,
+        parentGlobeClearance(moonRadius, targetNear),
+      );
+      const radius = Math.hypot(flightOffset.x, flightOffset.y, flightOffset.z);
+      const direction = {
+        x: flightOffset.x / radius,
+        y: flightOffset.y / radius,
+        z: flightOffset.z / radius,
+      };
+      const outwardEnd = route.outwardSeconds;
+      const radialEnd = outwardEnd + route.radialSeconds;
+      const currentNear = route.elapsed < outwardEnd
+        ? startNear
+        : route.elapsed < radialEnd
+          ? Math.min(startNear, targetNear)
+          : targetNear;
+      assertMoonCameraClear(
+        {
+          x: moonOffset.x + flightOffset.x,
+          y: moonOffset.y + flightOffset.y,
+          z: moonOffset.z + flightOffset.z,
+        },
+        moonOffset,
+        radius,
+        parentRadius,
+        moonRadius,
+        currentNear,
+        `${label} frame ${frame}`,
+      );
+      const angularMove = Math.acos(Math.max(-1, Math.min(1, dot(
+        direction,
+        previousDirection,
+      ))));
+      assert.ok(
+        angularMove <= CONFIG.moonFocusAngularRateRadiansPerSecond * frameSeconds + 1e-8,
+        `${label} frame ${frame} stays inside its angular rate`,
+      );
+      assert.ok(
+        Math.abs(Math.log(radius / previousRadius))
+          <= CONFIG.moonFocusRadialLogRatePerSecond * frameSeconds + 1e-12,
+        `${label} frame ${frame} stays inside its radial rate`,
+      );
+      previousDirection = direction;
+      previousRadius = radius;
+      finalOffset = flightOffset;
+      if (route.done) break;
+    }
+
+    assert.equal(route.done, true, `${label} settles`);
+    const finalCamera = {
+      x: moonOffset.x + finalOffset.x,
+      y: moonOffset.y + finalOffset.y,
+      z: moonOffset.z + finalOffset.z,
+    };
+    const handoff = resolveParentGlobePoint(
+      finalCamera.x,
+      finalCamera.y,
+      finalCamera.z,
+      0,
+      0,
+      0,
+      parentRadius,
+      targetNear,
+      moonOffset.x,
+      moonOffset.y,
+      moonOffset.z,
+      { moonRadius, orbitNormal },
+    );
+    assert.ok(
+      Math.hypot(
+        handoff.x - finalCamera.x,
+        handoff.y - finalCamera.y,
+        handoff.z - finalCamera.z,
+      ) < 1e-9,
+      `${label} hands off without projection`,
+    );
+    return finalOffset;
+  };
+
+  for (const moon of BODIES.filter((body) => body.kind === "moon")) {
+    const parent = findBody(moon.parent);
+    const moonOffset = moonWorldOffset(moon, 0);
+    const separation = Math.hypot(moonOffset.x, moonOffset.y, moonOffset.z);
+    const near = extraZoomCameraNear(nearDistance);
+    const moonRadius = visualBodyRadius(moon);
+    const rawNear = {
+      x: moonOffset.x - moonOffset.x / separation * nearDistance,
+      y: moonOffset.y - moonOffset.y / separation * nearDistance,
+      z: moonOffset.z - moonOffset.z / separation * nearDistance,
+    };
+    const guardedNear = resolveParentGlobePoint(
+      rawNear.x,
+      rawNear.y,
+      rawNear.z,
+      0,
+      0,
+      0,
+      visualBodyRadius(parent),
+      near,
+      moonOffset.x,
+      moonOffset.y,
+      moonOffset.z,
+      { moonRadius, orbitNormal: moonWorldOrbitNormal(moon) },
+    );
+    const nearOffset = {
+      x: guardedNear.x - moonOffset.x,
+      y: guardedNear.y - moonOffset.y,
+      z: guardedNear.z - moonOffset.z,
+    };
+    const farOffset = runLeg(
+      moon,
+      moonOffset,
+      nearOffset,
+      farDistance,
+      `${moon.id} near-to-far zoom`,
+    );
+    runLeg(
+      moon,
+      moonOffset,
+      farOffset,
+      nearDistance,
+      `${moon.id} far-to-near zoom`,
+    );
+  }
+});
+
+test("moon-relative focus flights settle while every catalog moon moves at maximum speed", () => {
+  const frameSeconds = 1 / 60;
+  const rawTargetOffset = focusOrbitOffset(5.5, CONFIG.cameraAzimuth, CONFIG.cameraElevation);
+  const startCamera = focusOrbitOffset(
+    CONFIG.cameraDistance,
+    CONFIG.cameraAzimuth,
+    CONFIG.cameraElevation,
+  );
+  for (const moon of BODIES.filter((body) => body.kind === "moon")) {
+    const parent = findBody(moon.parent);
+    const parentRadius = visualBodyRadius(parent);
+    const moonRadius = visualBodyRadius(moon);
+    const near = extraZoomCameraNear(5.5);
+    const firstMoonOffset = moonWorldOffset(moon, 0);
+    const safeStart = resolveParentGlobePoint(
+      startCamera.x,
+      startCamera.y,
+      startCamera.z,
+      0,
+      0,
+      0,
+      parentRadius,
+      near,
+      firstMoonOffset.x,
+      firstMoonOffset.y,
+      firstMoonOffset.z,
+      { moonRadius },
+    );
+    const startOffset = {
+      x: safeStart.x - firstMoonOffset.x,
+      y: safeStart.y - firstMoonOffset.y,
+      z: safeStart.z - firstMoonOffset.z,
+    };
+    const route = {};
+    const continuity = {};
+    const orbitNormal = moonWorldOrbitNormal(moon);
+    let settledFrame = null;
+    for (let frame = 1; frame <= 420; frame += 1) {
+      const days = frame * frameSeconds * CONFIG.maxDaysPerSecond;
+      const moonOffset = moonWorldOffset(moon, days);
+      const rawTarget = {
+        x: moonOffset.x + rawTargetOffset.x,
+        y: moonOffset.y + rawTargetOffset.y,
+        z: moonOffset.z + rawTargetOffset.z,
+      };
+      const guardedTarget = resolveParentGlobePoint(
+        rawTarget.x,
+        rawTarget.y,
+        rawTarget.z,
+        0,
+        0,
+        0,
+        parentRadius,
+        near,
+        moonOffset.x,
+        moonOffset.y,
+        moonOffset.z,
+        { moonRadius, continuity, key: moon.id },
+      );
+      const targetOffset = {
+        x: guardedTarget.x - moonOffset.x,
+        y: guardedTarget.y - moonOffset.y,
+        z: guardedTarget.z - moonOffset.z,
+      };
+      const separation = Math.hypot(moonOffset.x, moonOffset.y, moonOffset.z);
+      const startRadius = route.ready
+        ? route.startRadius
+        : Math.hypot(startOffset.x, startOffset.y, startOffset.z);
+      const targetRadius = route.ready
+        ? route.targetRadius
+        : Math.hypot(targetOffset.x, targetOffset.y, targetOffset.z);
+      const flightOffset = moonFocusFlightPoint(
+        route,
+        startOffset,
+        targetOffset,
+        moonOffset,
+        frameSeconds,
+        parentGlobeClearance(moonRadius, near),
+        parentGlobeMaximumViewAngle(
+          separation,
+          startRadius,
+          parentRadius,
+          near,
+          moonRadius,
+        ),
+        parentGlobeMaximumViewAngle(
+          separation,
+          targetRadius,
+          parentRadius,
+          near,
+          moonRadius,
+        ),
+        orbitNormal,
+      );
+      const camera = {
+        x: moonOffset.x + flightOffset.x,
+        y: moonOffset.y + flightOffset.y,
+        z: moonOffset.z + flightOffset.z,
+      };
+      assertMoonCameraClear(
+        camera,
+        moonOffset,
+        Math.hypot(flightOffset.x, flightOffset.y, flightOffset.z),
+        parentRadius,
+        moonRadius,
+        near,
+        `${moon.id} maximum-speed focus frame ${frame}`,
+      );
+      if (route.done) {
+        const handoff = resolveParentGlobePoint(
+          camera.x,
+          camera.y,
+          camera.z,
+          0,
+          0,
+          0,
+          parentRadius,
+          near,
+          moonOffset.x,
+          moonOffset.y,
+          moonOffset.z,
+          { moonRadius },
+        );
+        assert.ok(
+          Math.hypot(
+            camera.x - handoff.x,
+            camera.y - handoff.y,
+            camera.z - handoff.z,
+          ) < 1e-9,
+          `${moon.id} focus flight hands off without a camera snap`,
+        );
+        settledFrame = frame;
+        break;
+      }
+    }
+    assert.ok(
+      settledFrame !== null && settledFrame < 300,
+      `${moon.id} focus flight settles independently of orbital speed (${settledFrame})`,
+    );
+  }
+});
+
+test("moon focus flight follows a tightening Titan sightline cap", () => {
+  const moon = findBody("titan");
+  const parent = findBody(moon.parent);
+  const parentRadius = visualBodyRadius(parent);
+  const moonRadius = visualBodyRadius(moon);
+  const near = extraZoomCameraNear(5.5);
+  const frameSeconds = 1 / 60;
+  const startDay = 7.795552355555556;
+  const startOffset = {
+    x: -1.9418932796803283,
+    y: -2.215580539285327,
+    z: -4.644378684417595,
+  };
+  const rawTargetOffset = {
+    x: -startOffset.x,
+    y: -startOffset.y,
+    z: -startOffset.z,
+  };
+  const firstMoonOffset = moonWorldOffset(moon, startDay);
+  const firstTarget = {
+    x: firstMoonOffset.x + rawTargetOffset.x,
+    y: firstMoonOffset.y + rawTargetOffset.y,
+    z: firstMoonOffset.z + rawTargetOffset.z,
+  };
+  const guardedTarget = resolveParentGlobePoint(
+    firstTarget.x,
+    firstTarget.y,
+    firstTarget.z,
+    0,
+    0,
+    0,
+    parentRadius,
+    near,
+    firstMoonOffset.x,
+    firstMoonOffset.y,
+    firstMoonOffset.z,
+    { moonRadius },
+  );
+  const targetOffset = {
+    x: guardedTarget.x - firstMoonOffset.x,
+    y: guardedTarget.y - firstMoonOffset.y,
+    z: guardedTarget.z - firstMoonOffset.z,
+  };
+  const route = {};
+  const orbitNormal = moonWorldOrbitNormal(moon);
+  const radius = Math.hypot(...Object.values(startOffset));
+  const initialSeparation = Math.hypot(...Object.values(firstMoonOffset));
+  const initialCap = parentGlobeMaximumViewAngle(
+    initialSeparation,
+    radius,
+    parentRadius,
+    near,
+    moonRadius,
+  );
+  let minimumCap = initialCap;
+  let camera = null;
+  for (let frame = 0; frame <= 90 && !route.done; frame += 1) {
+    const days = startDay + frame * frameSeconds * CONFIG.defaultDaysPerSecond;
+    const moonOffset = moonWorldOffset(moon, days);
+    const separation = Math.hypot(...Object.values(moonOffset));
+    const cap = parentGlobeMaximumViewAngle(
+      separation,
+      radius,
+      parentRadius,
+      near,
+      moonRadius,
+    );
+    minimumCap = Math.min(minimumCap, cap);
+    const flightOffset = moonFocusFlightPoint(
+      route,
+      startOffset,
+      targetOffset,
+      moonOffset,
+      frame === 0 ? 0 : frameSeconds,
+      parentGlobeClearance(moonRadius, near),
+      cap,
+      cap,
+      orbitNormal,
+    );
+    camera = {
+      x: moonOffset.x + flightOffset.x,
+      y: moonOffset.y + flightOffset.y,
+      z: moonOffset.z + flightOffset.z,
+    };
+    assertMoonCameraClear(
+      camera,
+      moonOffset,
+      radius,
+      parentRadius,
+      moonRadius,
+      near,
+      `Titan tightening-cap frame ${frame}`,
+    );
+  }
+  assert.ok(initialCap - minimumCap > 1e-6, "the regression actually tightens the cap");
+  assert.equal(route.done, true, "the capped Titan flight still settles");
+  const finalMoonOffset = moonWorldOffset(
+    moon,
+    startDay + route.elapsed * CONFIG.defaultDaysPerSecond,
+  );
+  const handoff = resolveParentGlobePoint(
+    camera.x,
+    camera.y,
+    camera.z,
+    0,
+    0,
+    0,
+    parentRadius,
+    near,
+    finalMoonOffset.x,
+    finalMoonOffset.y,
+    finalMoonOffset.z,
+    { moonRadius },
+  );
+  assert.ok(
+    Math.hypot(camera.x - handoff.x, camera.y - handoff.y, camera.z - handoff.z) < 1e-9,
+    "Titan's completed route hands off without projection",
+  );
+});
+
+test("moon focus transport has one stable exact-antipode branch", () => {
+  const firstAxis = { x: 1, y: 0, z: 0 };
+  const orbitNormal = { x: 0, y: 0, z: 1 };
+  const start = { x: Math.cos(1), y: Math.sin(1), z: 0 };
+  const route = {};
+  moonFocusFlightPoint(route, start, firstAxis, firstAxis, 0, 0, Math.PI, Math.PI, orbitNormal);
+  const initial = JSON.parse(JSON.stringify(route));
+  const axes = [-2e-12, 0, 2e-12].map((epsilon) => {
+    const length = Math.hypot(-1, epsilon);
+    return { x: -1 / length, y: epsilon / length, z: 0 };
+  });
+  const outputs = axes.map((axis) => {
+    const copy = JSON.parse(JSON.stringify(initial));
+    const output = moonFocusFlightPoint(
+      copy,
+      start,
+      firstAxis,
+      axis,
+      0,
+      0,
+      Math.PI,
+      Math.PI,
+      orbitNormal,
+    );
+    const repeated = moonFocusFlightPoint(
+      copy,
+      start,
+      firstAxis,
+      axis,
+      0,
+      0,
+      Math.PI,
+      Math.PI,
+      orbitNormal,
+    );
+    assert.ok(Object.values(output).every(Number.isFinite));
+    assert.ok(Math.abs(Math.hypot(...Object.values(output)) - 1) < 1e-12);
+    assert.ok(Math.hypot(
+      output.x + Math.cos(1),
+      output.y + Math.sin(1),
+      output.z,
+    ) < 1e-9, "the signed orbit normal owns the antipodal half-turn");
+    assert.ok(Math.hypot(
+      output.x - repeated.x,
+      output.y - repeated.y,
+      output.z - repeated.z,
+    ) < 1e-12, "an unchanged antipodal axis cannot drift");
+    return output;
+  });
+  for (const output of outputs.slice(1)) {
+    assert.ok(Math.hypot(
+      output.x - outputs[0].x,
+      output.y - outputs[0].y,
+      output.z - outputs[0].z,
+    ) < 1e-9, "tiny antipode noise cannot flip the flight path");
+  }
+});
+
+test("steady Phobos guard removes the reproduced default-play camera jump", () => {
+  const moon = findBody("phobos");
+  const parent = findBody(moon.parent);
+  const parentRadius = visualBodyRadius(parent);
+  const moonRadius = visualBodyRadius(moon);
+  const radius = 5.5;
+  const near = extraZoomCameraNear(radius);
+  const rawDirection = {
+    x: -0.8085530486960075,
+    y: 0.4298845767043531,
+    z: -0.4017974840091846,
+  };
+  const orbitNormal = moonWorldOrbitNormal(moon);
+  const continuity = {};
+  const maximumAngularStep = CONFIG.moonFocusAngularRateRadiansPerSecond / 60;
+  let previousAxis = null;
+  let previousDirection = null;
+  let activated = false;
+  for (let frame = 0; frame <= 700; frame += 1) {
+    const days = frame / 60 * CONFIG.defaultDaysPerSecond;
+    const moonOffset = moonWorldOffset(moon, days);
+    const separation = Math.hypot(...Object.values(moonOffset));
+    const axis = {
+      x: moonOffset.x / separation,
+      y: moonOffset.y / separation,
+      z: moonOffset.z / separation,
+    };
+    const desired = {
+      x: moonOffset.x + rawDirection.x * radius,
+      y: moonOffset.y + rawDirection.y * radius,
+      z: moonOffset.z + rawDirection.z * radius,
+    };
+    const resolved = resolveParentGlobePoint(
+      desired.x,
+      desired.y,
+      desired.z,
+      0,
+      0,
+      0,
+      parentRadius,
+      near,
+      moonOffset.x,
+      moonOffset.y,
+      moonOffset.z,
+      {
+        moonRadius,
+        continuity,
+        key: moon.id,
+        maximumAngularStep,
+        orbitNormal,
+      },
+    );
+    activated ||= continuity.active;
+    assertMoonCameraClear(
+      resolved,
+      moonOffset,
+      radius,
+      parentRadius,
+      moonRadius,
+      near,
+      `Phobos default-play frame ${frame}`,
+    );
+    const direction = {
+      x: (resolved.x - moonOffset.x) / radius,
+      y: (resolved.y - moonOffset.y) / radius,
+      z: (resolved.z - moonOffset.z) / radius,
+    };
+    if (previousDirection) {
+      const axisMove = Math.acos(Math.max(-1, Math.min(1,
+        axis.x * previousAxis.x + axis.y * previousAxis.y + axis.z * previousAxis.z,
+      )));
+      const viewMove = Math.acos(Math.max(-1, Math.min(1,
+        direction.x * previousDirection.x
+          + direction.y * previousDirection.y
+          + direction.z * previousDirection.z,
+      )));
+      assert.ok(
+        viewMove <= axisMove + maximumAngularStep + 1e-8,
+        `Phobos frame ${frame} has no branch jump (${viewMove})`,
+      );
+    }
+    previousAxis = axis;
+    previousDirection = direction;
+  }
+  assert.equal(activated, true, "the exact regression enters the parent guard");
+});
+
+test("moon camera continuity resets when focus changes between siblings", () => {
+  const parent = findBody("jupiter");
+  const parentRadius = visualBodyRadius(parent);
+  const continuity = {};
+  const solve = (moonId, outward) => {
+    const moon = findBody(moonId);
+    const moonRadius = visualBodyRadius(moon);
+    const moonOffset = moonWorldOffset(moon, 0);
+    const sep = Math.hypot(moonOffset.x, moonOffset.y, moonOffset.z);
+    const axis = {
+      x: moonOffset.x / sep,
+      y: moonOffset.y / sep,
+      z: moonOffset.z / sep,
+    };
+    const desired = parentAxisSeat(
+      moonOffset,
+      CONFIG.minDistance,
+      outward ? Math.PI : 0,
+      tangentToAxis(axis),
+    );
+    return {
+      desired,
+      resolved: resolveParentGlobePoint(
+        desired.x,
+        desired.y,
+        desired.z,
+        0,
+        0,
+        0,
+        parentRadius,
+        extraZoomCameraNear(CONFIG.minDistance),
+        moonOffset.x,
+        moonOffset.y,
+        moonOffset.z,
+        { moonRadius, continuity, key: moon.id },
+      ),
+    };
+  };
+  solve("io", false);
+  assert.equal(continuity.key, "io");
+  assert.equal(continuity.active, true);
+  const europa = solve("europa", true);
+  assert.deepEqual(europa.resolved, europa.desired, "new moon starts from its exact clear seat");
+  assert.equal(continuity.key, "europa");
+  assert.equal(continuity.active, false);
 });
 
 test("parent-facing moon zoom stays continuous through the parent globe", () => {
@@ -1454,6 +2550,8 @@ test("parent-facing moon zoom stays continuous through the parent globe", () => 
     const nearAtMin = extraZoomCameraNear(CONFIG.minDistance);
     const safeAtMin = parentGlobeClearance(parentRadius, nearAtMin);
     const samples = [];
+    const continuity = {};
+    const key = `${parent.id}:${moon.id}`;
     for (let distance = CONFIG.minDistance; distance <= CONFIG.solarMaxDistance; distance *= 1.01) {
       samples.push(distance);
     }
@@ -1476,17 +2574,21 @@ test("parent-facing moon zoom stays continuous through the parent globe", () => 
         towardParentElevation,
         parentRadius,
         near,
+        { moonRadius, continuity, key },
       );
-      const resolvedDist = Math.hypot(resolved.x, resolved.y, resolved.z);
       const moonDist = Math.hypot(
         resolved.x - moonOffset.x,
         resolved.y - moonOffset.y,
         resolved.z - moonOffset.z,
       );
-      assert.ok(resolvedDist + 1e-9 >= safe, `${moon.id} zoom stays outside ${parent.id}`);
-      assert.ok(
-        moonDist > moonRadius + near,
-        `${moon.id} zoom stays outside the focused globe`,
+      assertMoonCameraClear(
+        resolved,
+        moonOffset,
+        radius,
+        parentRadius,
+        moonRadius,
+        near,
+        `${moon.id} parent-facing zoom`,
       );
       const orbit = focusOrbitOffset(distance, towardParentAzimuth, towardParentElevation);
       const desiredDist = Math.hypot(
@@ -1505,15 +2607,6 @@ test("parent-facing moon zoom stays continuous through the parent globe", () => 
           assert.ok(side > 0, `${moon.id} crossing stays on the moon side of ${parent.id}`);
         }
       }
-      const reversed = parentClearCamera(
-        moonOffset,
-        distance,
-        towardParentAzimuth,
-        towardParentElevation,
-        parentRadius,
-        near,
-      );
-      assert.deepEqual(reversed, resolved, `${moon.id} zoom response is stateless`);
       if (previous) {
         const move = Math.hypot(
           resolved.x - previous.x,
@@ -1541,6 +2634,427 @@ test("parent-facing moon zoom stays continuous through the parent globe", () => 
     crossed,
     ["moon", "deimos", "io", "europa", "ganymede", "callisto", "titan", "triton"],
   );
+});
+
+function tangentToAxis(axis) {
+  const tangent = Math.abs(axis.y) < 0.9
+    ? { x: axis.z, y: 0, z: -axis.x }
+    : { x: 0, y: axis.z, z: -axis.y };
+  const length = Math.hypot(tangent.x, tangent.y, tangent.z);
+  return { x: tangent.x / length, y: tangent.y / length, z: tangent.z / length };
+}
+
+function parentAxisSeat(moonOffset, radius, angle, tangent) {
+  const sep = Math.hypot(moonOffset.x, moonOffset.y, moonOffset.z);
+  const axis = {
+    x: moonOffset.x / sep,
+    y: moonOffset.y / sep,
+    z: moonOffset.z / sep,
+  };
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: moonOffset.x + radius * (-axis.x * cos + tangent.x * sin),
+    y: moonOffset.y + radius * (-axis.y * cos + tangent.y * sin),
+    z: moonOffset.z + radius * (-axis.z * cos + tangent.z * sin),
+  };
+}
+
+test("moon camera guard preserves every clear seat and clears every blocked sightline", () => {
+  const moons = BODIES.filter((body) => body.kind === "moon");
+  const endpointInterior = [];
+  const farSightlineBlocked = [];
+
+  for (const moon of moons) {
+    const parent = findBody(moon.parent);
+    const parentRadius = visualBodyRadius(parent);
+    const moonRadius = visualBodyRadius(moon);
+    const phaseZero = moonWorldOffset(moon, 0);
+    const phaseZeroSep = Math.hypot(phaseZero.x, phaseZero.y, phaseZero.z);
+    const interiorRadius = Math.max(CONFIG.minDistance, phaseZeroSep);
+    const interiorNear = extraZoomCameraNear(interiorRadius);
+    if (
+      Math.abs(phaseZeroSep - interiorRadius)
+      < parentGlobeClearance(parentRadius, interiorNear)
+    ) endpointInterior.push(moon.id);
+
+    for (let phase = 0; phase < 8; phase += 1) {
+      const days = Math.abs(moon.orbitDays) * phase / 8;
+      const moonOffset = moonWorldOffset(moon, days);
+      const sep = Math.hypot(moonOffset.x, moonOffset.y, moonOffset.z);
+      const distances = [
+        CONFIG.minDistance,
+        5.5,
+        Math.max(CONFIG.minDistance, sep),
+        Math.max(CONFIG.minDistance, sep + parentRadius * 1.05 + 2),
+      ];
+      for (const distance of distances) {
+        const radius = extraZoomCameraDistance(distance);
+        const near = extraZoomCameraNear(distance);
+        const safe = parentGlobeClearance(parentRadius, near);
+        const visibility = parentGlobeClearance(parentRadius, 0);
+        for (const elevation of [-0.8, 0, 0.8]) {
+          for (let step = 0; step < 12; step += 1) {
+            const azimuth = step * Math.PI / 6;
+            const orbit = focusOrbitOffset(distance, azimuth, elevation);
+            const desired = {
+              x: moonOffset.x + orbit.x,
+              y: moonOffset.y + orbit.y,
+              z: moonOffset.z + orbit.z,
+            };
+            const desiredEndpoint = Math.hypot(desired.x, desired.y, desired.z);
+            const desiredSightline = moonSightlineSquaredMargin(
+              desired,
+              moonOffset,
+              visibility,
+              moonRadius,
+            );
+            const resolved = resolveParentGlobePoint(
+              desired.x,
+              desired.y,
+              desired.z,
+              0,
+              0,
+              0,
+              parentRadius,
+              near,
+              moonOffset.x,
+              moonOffset.y,
+              moonOffset.z,
+              { moonRadius },
+            );
+            assertMoonCameraClear(
+              resolved,
+              moonOffset,
+              radius,
+              parentRadius,
+              moonRadius,
+              near,
+              `${moon.id} phase ${phase} seat ${step}`,
+            );
+            if (desiredEndpoint > safe + 1e-9 && desiredSightline > 1e-8) {
+              assert.deepEqual(
+                resolved,
+                desired,
+                `${moon.id} endpoint- and sightline-clear seat stays exact`,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    const farRadius = Math.max(
+      CONFIG.minDistance,
+      phaseZeroSep + parentRadius * CONFIG.focusSurfaceClearance + 2,
+    );
+    const farNear = extraZoomCameraNear(farRadius);
+    const farTangent = tangentToAxis({
+      x: phaseZero.x / phaseZeroSep,
+      y: phaseZero.y / phaseZeroSep,
+      z: phaseZero.z / phaseZeroSep,
+    });
+    const farDesired = parentAxisSeat(phaseZero, farRadius, 0, farTangent);
+    assert.ok(
+      Math.hypot(farDesired.x, farDesired.y, farDesired.z)
+        > parentGlobeClearance(parentRadius, farNear),
+      `${moon.id} far-side reproduction endpoint is already clear`,
+    );
+    assert.ok(
+      moonSightlineSquaredMargin(
+        farDesired,
+        phaseZero,
+        parentGlobeClearance(parentRadius, 0),
+        moonRadius,
+      ) < 0,
+      `${moon.id} far-side reproduction is hidden without the sightline guard`,
+    );
+    farSightlineBlocked.push(moon.id);
+  }
+
+  assert.deepEqual(
+    endpointInterior,
+    ["moon", "deimos", "io", "europa", "ganymede", "callisto", "titan", "triton"],
+    "Phobos alone never puts an allowed camera endpoint inside its parent",
+  );
+  assert.deepEqual(
+    farSightlineBlocked,
+    moons.map((moon) => moon.id),
+    "all nine moons have a reachable endpoint-clear parent-occluded seat",
+  );
+});
+
+test("moon camera continuity state removes axis jumps, jitter, and drift", () => {
+  const moons = BODIES.filter((body) => body.kind === "moon");
+  for (const moon of moons) {
+    const parent = findBody(moon.parent);
+    const parentRadius = visualBodyRadius(parent);
+    const moonRadius = visualBodyRadius(moon);
+    const moonOffset = moonWorldOffset(moon, 0);
+    const sep = Math.hypot(moonOffset.x, moonOffset.y, moonOffset.z);
+    const axis = {
+      x: moonOffset.x / sep,
+      y: moonOffset.y / sep,
+      z: moonOffset.z / sep,
+    };
+    const tangent = tangentToAxis(axis);
+    const radius = Math.max(CONFIG.minDistance, sep);
+    const near = extraZoomCameraNear(radius);
+    const key = `${parent.id}:${moon.id}`;
+    const orbitNormal = moonWorldOrbitNormal(moon);
+    const maximumAngularStep = CONFIG.moonFocusAngularRateRadiansPerSecond / 60;
+
+    for (const direction of [1, -1]) {
+      const continuity = {};
+      let previous = null;
+      let maximumMove = 0;
+      const span = 1.1;
+      const steps = 1200;
+      for (let step = 0; step <= steps; step += 1) {
+        const angle = direction * (-span + 2 * span * step / steps);
+        const desired = parentAxisSeat(moonOffset, radius, angle, tangent);
+        const resolved = resolveParentGlobePoint(
+          desired.x,
+          desired.y,
+          desired.z,
+          0,
+          0,
+          0,
+          parentRadius,
+          near,
+          moonOffset.x,
+          moonOffset.y,
+          moonOffset.z,
+          { moonRadius, continuity, key, maximumAngularStep, orbitNormal },
+        );
+        assertMoonCameraClear(
+          resolved,
+          moonOffset,
+          radius,
+          parentRadius,
+          moonRadius,
+          near,
+          `${moon.id} ${direction > 0 ? "forward" : "reverse"} orbit ${step}`,
+        );
+        if (previous) {
+          const previousOffset = {
+            x: previous.x - moonOffset.x,
+            y: previous.y - moonOffset.y,
+            z: previous.z - moonOffset.z,
+          };
+          const resolvedOffset = {
+            x: resolved.x - moonOffset.x,
+            y: resolved.y - moonOffset.y,
+            z: resolved.z - moonOffset.z,
+          };
+          maximumMove = Math.max(maximumMove, Math.acos(Math.max(-1, Math.min(1,
+            (
+              previousOffset.x * resolvedOffset.x
+                + previousOffset.y * resolvedOffset.y
+                + previousOffset.z * resolvedOffset.z
+            ) / (radius * radius),
+          ))));
+        }
+        previous = resolved;
+      }
+      assert.ok(
+        maximumMove <= maximumAngularStep + 1e-9,
+        `${moon.id} ${direction > 0 ? "forward" : "reverse"} axis crossing is continuous (${maximumMove})`,
+      );
+    }
+
+    const continuity = {};
+    for (let step = 0; step <= 300; step += 1) {
+      const angle = -1.1 + (1.1 - 1e-6) * step / 300;
+      const desired = parentAxisSeat(moonOffset, radius, angle, tangent);
+      resolveParentGlobePoint(
+        desired.x,
+        desired.y,
+        desired.z,
+        0,
+        0,
+        0,
+        parentRadius,
+        near,
+        moonOffset.x,
+        moonOffset.y,
+        moonOffset.z,
+        { moonRadius, continuity, key, maximumAngularStep, orbitNormal },
+      );
+    }
+    let stable = null;
+    for (let sample = 0; sample < 16; sample += 1) {
+      const desired = parentAxisSeat(
+        moonOffset,
+        radius,
+        sample % 2 === 0 ? -1e-7 : 1e-7,
+        tangent,
+      );
+      const resolved = resolveParentGlobePoint(
+        desired.x,
+        desired.y,
+        desired.z,
+        0,
+        0,
+        0,
+        parentRadius,
+        near,
+        moonOffset.x,
+        moonOffset.y,
+        moonOffset.z,
+        { moonRadius, continuity, key, maximumAngularStep, orbitNormal },
+      );
+      assertMoonCameraClear(
+        resolved,
+        moonOffset,
+        radius,
+        parentRadius,
+        moonRadius,
+        near,
+        `${moon.id} axis jitter ${sample}`,
+      );
+      if (stable) {
+        assert.ok(
+          Math.hypot(
+            resolved.x - stable.x,
+            resolved.y - stable.y,
+            resolved.z - stable.z,
+          ) < 1e-6,
+          `${moon.id} tiny parent-axis jitter does not oscillate`,
+        );
+      }
+      stable = resolved;
+    }
+    const repeated = resolveParentGlobePoint(
+      moonOffset.x - axis.x * radius,
+      moonOffset.y - axis.y * radius,
+      moonOffset.z - axis.z * radius,
+      0,
+      0,
+      0,
+      parentRadius,
+      near,
+      moonOffset.x,
+      moonOffset.y,
+      moonOffset.z,
+      { moonRadius, continuity, key, maximumAngularStep, orbitNormal },
+    );
+    const repeatedAgain = resolveParentGlobePoint(
+      moonOffset.x - axis.x * radius,
+      moonOffset.y - axis.y * radius,
+      moonOffset.z - axis.z * radius,
+      0,
+      0,
+      0,
+      parentRadius,
+      near,
+      moonOffset.x,
+      moonOffset.y,
+      moonOffset.z,
+      { moonRadius, continuity, key, maximumAngularStep, orbitNormal },
+    );
+    assert.ok(
+      Math.hypot(
+        repeatedAgain.x - repeated.x,
+        repeatedAgain.y - repeated.y,
+        repeatedAgain.z - repeated.z,
+      ) <= maximumAngularStep * radius + 1e-9,
+      `${moon.id} repeated input converges without a camera jump`,
+    );
+    resetParentGlobeContinuity(continuity);
+    assert.equal(continuity.active, false);
+    assert.equal(continuity.key, null);
+  }
+});
+
+test("moon camera continuity ignores axial jitter and releases without a snap", () => {
+  const parent = findBody("jupiter");
+  const moon = findBody("io");
+  const parentRadius = visualBodyRadius(parent);
+  const moonRadius = visualBodyRadius(moon);
+  const moonOffset = { x: 4.5, y: 0, z: 0 };
+  const radius = CONFIG.minDistance;
+  const near = extraZoomCameraNear(radius);
+  const tangent = tangentToAxis({ x: 1, y: 0, z: 0 });
+  const continuity = {};
+  const key = `${parent.id}:${moon.id}`;
+  const maximumAngularStep = CONFIG.moonFocusAngularRateRadiansPerSecond / 60;
+  const orbitNormal = { x: 0, y: 1, z: 0 };
+  const direction = (point) => ({
+    x: (point.x - moonOffset.x) / radius,
+    y: (point.y - moonOffset.y) / radius,
+    z: (point.z - moonOffset.z) / radius,
+  });
+  const separation = (a, b) => Math.acos(Math.max(-1, Math.min(1,
+    a.x * b.x + a.y * b.y + a.z * b.z,
+  )));
+  let previous = null;
+  const solve = (desired, label) => {
+    const resolved = resolveParentGlobePoint(
+      desired.x,
+      desired.y,
+      desired.z,
+      0,
+      0,
+      0,
+      parentRadius,
+      near,
+      moonOffset.x,
+      moonOffset.y,
+      moonOffset.z,
+      { moonRadius, continuity, key, maximumAngularStep, orbitNormal },
+    );
+    assertMoonCameraClear(
+      resolved,
+      moonOffset,
+      radius,
+      parentRadius,
+      moonRadius,
+      near,
+      label,
+    );
+    const next = direction(resolved);
+    if (previous) {
+      assert.ok(
+        separation(previous, next) <= maximumAngularStep + 1e-9,
+        `${label} stays inside the angular continuity budget`,
+      );
+    }
+    previous = next;
+    return resolved;
+  };
+
+  const steps = 600;
+  for (let step = 0; step <= steps; step += 1) {
+    const angle = -0.5 + step / steps;
+    solve(parentAxisSeat(moonOffset, radius, angle, tangent), `Io crossing ${step}`);
+  }
+
+  const coreStart = previous;
+  for (let sample = 0; sample < 128; sample += 1) {
+    const angle = sample % 2 === 0 ? -1e-11 : 1e-11;
+    solve(parentAxisSeat(moonOffset, radius, angle, tangent), `Io axial jitter ${sample}`);
+    assert.ok(
+      separation(previous, coreStart) <= 1e-9,
+      "sub-pixel axial jitter cannot wind the guarded seat",
+    );
+  }
+
+  const clearDesired = parentAxisSeat(moonOffset, radius, Math.PI, tangent);
+  let clearResolved = null;
+  for (let frame = 0; frame < 180 && continuity.active; frame += 1) {
+    clearResolved = solve(clearDesired, `Io clear-seat release ${frame}`);
+  }
+  assert.equal(continuity.active, false, "the bounded guard eventually releases a clear seat");
+  assert.deepEqual(clearResolved, clearDesired, "release ends at the exact requested clear seat");
+  assert.deepEqual(
+    solve(clearDesired, "Io inactive clear seat"),
+    clearDesired,
+    "an inactive clear seat passes through bit-exactly",
+  );
+
+  resetParentGlobeContinuity(continuity);
+  assert.deepEqual(continuity, { key: null, active: false });
 });
 
 test("pinch direction, wheel direction, and shortcut targets follow native behavior", () => {
