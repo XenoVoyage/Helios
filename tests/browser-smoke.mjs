@@ -222,6 +222,51 @@ async function assertAccessibleHierarchy(page, expectation, label = "scene") {
   return { context, canvasSnapshot, contextSnapshot };
 }
 
+async function assertEarthSkyReset(page) {
+  for (const action of ["button", "escape"]) {
+    await openReady(page, "?look=sky");
+    const canvas = page.locator("#viewport");
+    const before = await stableCanvasFrame(page, canvas);
+    if (action === "button") {
+      await page.locator("#reset-button").click();
+    } else {
+      await canvas.focus();
+      await canvas.press("Escape");
+    }
+    await page.waitForTimeout(100);
+    assert.equal(
+      await page.locator("#body-card").getAttribute("hidden"),
+      "",
+      `Earth-sky ${action} clears the selected-body card`,
+    );
+    assert.equal(
+      await page.locator("#status-live").textContent(),
+      "Returned to the Earth sky",
+      `Earth-sky ${action} announces the restored direct look`,
+    );
+    const semantics = await assertAccessibleHierarchy(
+      page,
+      LOOK_SEMANTICS.sky,
+      `desktop-sky-${action}`,
+    );
+    assert.equal(
+      semantics.context,
+      "Earth sky. Focused on Earth.",
+      `Earth-sky ${action} retains Earth as the real focus`,
+    );
+    const after = await stableCanvasFrame(page, canvas);
+    const difference = await frameDifferenceMetrics(page, before, after);
+    await saveScreenshot(page, `desktop-sky-${action}`);
+    // The focus-derived semantics prove state; this only rejects a visible
+    // camera change while tolerating repeat WebGL rasterization noise.
+    assert.ok(
+      difference.meanAbsoluteDifference <= 1.25
+        && difference.strongCoverage <= 0.02,
+      `Earth-sky ${action} preserves the Earth-centered camera: ${JSON.stringify(difference)}`,
+    );
+  }
+}
+
 async function saveScreenshot(page, name, options = {}) {
   if (!screenshotDir) return;
   await mkdir(screenshotDir, { recursive: true });
@@ -1751,6 +1796,12 @@ try {
   );
   await desktopPage.locator("#reset-button").click();
   assert.equal(await desktopPage.locator("#body-card").getAttribute("hidden"), "");
+  assert.equal(await desktopPage.locator("#status-live").textContent(), "Returned to the overview");
+  await assertAccessibleHierarchy(
+    desktopPage,
+    { layer: /Solar system/, focus: /Focused on the Sun/ },
+    "desktop-reset",
+  );
 
   await assertBodySelectionSweep(desktopPage);
   await assertConstellationModesAndFreshLabels(desktopPage);
@@ -1802,6 +1853,7 @@ try {
     }
     await directPage.waitForTimeout(250);
     await saveScreenshot(directPage, `desktop-${look}`);
+    if (look === "sky") await assertEarthSkyReset(directPage);
     if (look === "universe") await assertCmbTextureVisible(directPage);
     assert.deepEqual(directErrors, [], `${look} has no browser errors`);
     await directPage.close();
