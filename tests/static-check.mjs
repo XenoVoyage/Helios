@@ -69,7 +69,17 @@ assert.match(provenance, /HIP 55203/);
 assert.match(provenance, /HIP 7751/);
 assert.match(provenance, /p Eridani/);
 assert.match(provenance, /first non-empty `proper`/);
-assert.match(provenance, /2026-09-02/);
+assert.match(
+  provenance,
+  /^The latest source evidence recorded in this ledger is dated 2026-09-03;\nsource-specific retrieval and check dates are recorded per entry when known\./m,
+);
+assert.match(provenance, /`round\(float\(ra\) \* 15, 5\)`/);
+assert.match(provenance, /`round\(float\(dec\), 5\)`/);
+assert.match(provenance, /`round\(float\(mag\), 2\)`/);
+assert.match(provenance, /`round\(float\(ci\), 2\)`/);
+assert.match(provenance, /IEEE-754 binary64/);
+assert.match(provenance, /not exact-decimal half-even rounding/);
+assert.doesNotMatch(provenance, /B-V is HYG `ci` quantized to 2 decimals/);
 assert.doesNotMatch(provenance, /identical, field-for-field, to a first-HIP/);
 assert.match(provenance, /600ce39342ee1452da5fdd9d9b7b8f51a1e1b5f7892abeace61f7c56f4382fce/);
 assert.match(provenance, /b39c1d6dbab932bb624965241b6a13995886370781b9a398d0f1fb36d098b325/);
