@@ -108,6 +108,10 @@ export const CONFIG = Object.freeze({
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
   focusLerp: 6,
+  // Parent-safe moon focus flight rates; log radius is scale-independent.
+  moonFocusRadialLogRatePerSecond: 2.5,
+  moonFocusAngularRateRadiansPerSecond: 3.5,
+  moonFocusEasingSeconds: 5 / 6,
 });
 
 /**
@@ -138,10 +142,604 @@ export function parentGlobeClearance(renderedRadius, near) {
   return Math.max(radius * CONFIG.focusSurfaceClearance, radius + clip);
 }
 
+/** Widest polar angle whose endpoint and rendered-moon sightline clear a parent. */
+export function parentGlobeMaximumViewAngle(
+  separation,
+  cameraRadius,
+  renderedRadius,
+  near,
+  moonRadius = 0,
+) {
+  const need = parentGlobeCapDot(
+    separation,
+    cameraRadius,
+    renderedRadius,
+    near,
+    moonRadius,
+  );
+  return need == null ? 0 : Math.acos(clampUnit(need));
+}
+
+/** Widest moon-relative polar angle whose camera endpoint clears a parent. */
+export function parentGlobeMaximumEndpointAngle(
+  separation,
+  cameraRadius,
+  renderedRadius,
+  near,
+) {
+  const safe = parentGlobeClearance(renderedRadius, near);
+  if (!(separation > 1e-12) || !(cameraRadius > 1e-12)) return 0;
+  const need = (
+    safe * safe - separation * separation - cameraRadius * cameraRadius
+  ) / (2 * cameraRadius * separation);
+  return Math.acos(clampUnit(need));
+}
+
 /**
- * Keep a moon-focused camera outside its parent globe.
- * Clear seats stay put. Interior seats slide around the parent on the
- * moon-orbit sphere so zoom cannot flip through the center.
+ * Follow a bounded, parent-clear three-leg moon focus route. The mutable route
+ * stores wall-clock progress and parallel-transports its initial tangent as the
+ * moon moves. Start and target are moon-relative; parentAxis points outward
+ * from the parent through the moon. Start must clear the parent endpoint; the
+ * latched target must pass the complete parent sightline guard.
+ */
+export function moonFocusFlightPoint(
+  route,
+  start,
+  target,
+  parentAxis,
+  elapsedSeconds,
+  minimumRadius,
+  maximumStartAngle = Math.PI,
+  maximumTargetAngle = Math.PI,
+  orbitNormal = null,
+  minimumTargetRadius = minimumRadius,
+) {
+  const safeStart = Number.isFinite(minimumRadius) && minimumRadius > 0 ? minimumRadius : 0;
+  const safeTarget = Number.isFinite(minimumTargetRadius) && minimumTargetRadius > 0
+    ? minimumTargetRadius
+    : 0;
+  const dt = Number.isFinite(elapsedSeconds) && elapsedSeconds > 0 ? elapsedSeconds : 0;
+  const measuredAxis = Math.hypot(parentAxis.x, parentAxis.y, parentAxis.z);
+  const hasAxis = Number.isFinite(measuredAxis) && measuredAxis > 1e-12;
+  const axisX = hasAxis ? parentAxis.x / measuredAxis : 1;
+  const axisY = hasAxis ? parentAxis.y / measuredAxis : 0;
+  const axisZ = hasAxis ? parentAxis.z / measuredAxis : 0;
+  const measuredTargetRadius = Math.hypot(target.x, target.y, target.z);
+  const hasTarget = Number.isFinite(measuredTargetRadius) && measuredTargetRadius > 1e-12;
+  const targetRadius = Math.max(safeTarget, hasTarget ? measuredTargetRadius : safeTarget);
+  const targetX = hasTarget ? target.x / measuredTargetRadius : axisX;
+  const targetY = hasTarget ? target.y / measuredTargetRadius : axisY;
+  const targetZ = hasTarget ? target.z / measuredTargetRadius : axisZ;
+
+  if (!route.ready) {
+    const measuredStartRadius = Math.hypot(start.x, start.y, start.z);
+    const hasStart = Number.isFinite(measuredStartRadius) && measuredStartRadius > 1e-12;
+    route.startRadius = Math.max(
+      safeStart,
+      hasStart ? measuredStartRadius : targetRadius,
+    );
+    const startX = hasStart ? start.x / measuredStartRadius : axisX;
+    const startY = hasStart ? start.y / measuredStartRadius : axisY;
+    const startZ = hasStart ? start.z / measuredStartRadius : axisZ;
+    const startDot = clampUnit(startX * axisX + startY * axisY + startZ * axisZ);
+    route.startAngle = Math.acos(startDot);
+    let tangentX = startX - axisX * startDot;
+    let tangentY = startY - axisY * startDot;
+    let tangentZ = startZ - axisZ * startDot;
+    const tangentLength = Math.hypot(tangentX, tangentY, tangentZ);
+    if (tangentLength > 1e-12) {
+      tangentX /= tangentLength;
+      tangentY /= tangentLength;
+      tangentZ /= tangentLength;
+    } else {
+      const tangent = perpendicularTo(axisX, axisY, axisZ);
+      tangentX = tangent.x;
+      tangentY = tangent.y;
+      tangentZ = tangent.z;
+    }
+    route.axisX = axisX;
+    route.axisY = axisY;
+    route.axisZ = axisZ;
+    route.anchorX = tangentX;
+    route.anchorY = tangentY;
+    route.anchorZ = tangentZ;
+    const targetDot = clampUnit(
+      targetX * axisX + targetY * axisY + targetZ * axisZ,
+    );
+    route.targetAngle = Math.acos(targetDot);
+    let targetTangentX = targetX - axisX * targetDot;
+    let targetTangentY = targetY - axisY * targetDot;
+    let targetTangentZ = targetZ - axisZ * targetDot;
+    const targetTangentLength = Math.hypot(
+      targetTangentX,
+      targetTangentY,
+      targetTangentZ,
+    );
+    if (targetTangentLength > 1e-12) {
+      targetTangentX /= targetTangentLength;
+      targetTangentY /= targetTangentLength;
+      targetTangentZ /= targetTangentLength;
+    } else {
+      targetTangentX = tangentX;
+      targetTangentY = tangentY;
+      targetTangentZ = tangentZ;
+    }
+    route.targetMotion = {
+      axisX,
+      axisY,
+      axisZ,
+      anchorX: targetTangentX,
+      anchorY: targetTangentY,
+      anchorZ: targetTangentZ,
+    };
+    route.targetRadius = targetRadius;
+    route.outwardSeconds = route.startAngle
+      / CONFIG.moonFocusAngularRateRadiansPerSecond;
+    route.radialSeconds = Math.abs(Math.log(targetRadius / route.startRadius))
+      / CONFIG.moonFocusRadialLogRatePerSecond;
+    route.targetSeconds = Math.PI / CONFIG.moonFocusAngularRateRadiansPerSecond;
+    route.elapsed = 0;
+    const initialStartCap = Number.isFinite(maximumStartAngle)
+      ? Math.max(0, Math.min(Math.PI, maximumStartAngle))
+      : 0;
+    route.outputAngle = Math.min(route.startAngle, initialStartCap);
+    route.done = false;
+    route.ready = true;
+  }
+
+  const tangent = transportParentTangent(route, axisX, axisY, axisZ, orbitNormal);
+  const targetTangent = transportParentTangent(
+    route.targetMotion,
+    axisX,
+    axisY,
+    axisZ,
+    orbitNormal,
+  );
+  route.elapsed += dt;
+  const outwardEnd = route.outwardSeconds;
+  const radialEnd = outwardEnd + route.radialSeconds;
+  const targetEnd = radialEnd + route.targetSeconds;
+  let radius;
+  let directionX;
+  let directionY;
+  let directionZ;
+
+  if (route.elapsed < outwardEnd && route.outwardSeconds > 1e-12) {
+    const progress = route.elapsed / route.outwardSeconds;
+    const startCap = Number.isFinite(maximumStartAngle)
+      ? Math.max(0, Math.min(Math.PI, maximumStartAngle))
+      : 0;
+    // A hidden start initially uses the endpoint-only cap. Store the emitted
+    // angle so switching to the stricter full-moon cap cannot rebase the
+    // remaining route or make a visible jump.
+    const nominal = route.startAngle * (1 - progress);
+    const angle = Math.min(route.outputAngle, nominal, startCap);
+    route.outputAngle = angle;
+    const cosine = Math.cos(angle);
+    const sine = Math.sin(angle);
+    radius = route.startRadius;
+    directionX = axisX * cosine + tangent.x * sine;
+    directionY = axisY * cosine + tangent.y * sine;
+    directionZ = axisZ * cosine + tangent.z * sine;
+  } else if (route.elapsed < radialEnd && route.radialSeconds > 1e-12) {
+    const progress = (route.elapsed - outwardEnd) / route.radialSeconds;
+    radius = Math.exp(
+      Math.log(route.startRadius)
+        + progress * (Math.log(route.targetRadius) - Math.log(route.startRadius)),
+    );
+    directionX = axisX;
+    directionY = axisY;
+    directionZ = axisZ;
+    route.outputAngle = 0;
+  } else if (route.elapsed < targetEnd && route.targetSeconds > 1e-12) {
+    const progress = (route.elapsed - radialEnd) / route.targetSeconds;
+    const targetCap = Number.isFinite(maximumTargetAngle)
+      ? Math.max(0, Math.min(Math.PI, maximumTargetAngle))
+      : 0;
+    const desiredAngle = Math.min(
+      route.targetAngle * Math.max(0, Math.min(1, progress)),
+      targetCap,
+    );
+    const previousAngle = Number.isFinite(route.outputAngle) ? route.outputAngle : 0;
+    const maximumMove = CONFIG.moonFocusAngularRateRadiansPerSecond * dt;
+    const theta = desiredAngle < previousAngle
+      ? desiredAngle
+      : Math.min(desiredAngle, previousAngle + maximumMove);
+    route.outputAngle = theta;
+    const cosine = Math.cos(theta);
+    const sine = Math.sin(theta);
+    radius = route.targetRadius;
+    directionX = axisX * cosine + targetTangent.x * sine;
+    directionY = axisY * cosine + targetTangent.y * sine;
+    directionZ = axisZ * cosine + targetTangent.z * sine;
+  } else {
+    const targetCap = Number.isFinite(maximumTargetAngle)
+      ? Math.max(0, Math.min(Math.PI, maximumTargetAngle))
+      : 0;
+    const desiredAngle = Math.min(route.targetAngle, targetCap);
+    const previousAngle = Number.isFinite(route.outputAngle) ? route.outputAngle : 0;
+    const maximumMove = CONFIG.moonFocusAngularRateRadiansPerSecond * dt;
+    const angle = desiredAngle < previousAngle
+      ? desiredAngle
+      : Math.min(desiredAngle, previousAngle + maximumMove);
+    route.outputAngle = angle;
+    route.done = Math.abs(desiredAngle - angle) <= 1e-12;
+    const cosine = Math.cos(angle);
+    const sine = Math.sin(angle);
+    return {
+      x: (axisX * cosine + targetTangent.x * sine) * route.targetRadius,
+      y: (axisY * cosine + targetTangent.y * sine) * route.targetRadius,
+      z: (axisZ * cosine + targetTangent.z * sine) * route.targetRadius,
+    };
+  }
+
+  route.done = false;
+  return {
+    x: directionX * radius,
+    y: directionY * radius,
+    z: directionZ * radius,
+  };
+}
+
+/** Clear caller-owned path history when a moon camera context changes. */
+export function resetParentGlobeContinuity(continuity, key = null) {
+  if (!continuity) return;
+  continuity.key = key;
+  continuity.active = false;
+  delete continuity.axisX;
+  delete continuity.axisY;
+  delete continuity.axisZ;
+  delete continuity.anchorX;
+  delete continuity.anchorY;
+  delete continuity.anchorZ;
+  delete continuity.normalX;
+  delete continuity.normalY;
+  delete continuity.normalZ;
+  delete continuity.outputAngle;
+  delete continuity.turnSign;
+  delete continuity.inCore;
+  delete continuity.settled;
+}
+
+function clampUnit(value) {
+  return Math.min(1, Math.max(-1, value));
+}
+
+function parentGlobeCapDot(separation, cameraRadius, renderedRadius, near, moonRadius) {
+  const safe = parentGlobeClearance(renderedRadius, near);
+  const visibility = parentGlobeClearance(renderedRadius, 0);
+  const diskRadius = Number.isFinite(moonRadius) && moonRadius > 0 ? moonRadius : 0;
+  if (
+    !(separation > visibility + diskRadius + 1e-12)
+    || !(cameraRadius > diskRadius + 1e-12)
+  ) return null;
+  const endpointDot = (safe * safe - separation * separation - cameraRadius * cameraRadius)
+    / (2 * cameraRadius * separation);
+  let sightlineDot = -1;
+  if (cameraRadius > separation - visibility) {
+    const endpointSightline = Math.sqrt(Math.max(
+      0,
+      separation * separation
+        - visibility * visibility
+        - 2 * visibility * diskRadius,
+    ));
+    if (cameraRadius <= endpointSightline) {
+      sightlineDot = (
+        visibility * visibility - separation * separation - cameraRadius * cameraRadius
+      ) / (2 * cameraRadius * separation);
+    } else {
+      const taper = 1 - (diskRadius / cameraRadius) ** 2;
+      const clearSeparation = separation * separation - (visibility + diskRadius) ** 2;
+      sightlineDot = -(
+        (visibility + diskRadius) * diskRadius / cameraRadius
+          + Math.sqrt(Math.max(0, taper * clearSeparation))
+      ) / separation;
+    }
+  }
+  return Math.max(-1, endpointDot, sightlineDot);
+}
+
+function perpendicularTo(x, y, z) {
+  let px;
+  let py;
+  let pz;
+  if (Math.abs(y) < 0.9) {
+    px = z;
+    py = 0;
+    pz = -x;
+  } else {
+    px = 0;
+    py = z;
+    pz = -y;
+  }
+  const length = Math.hypot(px, py, pz) || 1;
+  return { x: px / length, y: py / length, z: pz / length };
+}
+
+function normalizedOrbitNormal(orbitNormal, continuity) {
+  let x = orbitNormal?.x;
+  let y = orbitNormal?.y;
+  let z = orbitNormal?.z;
+  const length = Math.hypot(x, y, z);
+  if (!(length > 1e-12)) return null;
+  x /= length;
+  y /= length;
+  z /= length;
+  if (
+    Number.isFinite(continuity.normalX)
+    && x * continuity.normalX + y * continuity.normalY + z * continuity.normalZ < 0
+  ) {
+    x = -x;
+    y = -y;
+    z = -z;
+  }
+  continuity.normalX = x;
+  continuity.normalY = y;
+  continuity.normalZ = z;
+  return { x, y, z };
+}
+
+function tangentFromNormal(normal, axisX, axisY, axisZ) {
+  if (!normal) return null;
+  const along = normal.x * axisX + normal.y * axisY + normal.z * axisZ;
+  const x = normal.x - axisX * along;
+  const y = normal.y - axisY * along;
+  const z = normal.z - axisZ * along;
+  const length = Math.hypot(x, y, z);
+  return length > 1e-12 ? { x: x / length, y: y / length, z: z / length } : null;
+}
+
+function rotateAroundAxis(x, y, z, axisX, axisY, axisZ, angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const dot = axisX * x + axisY * y + axisZ * z;
+  const turnX = axisY * z - axisZ * y;
+  const turnY = axisZ * x - axisX * z;
+  const turnZ = axisX * y - axisY * x;
+  return {
+    x: x * cosine + turnX * sine + axisX * dot * (1 - cosine),
+    y: y * cosine + turnY * sine + axisY * dot * (1 - cosine),
+    z: z * cosine + turnZ * sine + axisZ * dot * (1 - cosine),
+  };
+}
+
+function transportParentTangent(continuity, axisX, axisY, axisZ, orbitNormal = null) {
+  const oldX = continuity.axisX;
+  const oldY = continuity.axisY;
+  const oldZ = continuity.axisZ;
+  let anchorX = continuity.anchorX;
+  let anchorY = continuity.anchorY;
+  let anchorZ = continuity.anchorZ;
+  const crossX = oldY * axisZ - oldZ * axisY;
+  const crossY = oldZ * axisX - oldX * axisZ;
+  const crossZ = oldX * axisY - oldY * axisX;
+  const sine = Math.hypot(crossX, crossY, crossZ);
+  const cosine = clampUnit(oldX * axisX + oldY * axisY + oldZ * axisZ);
+  const normal = normalizedOrbitNormal(orbitNormal, continuity);
+  if (normal) {
+    const signedSine = normal.x * crossX + normal.y * crossY + normal.z * crossZ;
+    let angle = Math.atan2(signedSine, cosine);
+    // The supplied normal is signed in the rendered direction of travel. A
+    // positive modulo keeps exact and near-antipodal samples on one branch.
+    if (angle < -1e-12) angle += Math.PI * 2;
+    if (Math.abs(signedSine) <= 1e-12 && cosine < 0) angle = Math.PI;
+    const rotated = rotateAroundAxis(
+      anchorX,
+      anchorY,
+      anchorZ,
+      normal.x,
+      normal.y,
+      normal.z,
+      angle,
+    );
+    anchorX = rotated.x;
+    anchorY = rotated.y;
+    anchorZ = rotated.z;
+  } else if (sine > 1e-12) {
+    const rotationX = crossX / sine;
+    const rotationY = crossY / sine;
+    const rotationZ = crossZ / sine;
+    const rotated = rotateAroundAxis(
+      anchorX,
+      anchorY,
+      anchorZ,
+      rotationX,
+      rotationY,
+      rotationZ,
+      Math.atan2(sine, cosine),
+    );
+    anchorX = rotated.x;
+    anchorY = rotated.y;
+    anchorZ = rotated.z;
+  }
+  // Projection removes harmless floating-point drift from the tangent plane.
+  const along = anchorX * axisX + anchorY * axisY + anchorZ * axisZ;
+  anchorX -= axisX * along;
+  anchorY -= axisY * along;
+  anchorZ -= axisZ * along;
+  const length = Math.hypot(anchorX, anchorY, anchorZ);
+  const anchor = length > 1e-12
+    ? { x: anchorX / length, y: anchorY / length, z: anchorZ / length }
+    : perpendicularTo(axisX, axisY, axisZ);
+  continuity.axisX = axisX;
+  continuity.axisY = axisY;
+  continuity.axisZ = axisZ;
+  continuity.anchorX = anchor.x;
+  continuity.anchorY = anchor.y;
+  continuity.anchorZ = anchor.z;
+  return anchor;
+}
+
+function rawParentTangent(ux, uy, uz, axisX, axisY, axisZ, axisDot, fallback) {
+  const px = ux - axisX * axisDot;
+  const py = uy - axisY * axisDot;
+  const pz = uz - axisZ * axisDot;
+  const length = Math.hypot(px, py, pz);
+  if (length > 1e-12) return { x: px / length, y: py / length, z: pz / length };
+  return fallback ?? perpendicularTo(axisX, axisY, axisZ);
+}
+
+function continuousParentDirection(
+  continuity,
+  axisX,
+  axisY,
+  axisZ,
+  ux,
+  uy,
+  uz,
+  axisDot,
+  boundaryDot,
+  maximumAngularStep,
+  orbitNormal,
+) {
+  const boundaryAngle = Math.acos(clampUnit(boundaryDot));
+  const rawAngle = Math.acos(clampUnit(axisDot));
+  const targetAngle = Math.min(rawAngle, boundaryAngle);
+  const inwardAngle = Math.acos(clampUnit(-axisDot));
+  const inwardBoundary = Math.acos(clampUnit(-boundaryDot));
+  const inwardRatio = inwardBoundary > 1e-12
+    ? inwardAngle / inwardBoundary
+    : Infinity;
+  if (!continuity.active) {
+    const normal = normalizedOrbitNormal(orbitNormal, continuity);
+    const fallback = tangentFromNormal(normal, axisX, axisY, axisZ);
+    const startsInCore = inwardRatio <= 0.15;
+    const anchor = startsInCore
+      ? fallback ?? perpendicularTo(axisX, axisY, axisZ)
+      : rawParentTangent(
+        ux,
+        uy,
+        uz,
+        axisX,
+        axisY,
+        axisZ,
+        axisDot,
+        fallback,
+      );
+    continuity.active = true;
+    continuity.axisX = axisX;
+    continuity.axisY = axisY;
+    continuity.axisZ = axisZ;
+    continuity.anchorX = anchor.x;
+    continuity.anchorY = anchor.y;
+    continuity.anchorZ = anchor.z;
+    continuity.outputAngle = targetAngle;
+    continuity.turnSign = 1;
+    continuity.inCore = startsInCore;
+    continuity.settled = true;
+    return {
+      x: axisX * Math.cos(targetAngle) + anchor.x * Math.sin(targetAngle),
+      y: axisY * Math.cos(targetAngle) + anchor.y * Math.sin(targetAngle),
+      z: axisZ * Math.cos(targetAngle) + anchor.z * Math.sin(targetAngle),
+    };
+  }
+
+  let anchor = transportParentTangent(
+    continuity,
+    axisX,
+    axisY,
+    axisZ,
+    orbitNormal,
+  );
+  let outputAngle = Math.min(
+    Number.isFinite(continuity.outputAngle) ? continuity.outputAngle : targetAngle,
+    boundaryAngle,
+  );
+  if (continuity.inCore) {
+    continuity.inCore = inwardRatio < 0.35;
+  } else {
+    continuity.inCore = inwardRatio <= 0.15;
+  }
+  const targetTangent = continuity.inCore
+    ? anchor
+    : rawParentTangent(
+      ux,
+      uy,
+      uz,
+      axisX,
+      axisY,
+      axisZ,
+      axisDot,
+      anchor,
+    );
+  const crossX = anchor.y * targetTangent.z - anchor.z * targetTangent.y;
+  const crossY = anchor.z * targetTangent.x - anchor.x * targetTangent.z;
+  const crossZ = anchor.x * targetTangent.y - anchor.y * targetTangent.x;
+  const phaseSine = axisX * crossX + axisY * crossY + axisZ * crossZ;
+  const phaseCosine = clampUnit(
+    anchor.x * targetTangent.x
+      + anchor.y * targetTangent.y
+      + anchor.z * targetTangent.z,
+  );
+  let phase = Math.atan2(phaseSine, phaseCosine);
+  if (Math.abs(phaseSine) <= 1e-12 && phaseCosine < 0) {
+    const normal = normalizedOrbitNormal(orbitNormal, continuity);
+    if (normal) {
+      const towardNormal = axisX * (anchor.y * normal.z - anchor.z * normal.y)
+        + axisY * (anchor.z * normal.x - anchor.x * normal.z)
+        + axisZ * (anchor.x * normal.y - anchor.y * normal.x);
+      phase = Math.sign(towardNormal || continuity.turnSign || 1) * Math.PI;
+    } else {
+      phase = (continuity.turnSign || 1) * Math.PI;
+    }
+  }
+  if (Math.abs(phase) > 1e-12) continuity.turnSign = Math.sign(phase);
+
+  let remaining = Number.isFinite(maximumAngularStep)
+    ? Math.max(0, maximumAngularStep)
+    : Infinity;
+  let phaseMove = phase;
+  const polarSine = Math.sin(outputAngle);
+  if (Number.isFinite(remaining) && Math.abs(phase) > 1e-12 && polarSine > 1e-12) {
+    const allowedCosine = (
+      Math.cos(Math.min(Math.PI, remaining)) - Math.cos(outputAngle) ** 2
+    ) / (polarSine * polarSine);
+    const allowedPhase = Math.acos(clampUnit(allowedCosine));
+    phaseMove = Math.sign(phase) * Math.min(Math.abs(phase), allowedPhase);
+    const used = Math.acos(clampUnit(
+      Math.cos(outputAngle) ** 2 + polarSine * polarSine * Math.cos(phaseMove),
+    ));
+    remaining = Math.max(0, remaining - used);
+  }
+  if (phaseMove !== 0) {
+    anchor = rotateAroundAxis(
+      anchor.x,
+      anchor.y,
+      anchor.z,
+      axisX,
+      axisY,
+      axisZ,
+      phaseMove,
+    );
+  }
+  const polarMove = targetAngle - outputAngle;
+  outputAngle += Math.sign(polarMove) * Math.min(Math.abs(polarMove), remaining);
+  continuity.anchorX = anchor.x;
+  continuity.anchorY = anchor.y;
+  continuity.anchorZ = anchor.z;
+  continuity.outputAngle = outputAngle;
+
+  const caughtPhase = Math.abs(phase - phaseMove) <= 1e-10
+    || Math.sin(targetAngle) <= 1e-12;
+  const caughtPolar = Math.abs(targetAngle - outputAngle) <= 1e-10;
+  continuity.settled = caughtPhase && caughtPolar;
+  if (axisDot >= boundaryDot && caughtPhase && caughtPolar) continuity.active = false;
+  const cosine = Math.cos(outputAngle);
+  const sine = Math.sin(outputAngle);
+  return {
+    x: axisX * cosine + anchor.x * sine,
+    y: axisY * cosine + anchor.y * sine,
+    z: axisZ * cosine + anchor.z * sine,
+  };
+}
+
+/**
+ * Keep a moon-focused camera and its sightline outside the parent globe.
+ * Endpoint- and sightline-clear seats stay exact. Blocked seats slide on
+ * their focus sphere; optional caller-owned history carries the slide
+ * continuously through the singular parent-facing axis. The three focus
+ * offsets are the rendered moon center relative to the parent; options may
+ * carry `{ moonRadius, continuity, key, maximumAngularStep, orbitNormal }`.
  */
 export function resolveParentGlobePoint(
   cameraX,
@@ -152,75 +750,100 @@ export function resolveParentGlobePoint(
   parentZ,
   renderedRadius,
   near,
-  fallbackX = 0,
-  fallbackY = 0,
-  fallbackZ = 0,
+  focusOffsetX = 0,
+  focusOffsetY = 0,
+  focusOffsetZ = 0,
+  options = null,
 ) {
   const safe = parentGlobeClearance(renderedRadius, near);
   const dx = cameraX - parentX;
   const dy = cameraY - parentY;
   const dz = cameraZ - parentZ;
   const dist = Math.hypot(dx, dy, dz);
-  if (!(safe > 0) || dist >= safe) {
+  const continuity = options?.continuity ?? null;
+  const key = options?.key ?? null;
+  if (continuity && continuity.key !== key) resetParentGlobeContinuity(continuity, key);
+  if (!(safe > 0)) {
+    if (continuity) continuity.active = false;
     return { x: cameraX, y: cameraY, z: cameraZ };
   }
 
-  const sep = Math.hypot(fallbackX, fallbackY, fallbackZ);
-  const ox = cameraX - parentX - fallbackX;
-  const oy = cameraY - parentY - fallbackY;
-  const oz = cameraZ - parentZ - fallbackZ;
+  const sep = Math.hypot(focusOffsetX, focusOffsetY, focusOffsetZ);
+  const ox = cameraX - parentX - focusOffsetX;
+  const oy = cameraY - parentY - focusOffsetY;
+  const oz = cameraZ - parentZ - focusOffsetZ;
   const radius = Math.hypot(ox, oy, oz);
-  if (sep > 1e-12 && radius > 1e-12) {
-    const dhatX = fallbackX / sep;
-    const dhatY = fallbackY / sep;
-    const dhatZ = fallbackZ / sep;
+  const moonRadius = Number.isFinite(options?.moonRadius) && options.moonRadius > 0
+    ? options.moonRadius
+    : 0;
+  const need = parentGlobeCapDot(sep, radius, renderedRadius, near, moonRadius);
+  if (need != null) {
+    const dhatX = focusOffsetX / sep;
+    const dhatY = focusOffsetY / sep;
+    const dhatZ = focusOffsetZ / sep;
     const ux = ox / radius;
     const uy = oy / radius;
     const uz = oz / radius;
     const uDot = ux * dhatX + uy * dhatY + uz * dhatZ;
-    const k = (safe * safe - sep * sep - radius * radius) / (2 * radius * sep);
-    if (k <= 1) {
-      const need = k < -1 ? -1 : k;
-      if (uDot < need) {
-        let px = ux - dhatX * uDot;
-        let py = uy - dhatY * uDot;
-        let pz = uz - dhatZ * uDot;
-        let plen = Math.hypot(px, py, pz);
-        if (plen < 1e-12) {
-          if (Math.abs(dhatY) < 0.9) {
-            px = dhatZ;
-            py = 0;
-            pz = -dhatX;
-          } else {
-            px = 0;
-            py = dhatZ;
-            pz = -dhatY;
-          }
-          plen = Math.hypot(px, py, pz);
+    if (need <= 1 && uDot >= need && !continuity?.active) {
+      return { x: cameraX, y: cameraY, z: cameraZ };
+    }
+    if (need <= 1) {
+      if (continuity) {
+        const direction = continuousParentDirection(
+          continuity,
+          dhatX,
+          dhatY,
+          dhatZ,
+          ux,
+          uy,
+          uz,
+          uDot,
+          need,
+          options?.maximumAngularStep,
+          options?.orbitNormal,
+        );
+        if (!continuity.active && uDot >= need) {
+          return { x: cameraX, y: cameraY, z: cameraZ };
         }
-        px /= plen;
-        py /= plen;
-        pz /= plen;
-        const slide = Math.sqrt(Math.max(0, 1 - need * need));
         return {
-          x: parentX + fallbackX + (dhatX * need + px * slide) * radius,
-          y: parentY + fallbackY + (dhatY * need + py * slide) * radius,
-          z: parentZ + fallbackZ + (dhatZ * need + pz * slide) * radius,
+          x: parentX + focusOffsetX + direction.x * radius,
+          y: parentY + focusOffsetY + direction.y * radius,
+          z: parentZ + focusOffsetZ + direction.z * radius,
         };
       }
+      const tangent = rawParentTangent(
+        ux,
+        uy,
+        uz,
+        dhatX,
+        dhatY,
+        dhatZ,
+        uDot,
+        tangentFromNormal(options?.orbitNormal, dhatX, dhatY, dhatZ),
+      );
+      const slide = Math.sqrt(Math.max(0, 1 - need * need));
+      return {
+        x: parentX + focusOffsetX + (dhatX * need + tangent.x * slide) * radius,
+        y: parentY + focusOffsetY + (dhatY * need + tangent.y * slide) * radius,
+        z: parentZ + focusOffsetZ + (dhatZ * need + tangent.z * slide) * radius,
+      };
     }
   }
+
+  if (continuity) continuity.active = false;
+  if (dist >= safe) return { x: cameraX, y: cameraY, z: cameraZ };
 
   let rx = dx;
   let ry = dy;
   let rz = dz;
   let rd = dist;
-  if (rd < 1e-12) {
-    rx = fallbackX;
-    ry = fallbackY;
-    rz = fallbackZ;
+  if (!(rd > 1e-12)) {
+    rx = focusOffsetX;
+    ry = focusOffsetY;
+    rz = focusOffsetZ;
     rd = sep;
-    if (rd < 1e-12) {
+    if (!(rd > 1e-12)) {
       rx = 1;
       ry = 0;
       rz = 0;

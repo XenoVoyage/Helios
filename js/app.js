@@ -5,7 +5,12 @@ import {
   formatDaysPerSecond,
   isShortcutTargetInteractive,
   minimumFocusDistance,
+  moonFocusFlightPoint,
+  parentGlobeClearance,
+  parentGlobeMaximumEndpointAngle,
+  parentGlobeMaximumViewAngle,
   pinchZoomDistance,
+  resetParentGlobeContinuity,
   resolveParentGlobePoint,
   wheelZoomMultiplier,
 } from "./config.js";
@@ -16,6 +21,7 @@ import {
   describeBody,
   findBody,
   keplerOffset,
+  keplerOrbitNormal,
   moonOrbitAttachment,
   ringTextureU,
   visualBodyRadius,
@@ -80,6 +86,28 @@ const projected = new THREE.Vector3();
 const focusPoint = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
 const parentPoint = new THREE.Vector3();
+const transitionStartOffset = new THREE.Vector3();
+const transitionTargetOffset = new THREE.Vector3();
+const transitionParentAxis = new THREE.Vector3();
+const moonOrbitNormal = new THREE.Vector3();
+const orbitFrameQuaternion = new THREE.Quaternion();
+const parentGlobeContinuity = {};
+const parentGlobeOptions = {
+  continuity: parentGlobeContinuity,
+  key: null,
+  moonRadius: 0,
+  maximumAngularStep: 0,
+  orbitNormal: moonOrbitNormal,
+};
+const parentGlobeTargetOptions = { moonRadius: 0, orbitNormal: moonOrbitNormal };
+const moonFocusTransition = {
+  active: false,
+  flightDistance: null,
+  progress: 1,
+  focusStart: new THREE.Vector3(),
+  startCamera: new THREE.Vector3(),
+  route: {},
+};
 const constellationViewport = { width: 0, height: 0, topInset: 64, bottomInset: 72 };
 
 const state = {
@@ -126,6 +154,29 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function setMoonFocusTransition(active) {
+  moonFocusTransition.active = active;
+  if (!active) {
+    moonFocusTransition.progress = 1;
+    moonFocusTransition.route = {};
+  }
+  if (ui.viewport) ui.viewport.setAttribute("aria-busy", String(active));
+}
+
+function beginMoonFocusTransition(targetDistance, progress, startVisible = null) {
+  resetParentGlobeContinuity(parentGlobeContinuity);
+  setMoonFocusTransition(true);
+  moonFocusTransition.progress = progress;
+  moonFocusTransition.focusStart.copy(focusPoint);
+  moonFocusTransition.startCamera.copy(camera.position);
+  moonFocusTransition.flightDistance = targetDistance;
+  moonFocusTransition.route = {
+    startNear: camera.near,
+    targetNear: extraZoomCameraNear(targetDistance),
+  };
+  if (startVisible !== null) moonFocusTransition.route.startVisible = startVisible;
+}
+
 function seedRandom(seed) {
   let n = seed >>> 0;
   return () => {
@@ -163,6 +214,7 @@ function boot() {
   ui.version = $("version-label");
   ui.dock = $("dock");
   ui.skip = $("skip-link");
+  setMoonFocusTransition(false);
 
   ui.version.textContent = CONFIG.VERSION;
   const galaxyLook = earthSkyLook ? null : requestedGalaxyLook();
@@ -414,6 +466,9 @@ function applyBodyOrientation(tilt, body) {
 
 function createBodyNode(body) {
   const radius = visualBodyRadius(body);
+  const orbitNormal = body.kind === "moon" && body.parent
+    ? keplerOrbitNormal(body, findBody(body.parent))
+    : null;
   const segments = body.id === "sun" ? 64 : body.kind === "moon" ? 32 : 48;
   const pivot = new THREE.Group();
   pivot.name = body.id;
@@ -458,7 +513,7 @@ function createBodyNode(body) {
   label.hidden = true;
   ui.labels.append(label);
 
-  return { body, pivot, tilt, mesh, label, radius, glow, spinPhase };
+  return { body, pivot, tilt, mesh, label, radius, glow, spinPhase, orbitNormal };
 }
 
 function createRing(body) {
@@ -608,7 +663,14 @@ function onPointerMove(event) {
   }
   if (!state.tap || state.tap.moved >= CONFIG.tapMovePx) {
     state.azimuth -= dx * 0.005;
-    state.elevation = clamp(state.elevation + dy * 0.004, -1.2, 1.2);
+    // A parent guard can finish just beyond the normal input latitude. Keep
+    // the first horizontal drag exact and only let out-of-range seats move
+    // back toward the standard orbit band instead of snapping into it.
+    state.elevation = clamp(
+      state.elevation + dy * 0.004,
+      Math.min(-1.2, state.elevation),
+      Math.max(1.2, state.elevation),
+    );
   }
 }
 
@@ -650,14 +712,66 @@ function pointerGap() {
   return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
 }
 
+function moonZoomNeedsTransition(node, distance) {
+  if (parentGlobeContinuity.active) return true;
+  const parentNode = nodes.get(node.body.parent);
+  if (!parentNode) return false;
+  node.mesh.getWorldPosition(desiredTarget);
+  parentNode.mesh.getWorldPosition(parentPoint);
+  worldMoonOrbitNormal(node, parentNode);
+  const radius = extraZoomCameraDistance(distance);
+  const near = extraZoomCameraNear(distance);
+  const cosE = Math.cos(state.elevation);
+  const x = desiredTarget.x + radius * cosE * Math.sin(state.azimuth);
+  const y = desiredTarget.y + radius * Math.sin(state.elevation);
+  const z = desiredTarget.z + radius * cosE * Math.cos(state.azimuth);
+  parentGlobeTargetOptions.moonRadius = node.radius;
+  const resolved = resolveParentGlobePoint(
+    x,
+    y,
+    z,
+    parentPoint.x,
+    parentPoint.y,
+    parentPoint.z,
+    parentNode.radius,
+    near,
+    desiredTarget.x - parentPoint.x,
+    desiredTarget.y - parentPoint.y,
+    desiredTarget.z - parentPoint.z,
+    parentGlobeTargetOptions,
+  );
+  return Math.hypot(resolved.x - x, resolved.y - y, resolved.z - z) > 1e-9;
+}
+
 function zoomTo(distance) {
   const focusedRadius = nodes.get(state.focusedId)?.radius ?? 0;
   const next = clamp(distance, minimumFocusDistance(focusedRadius), CONFIG.maxDistance);
+  const focused = nodes.get(state.focusedId);
   if (next > CONFIG.solarMaxDistance) ensureGalaxyLayer();
   if (next > CONFIG.solarMaxDistance && state.distance <= CONFIG.solarMaxDistance) {
+    resetParentGlobeContinuity(parentGlobeContinuity);
+    setMoonFocusTransition(false);
+    moonFocusTransition.flightDistance = null;
     state.focusedId = "sun";
     state.selectedId = null;
     paintCard();
+  } else if (
+    next !== state.distance
+    && focused?.body.kind === "moon"
+    && focused.body.parent
+  ) {
+    if (!moonFocusTransition.active && moonZoomNeedsTransition(focused, next)) {
+      beginMoonFocusTransition(next, 1, true);
+    } else if (moonFocusTransition.active) {
+      resetParentGlobeContinuity(parentGlobeContinuity);
+      moonFocusTransition.startCamera.copy(camera.position);
+      moonFocusTransition.flightDistance = next;
+      moonFocusTransition.route = {
+        startNear: camera.near,
+        targetNear: extraZoomCameraNear(next),
+      };
+      ui.viewport.setAttribute("aria-busy", "true");
+    }
   }
   state.distance = next;
   paintConstellations();
@@ -690,10 +804,36 @@ function pickAt(clientX, clientY) {
 function selectBody(id) {
   const node = nodes.get(id);
   if (!node) return;
+  const ideal = Math.max(node.radius * 7.5, 5.5);
+  const nextDistance = clamp(ideal, minimumFocusDistance(node.radius), CONFIG.maxDistance);
+  if (state.focusedId !== id) {
+    if (node.body.kind === "moon" && node.body.parent) {
+      beginMoonFocusTransition(nextDistance, 0);
+    } else {
+      resetParentGlobeContinuity(parentGlobeContinuity);
+      setMoonFocusTransition(false);
+      moonFocusTransition.flightDistance = null;
+    }
+  } else if (
+    nextDistance !== state.distance
+    && node.body.kind === "moon"
+    && node.body.parent
+  ) {
+    if (moonFocusTransition.active) {
+      resetParentGlobeContinuity(parentGlobeContinuity);
+      moonFocusTransition.startCamera.copy(camera.position);
+      moonFocusTransition.flightDistance = nextDistance;
+      moonFocusTransition.route = {
+        startNear: camera.near,
+        targetNear: extraZoomCameraNear(nextDistance),
+      };
+    } else if (moonZoomNeedsTransition(node, nextDistance)) {
+      beginMoonFocusTransition(nextDistance, 1, true);
+    }
+  }
   state.focusedId = id;
   state.selectedId = id;
-  const ideal = Math.max(node.radius * 7.5, 5.5);
-  state.distance = clamp(ideal, minimumFocusDistance(node.radius), CONFIG.maxDistance);
+  state.distance = nextDistance;
   paintConstellations();
   bindSelectionHelpers();
   paintCard();
@@ -709,6 +849,9 @@ function clearSelection() {
 }
 
 function resetView() {
+  resetParentGlobeContinuity(parentGlobeContinuity);
+  setMoonFocusTransition(false);
+  moonFocusTransition.flightDistance = null;
   state.focusedId = earthSkyLook ? "earth" : "sun";
   state.selectedId = null;
   state.azimuth = CONFIG.cameraAzimuth;
@@ -955,6 +1098,17 @@ function updateBodies() {
   }
 }
 
+function worldMoonOrbitNormal(node, parentNode) {
+  const attachment = moonOrbitAttachment(node.body) === "parent-equatorial"
+    ? parentNode.tilt
+    : parentNode.pivot;
+  attachment.getWorldQuaternion(orbitFrameQuaternion);
+  return moonOrbitNormal
+    .set(node.orbitNormal.x, node.orbitNormal.y, node.orbitNormal.z)
+    .applyQuaternion(orbitFrameQuaternion)
+    .normalize();
+}
+
 function placeCamera(blend) {
   const focused = nodes.get(state.focusedId);
   focused.mesh.getWorldPosition(desiredTarget);
@@ -963,21 +1117,82 @@ function placeCamera(blend) {
     attachSkyToCamera(celestial, camera);
     return;
   }
-  focusPoint.lerp(desiredTarget, clamp(blend, 0, 1));
+  const parentedMoon = focused.body.kind === "moon" && Boolean(focused.body.parent);
+  const boundedBlend = clamp(blend, 0, 1);
+  const transitionSeconds = parentedMoon
+    ? -Math.log1p(-Math.min(1 - Number.EPSILON, boundedBlend)) / CONFIG.focusLerp
+    : 0;
+  let transitionBlend = 1;
+  if (parentedMoon) {
+    if (moonFocusTransition.active) {
+      // Recover the capped frame delta encoded by the exponential camera blend.
+      moonFocusTransition.progress = Math.min(
+        1,
+        moonFocusTransition.progress
+          + transitionSeconds / CONFIG.moonFocusEasingSeconds,
+      );
+      const progress = moonFocusTransition.progress;
+      transitionBlend = progress * progress * (3 - 2 * progress);
+      focusPoint.lerpVectors(
+        moonFocusTransition.focusStart,
+        desiredTarget,
+        transitionBlend,
+      );
+    } else {
+      focusPoint.copy(desiredTarget);
+    }
+  } else {
+    focusPoint.lerp(desiredTarget, boundedBlend);
+  }
   // Orbit input stays live at every zoom; extra-zoom never seats or
   // locks the camera, it only remaps the orbit radius.
-  const radius = extraZoomCameraDistance(state.distance);
-  const near = extraZoomCameraNear(state.distance);
+  const flightDistance = moonFocusTransition.active
+    ? moonFocusTransition.flightDistance ?? state.distance
+    : state.distance;
+  const radius = extraZoomCameraDistance(flightDistance);
+  let near = extraZoomCameraNear(flightDistance);
   const cosE = Math.cos(state.elevation);
+  const orbitCenter = parentedMoon ? desiredTarget : focusPoint;
+  if (
+    moonFocusTransition.active
+    && moonFocusTransition.route.ready
+    && (
+      moonFocusTransition.route.viewAzimuth !== state.azimuth
+      || moonFocusTransition.route.viewElevation !== state.elevation
+    )
+  ) {
+    moonFocusTransition.startCamera.copy(camera.position);
+    moonFocusTransition.route = {
+      startNear: camera.near,
+      targetNear: moonFocusTransition.route.targetNear,
+    };
+    resetParentGlobeContinuity(parentGlobeContinuity);
+  }
   camera.position.set(
-    focusPoint.x + radius * cosE * Math.sin(state.azimuth),
-    focusPoint.y + radius * Math.sin(state.elevation),
-    focusPoint.z + radius * cosE * Math.cos(state.azimuth),
+    orbitCenter.x + radius * cosE * Math.sin(state.azimuth),
+    orbitCenter.y + radius * Math.sin(state.elevation),
+    orbitCenter.z + radius * cosE * Math.cos(state.azimuth),
   );
-  if (focused.body.kind === "moon" && focused.body.parent) {
+  if (parentedMoon) {
     const parentNode = nodes.get(focused.body.parent);
     if (parentNode) {
       parentNode.mesh.getWorldPosition(parentPoint);
+      worldMoonOrbitNormal(focused, parentNode);
+      parentGlobeOptions.key = focused.body.id;
+      parentGlobeOptions.moonRadius = focused.radius;
+      parentGlobeOptions.maximumAngularStep = (
+        CONFIG.moonFocusAngularRateRadiansPerSecond * transitionSeconds
+      );
+      parentGlobeTargetOptions.moonRadius = focused.radius;
+      const guardOptions = moonFocusTransition.active
+        ? parentGlobeTargetOptions
+        : parentGlobeOptions;
+      const startNear = moonFocusTransition.active
+        ? moonFocusTransition.route.startNear ?? camera.near
+        : near;
+      const targetNear = moonFocusTransition.active
+        ? moonFocusTransition.route.targetNear ?? near
+        : near;
       const resolved = resolveParentGlobePoint(
         camera.position.x,
         camera.position.y,
@@ -986,14 +1201,177 @@ function placeCamera(blend) {
         parentPoint.y,
         parentPoint.z,
         parentNode.radius,
-        near,
-        focusPoint.x - parentPoint.x,
-        focusPoint.y - parentPoint.y,
-        focusPoint.z - parentPoint.z,
+        targetNear,
+        desiredTarget.x - parentPoint.x,
+        desiredTarget.y - parentPoint.y,
+        desiredTarget.z - parentPoint.z,
+        guardOptions,
       );
-      camera.position.set(resolved.x, resolved.y, resolved.z);
+      if (moonFocusTransition.active) {
+        if (!moonFocusTransition.route.ready) {
+          const start = resolveParentGlobePoint(
+            moonFocusTransition.startCamera.x,
+            moonFocusTransition.startCamera.y,
+            moonFocusTransition.startCamera.z,
+            parentPoint.x,
+            parentPoint.y,
+            parentPoint.z,
+            parentNode.radius,
+            startNear,
+          );
+          transitionStartOffset.set(
+            start.x - desiredTarget.x,
+            start.y - desiredTarget.y,
+            start.z - desiredTarget.z,
+          );
+          const visibleStart = resolveParentGlobePoint(
+            start.x,
+            start.y,
+            start.z,
+            parentPoint.x,
+            parentPoint.y,
+            parentPoint.z,
+            parentNode.radius,
+            startNear,
+            desiredTarget.x - parentPoint.x,
+            desiredTarget.y - parentPoint.y,
+            desiredTarget.z - parentPoint.z,
+            parentGlobeTargetOptions,
+          );
+          moonFocusTransition.route.startVisible = Math.hypot(
+            visibleStart.x - start.x,
+            visibleStart.y - start.y,
+            visibleStart.z - start.z,
+          ) <= 1e-9;
+        }
+        transitionTargetOffset.set(
+          resolved.x - desiredTarget.x,
+          resolved.y - desiredTarget.y,
+          resolved.z - desiredTarget.z,
+        );
+        transitionParentAxis.copy(desiredTarget).sub(parentPoint);
+        const beginningRoute = !moonFocusTransition.route.ready;
+        const separation = transitionParentAxis.length();
+        const minimumStartRadius = parentGlobeClearance(focused.radius, startNear);
+        const minimumTargetRadius = parentGlobeClearance(focused.radius, targetNear);
+        const startRadius = moonFocusTransition.route.ready
+          ? moonFocusTransition.route.startRadius
+          : Math.max(minimumStartRadius, transitionStartOffset.length());
+        const targetRadius = moonFocusTransition.route.ready
+          ? moonFocusTransition.route.targetRadius
+          : Math.max(minimumTargetRadius, transitionTargetOffset.length());
+        const maximumStartAngle = moonFocusTransition.route.startVisible
+          ? parentGlobeMaximumViewAngle(
+            separation,
+            startRadius,
+            parentNode.radius,
+            startNear,
+            focused.radius,
+          )
+          : parentGlobeMaximumEndpointAngle(
+            separation,
+            startRadius,
+            parentNode.radius,
+            startNear,
+          );
+        const maximumTargetAngle = parentGlobeMaximumViewAngle(
+          separation,
+          targetRadius,
+          parentNode.radius,
+          targetNear,
+          focused.radius,
+        );
+        const transitioned = moonFocusFlightPoint(
+          moonFocusTransition.route,
+          transitionStartOffset,
+          transitionTargetOffset,
+          transitionParentAxis,
+          transitionSeconds,
+          minimumStartRadius,
+          maximumStartAngle,
+          maximumTargetAngle,
+          moonOrbitNormal,
+          minimumTargetRadius,
+        );
+        if (beginningRoute) {
+          moonFocusTransition.route.viewAzimuth = state.azimuth;
+          moonFocusTransition.route.viewElevation = state.elevation;
+        }
+        const outwardEnd = moonFocusTransition.route.outwardSeconds;
+        const radialEnd = outwardEnd + moonFocusTransition.route.radialSeconds;
+        near = moonFocusTransition.route.elapsed < outwardEnd
+          ? startNear
+          : moonFocusTransition.route.elapsed < radialEnd
+            ? Math.min(startNear, targetNear)
+            : targetNear;
+        if (!moonFocusTransition.route.startVisible) {
+          const transitionedRadius = Math.hypot(
+            transitioned.x,
+            transitioned.y,
+            transitioned.z,
+          ) || 1;
+          const fullCap = parentGlobeMaximumViewAngle(
+            separation,
+            transitionedRadius,
+            parentNode.radius,
+            near,
+            focused.radius,
+          );
+          const angle = Math.acos(clamp(
+            (
+              transitioned.x * transitionParentAxis.x
+                + transitioned.y * transitionParentAxis.y
+                + transitioned.z * transitionParentAxis.z
+            ) / (transitionedRadius * Math.max(1e-12, separation)),
+            -1,
+            1,
+          ));
+          if (angle <= fullCap + 1e-10) moonFocusTransition.route.startVisible = true;
+        }
+        camera.position.set(
+          desiredTarget.x + transitioned.x,
+          desiredTarget.y + transitioned.y,
+          desiredTarget.z + transitioned.z,
+        );
+        if (
+          moonFocusTransition.progress === 1
+          && moonFocusTransition.route.done
+        ) {
+          const transitionedRadius = Math.hypot(
+            transitioned.x,
+            transitioned.y,
+            transitioned.z,
+          ) || 1;
+          state.azimuth = Math.atan2(transitioned.x, transitioned.z);
+          state.elevation = Math.asin(clamp(transitioned.y / transitionedRadius, -1, 1));
+          resetParentGlobeContinuity(parentGlobeContinuity);
+          if (state.distance !== flightDistance) {
+            moonFocusTransition.progress = 1;
+            moonFocusTransition.focusStart.copy(desiredTarget);
+            moonFocusTransition.startCamera.copy(camera.position);
+            moonFocusTransition.flightDistance = state.distance;
+            moonFocusTransition.route = {
+              startNear: near,
+              targetNear: extraZoomCameraNear(state.distance),
+              startVisible: true,
+            };
+          } else {
+            moonFocusTransition.flightDistance = null;
+            setMoonFocusTransition(false);
+          }
+        }
+      } else {
+        camera.position.set(resolved.x, resolved.y, resolved.z);
+      }
     }
+  } else {
+    resetParentGlobeContinuity(parentGlobeContinuity);
+    moonFocusTransition.flightDistance = null;
   }
+  ui.viewport.setAttribute("aria-busy", String(
+    moonFocusTransition.active
+      || (parentGlobeContinuity.active && !parentGlobeContinuity.settled),
+  ));
   camera.lookAt(focusPoint);
   camera.near = near;
   camera.far = CONFIG.cameraFar;

@@ -717,6 +717,18 @@ export function keplerPathOffset(body, parent, phase) {
   return orbitalPosition(body, parent, meanAnomaly);
 }
 
+/** Signed normal of the rendered orbit plane in the body's attachment frame. */
+export function keplerOrbitNormal(body, parent) {
+  const first = keplerPathOffset(body, parent, 0);
+  const quarter = keplerPathOffset(body, parent, 0.25);
+  const x = first.y * quarter.z - first.z * quarter.y;
+  const y = first.z * quarter.x - first.x * quarter.z;
+  const z = first.x * quarter.y - first.y * quarter.x;
+  const length = Math.hypot(x, y, z);
+  if (!(length > 1e-12)) return { x: 0, y: 1, z: 0 };
+  return { x: x / length, y: y / length, z: z / length };
+}
+
 /**
  * Keplerian position in a Y-up ecliptic frame (Y is north).
  * Returns scene units; parent offset is applied by the caller.
