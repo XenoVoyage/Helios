@@ -26,6 +26,7 @@ const CMB_LUMINANCE_STDDEV_FLOOR = 12;
 const CMB_WARM_COLOR_COVERAGE_FLOOR = 0.08;
 const CMB_COOL_COLOR_COVERAGE_FLOOR = 0.005;
 const CMB_BLUE_RED_RATIO_CEILING = 1.15;
+const PRIMARY_BODY_IDS = BODIES.filter((body) => body.kind !== "moon").map((body) => body.id);
 const child = spawn(process.execPath, ["tests/serve.mjs"], {
   cwd: root,
   env: { ...process.env, PORT: String(port) },
@@ -2196,7 +2197,7 @@ try {
   await auditFarSkyDirections(desktop);
   await captureEarthSolstice(desktop, "earth-june-solstice", "2000-06-21");
   await captureEarthSolstice(desktop, "earth-december-solstice", "2000-12-21", true);
-  await assertMinimumZoomViews(desktop, "desktop", ["sun", "jupiter", "saturn"]);
+  await assertMinimumZoomViews(desktop, "desktop", PRIMARY_BODY_IDS);
   await assertMoonParentCloseViews(desktop, "desktop");
   await assertSaturnRingReferenceViews(desktop);
   await desktop.close();
