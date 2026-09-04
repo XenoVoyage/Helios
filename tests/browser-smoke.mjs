@@ -6,7 +6,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { bodyOrientationBasis, findBody, keplerOffset, moonOrbitAttachment } from "../js/bodies.js";
+import {
+  BODIES,
+  bodyOrientationBasis,
+  findBody,
+  keplerOffset,
+  moonOrbitAttachment,
+} from "../js/bodies.js";
 import { CONFIG, wheelZoomMultiplier } from "../js/config.js";
 import { cmbSkyOpacity, sceneHierarchyId } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
