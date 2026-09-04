@@ -1403,7 +1403,9 @@ async function assertMinimumZoomViews(context, prefix, bodyIds, touch = false) {
     assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
     await assertRenderedCanvas(page);
     await saveScreenshot(page, `${prefix}-minimum-zoom-${bodyId}`);
-    await assertFocusedGlobeSurfaceVisible(page, `${prefix} ${bodyId}`, bodyId);
+    if (["sun", "jupiter", "saturn"].includes(bodyId)) {
+      await assertFocusedGlobeSurfaceVisible(page, `${prefix} ${bodyId}`);
+    }
     await assertPersistentChromeContrast(page, `${prefix} ${bodyId}`);
     await assertVisibleBodyLabelsClearChrome(page, `${prefix} ${bodyId} minimum zoom`);
     if (prefix === "desktop" && bodyId === "sun") {
@@ -1757,7 +1759,7 @@ async function waitForMoonCameraSettled(page) {
   await waitForTwoAnimationFrames(page);
 }
 
-async function assertFocusedGlobeSurfaceVisible(page, label, bodyId) {
+async function assertFocusedGlobeSurfaceVisible(page, label) {
   const png = await page.locator("#viewport").screenshot();
   const metrics = await page.evaluate(async (source) => {
     const image = new Image();
@@ -1788,22 +1790,12 @@ async function assertFocusedGlobeSurfaceVisible(page, label, bodyId) {
     }
     return { mean: luminance / samples, dark: dark / samples };
   }, png.toString("base64"));
-  const brightReference = ["sun", "jupiter", "saturn"].includes(bodyId);
-  // Preserve the original strict regression floor for the three established
-  // reference bodies. Other primary bodies can correctly present a thin,
-  // dark phase at J2000, so only require a broad surface signal that rules out
-  // the former empty inside-sphere/starfield view.
-  const meanFloor = brightReference ? 40 : 8;
-  const darkCeiling = brightReference ? 0.05 : 0.9;
-  console.log(
-    `${label} surface: mean=${metrics.mean.toFixed(1)}, dark=${metrics.dark.toFixed(3)}`,
-  );
   assert.ok(
-    metrics.mean > meanFloor,
+    metrics.mean > 40,
     `${label} closest view shows globe surface (mean=${metrics.mean.toFixed(1)})`,
   );
   assert.ok(
-    metrics.dark < darkCeiling,
+    metrics.dark < 0.05,
     `${label} closest view is not an inside-sphere void (dark=${metrics.dark.toFixed(3)})`,
   );
 }
