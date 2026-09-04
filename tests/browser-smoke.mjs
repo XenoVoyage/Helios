@@ -2117,6 +2117,29 @@ try {
     hasTouch: true,
     isMobile: true,
   });
+  const touchControlPage = await touch.newPage();
+  const touchControlErrors = captureErrors(touchControlPage);
+  await openReady(touchControlPage);
+  for (const bodyId of ["moon", "phobos", "io", "triton"]) {
+    await touchControlPage.locator("#reset-button").click();
+    await touchControlPage.evaluate(
+      (id) => document.querySelector(`[data-body-id="${id}"]`).click(),
+      bodyId,
+    );
+    await touchControlPage.locator("#body-card:not([hidden])").waitFor();
+    await touchControlPage.locator("#card-close").tap();
+    await touchControlPage
+      .locator("#body-card[hidden]")
+      .waitFor({ state: "attached" });
+    assert.equal(
+      await touchControlPage.locator("#status-live").textContent(),
+      "Selection cleared",
+      `touch ${bodyId} close control clears the selection`,
+    );
+  }
+  assert.deepEqual(touchControlErrors, []);
+  await touchControlPage.close();
+
   const touchPage = await touch.newPage();
   const touchErrors = captureErrors(touchPage);
   await openReady(touchPage);
@@ -2145,23 +2168,6 @@ try {
     assert.equal(await touchSky.inputValue(), "all");
   }
   await touchPage.setViewportSize({ width: 390, height: 844 });
-  for (const bodyId of ["moon", "phobos", "io", "triton"]) {
-    await touchPage.locator("#reset-button").click();
-    await touchPage.evaluate(
-      (id) => document.querySelector(`[data-body-id="${id}"]`).click(),
-      bodyId,
-    );
-    await touchPage.locator("#body-card:not([hidden])").waitFor();
-    await touchPage.locator("#card-close").tap();
-    await touchPage.locator("#body-card[hidden]").waitFor({ state: "attached" });
-    assert.equal(
-      await touchPage.locator("#status-live").textContent(),
-      "Selection cleared",
-      `touch ${bodyId} close control clears the selection`,
-    );
-  }
-  await touchPage.locator("#reset-button").click();
-
   const cdp = await touch.newCDPSession(touchPage);
   // Pinch on empty canvas. Ceres's corrected J2000 seat places its 44px
   // label over the former (70, 320) start, which selected Ceres instead
