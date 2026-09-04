@@ -2168,6 +2168,7 @@ try {
     assert.equal(await touchSky.inputValue(), "all");
   }
   await touchPage.setViewportSize({ width: 390, height: 844 });
+  await touchPage.locator("#reset-button").click();
   const cdp = await touch.newCDPSession(touchPage);
   // Pinch on empty canvas. Ceres's corrected J2000 seat places its 44px
   // label over the former (70, 320) start, which selected Ceres instead
