@@ -169,6 +169,66 @@ async function assertBodyLabelsHidden(page) {
   assert.equal(labels.hitTested, 0, "hidden body labels cannot intercept pointer input");
 }
 
+async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = true) {
+  const audit = await page.evaluate(() => {
+    // Runtime reserves 8px; tolerate subpixel DOMRect rounding at the boundary.
+    const clearance = 7.5;
+    const obstacles = [
+      document.querySelector(".topbar"),
+      document.querySelector("#body-card"),
+      document.querySelector("#dock"),
+      document.querySelector("#version-label"),
+    ].filter((element) => element && !element.hidden && element.getClientRects().length > 0)
+      .map((element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          name: element.id || element.className,
+          left: box.left - clearance,
+          right: box.right + clearance,
+          top: box.top - clearance,
+          bottom: box.bottom + clearance,
+        };
+      });
+    return [...document.querySelectorAll(".sky-label:not([hidden])")].map((element) => {
+      const box = element.getBoundingClientRect();
+      const center = document.elementFromPoint(
+        box.left + box.width / 2,
+        box.top + box.height / 2,
+      );
+      const blocker = obstacles.find((obstacle) => (
+        box.right > obstacle.left
+        && box.left < obstacle.right
+        && box.bottom > obstacle.top
+        && box.top < obstacle.bottom
+      ));
+      return {
+        name: element.textContent,
+        width: box.width,
+        height: box.height,
+        left: box.left,
+        right: box.right,
+        top: box.top,
+        bottom: box.bottom,
+        insideViewport: box.left >= clearance
+          && box.right <= window.innerWidth - clearance
+          && box.top >= clearance
+          && box.bottom <= window.innerHeight - clearance,
+        blocker: blocker?.name ?? null,
+        hit: center?.closest?.(".sky-label") === element,
+      };
+    });
+  });
+  if (requireVisible) {
+    assert.ok(audit.length > 0, `${label}: at least one body label remains visible`);
+  }
+  for (const item of audit) {
+    assert.ok(item.width >= 43.5 && item.height >= 43.5, `${label}: ${item.name} keeps a 44px target`);
+    assert.equal(item.insideViewport, true, `${label}: ${item.name} stays inside the viewport: ${JSON.stringify(item)}`);
+    assert.equal(item.blocker, null, `${label}: ${item.name} clears persistent chrome: ${JSON.stringify(item)}`);
+    assert.equal(item.hit, true, `${label}: ${item.name} remains hit-testable`);
+  }
+}
+
 const LOOK_SEMANTICS = {
   sky: { layer: /Earth sky/, focus: /Focused on Earth/ },
   solarfar: { layer: /Solar system/, focus: /Focused on the Sun/ },
@@ -1294,6 +1354,16 @@ async function assertMinimumZoomViews(context, prefix, bodyIds, touch = false) {
 
   for (const bodyId of bodyIds) {
     await page.locator("#reset-button").click();
+    if (prefix === "desktop" && bodyId === "sun") {
+      const earthLabel = page.locator('.sky-label[data-body-id="earth"]');
+      await earthLabel.waitFor();
+      await earthLabel.focus();
+      assert.equal(
+        await page.evaluate(() => document.activeElement?.dataset.bodyId),
+        "earth",
+        "the Earth label owns focus before its edge cull",
+      );
+    }
     await page.evaluate(
       (id) => document.querySelector(`[data-body-id="${id}"]`).click(),
       bodyId,
@@ -1327,6 +1397,20 @@ async function assertMinimumZoomViews(context, prefix, bodyIds, touch = false) {
     await assertRenderedCanvas(page);
     await assertFocusedGlobeSurfaceVisible(page, `${prefix} ${bodyId}`);
     await assertPersistentChromeContrast(page, `${prefix} ${bodyId}`);
+    await assertVisibleBodyLabelsClearChrome(page, `${prefix} ${bodyId} minimum zoom`);
+    if (prefix === "desktop" && bodyId === "sun") {
+      assert.equal(
+        await page.locator('.sky-label[data-body-id="earth"]').getAttribute("hidden"),
+        "",
+        "desktop Sun minimum zoom hides the unsafe Earth edge label",
+      );
+      assert.equal(
+        await page.evaluate(() => document.activeElement?.id),
+        "viewport",
+        "hiding a focused edge label returns focus to the scene",
+      );
+      await page.locator("#viewport").evaluate((element) => element.blur());
+    }
     await saveScreenshot(page, `${prefix}-minimum-zoom-${bodyId}`);
   }
 
@@ -1953,6 +2037,11 @@ async function assertCardClearsDock(page, viewport) {
   assert.ok(layout.card.top >= 0 && layout.card.bottom <= viewport.height + 1);
   assert.ok(Math.abs(layout.clearance - Math.ceil(layout.dockHeight)) <= 1);
   assert.equal(layout.speedOverflow, "visible");
+  await assertVisibleBodyLabelsClearChrome(
+    page,
+    `${viewport.width}x${viewport.height} responsive body labels`,
+    false,
+  );
 }
 
 async function assertCreditsClearDock(page, viewport) {
@@ -2009,6 +2098,7 @@ try {
     { layer: /Solar system/, focus: /Focused on the Sun/ },
     "desktop-boot",
   );
+  await assertVisibleBodyLabelsClearChrome(desktopPage, "desktop-boot");
 
   await desktopPage.locator("#play-button").click();
   const canvas = desktopPage.locator("#viewport");
