@@ -100,6 +100,7 @@ const parentGlobeOptions = {
   orbitNormal: moonOrbitNormal,
 };
 const parentGlobeTargetOptions = { moonRadius: 0, orbitNormal: moonOrbitNormal };
+const BODY_LABEL_CLEARANCE = 8;
 const moonFocusTransition = {
   active: false,
   flightDistance: null,
@@ -131,6 +132,7 @@ const state = {
 
 const ui = {};
 const nodes = new Map();
+const bodyLabelObstacles = [];
 let renderer;
 let scene;
 let camera;
@@ -140,10 +142,11 @@ let kuiperBelt;
 let orbitLines;
 let galaxy;
 let helpers;
-let dockObserver;
+let chromeObserver;
 let dockClearance = 72;
 let lastStamp = 0;
 let lastClockLabel = "";
+let bodyLabelLayoutDirty = true;
 const earthSkyLook = wantsEarthSkyLook();
 
 function $(id) {
@@ -191,6 +194,7 @@ function boot() {
   ui.stage = $("stage");
   ui.viewport = $("viewport");
   ui.labels = $("labels");
+  ui.topbar = document.querySelector(".topbar");
   ui.clock = $("clock");
   ui.play = $("play-button");
   ui.slower = $("slower-button");
@@ -299,6 +303,7 @@ function boot() {
     showUnsupported();
     return;
   }
+  measureBodyLabels();
   bindInput();
   observeDock();
   if (earthSkyLook) {
@@ -513,7 +518,19 @@ function createBodyNode(body) {
   label.hidden = true;
   ui.labels.append(label);
 
-  return { body, pivot, tilt, mesh, label, radius, glow, spinPhase, orbitNormal };
+  return {
+    body,
+    pivot,
+    tilt,
+    mesh,
+    label,
+    labelWidth: 0,
+    labelHeight: 0,
+    radius,
+    glow,
+    spinPhase,
+    orbitNormal,
+  };
 }
 
 function createRing(body) {
@@ -924,6 +941,7 @@ function paintSpeed() {
   ui.speed.value = String(sliderFromSpeed(state.daysPerSecond));
   ui.speed.setAttribute("aria-valuetext", describeDaysPerSecond(state.daysPerSecond));
   ui.speedReadout.textContent = `${formatDaysPerSecond(state.daysPerSecond)} / sec`;
+  bodyLabelLayoutDirty = true;
 }
 
 function paintClock() {
@@ -936,6 +954,7 @@ function paintClock() {
 function paintSkyControl() {
   const available = constellationsAvailable(state.distance);
   if (!available && document.activeElement === ui.sky) canvasFocus();
+  if (ui.skyControl.hidden === available) bodyLabelLayoutDirty = true;
   ui.skyControl.hidden = !available;
   ui.sky.disabled = !available;
   ui.sky.value = state.constellationMode;
@@ -972,6 +991,7 @@ function paintCard() {
   const body = state.selectedId ? findBody(state.selectedId) : null;
   if (!body) {
     ui.card.hidden = true;
+    bodyLabelLayoutDirty = true;
     if (helpers) {
       setHelperVisibility(helpers, { selected: false, orbit: false, axis: false, spin: false });
     }
@@ -982,6 +1002,7 @@ function paintCard() {
   ui.cardName.textContent = info.name;
   ui.cardKind.textContent = kindLabel(info.kind);
   ui.cardMeta.textContent = info.facts.join(" · ");
+  bodyLabelLayoutDirty = true;
   paintHelperButtons();
 }
 
@@ -1051,6 +1072,7 @@ function resize() {
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
   paintDockClearance();
+  bodyLabelLayoutDirty = true;
 }
 
 function paintDockClearance() {
@@ -1059,13 +1081,20 @@ function paintDockClearance() {
     dockClearance = height;
     document.documentElement.style.setProperty("--dock-clearance", `${height}px`);
   }
+  bodyLabelLayoutDirty = true;
 }
 
 function observeDock() {
   paintDockClearance();
   if (!("ResizeObserver" in window)) return;
-  dockObserver = new ResizeObserver(paintDockClearance);
-  dockObserver.observe(ui.dock);
+  chromeObserver = new ResizeObserver((entries) => {
+    bodyLabelLayoutDirty = true;
+    if (entries.some((entry) => entry.target === ui.dock)) paintDockClearance();
+  });
+  chromeObserver.observe(ui.dock);
+  chromeObserver.observe(ui.topbar);
+  chromeObserver.observe(ui.card);
+  chromeObserver.observe(ui.version);
 }
 
 function tick(now) {
@@ -1456,6 +1485,60 @@ function paintScaleLayer() {
   document.documentElement.dataset.heliosReady = "1";
 }
 
+function measureBodyLabels() {
+  const previous = [];
+  for (const node of nodes.values()) {
+    previous.push({ node, hidden: node.label.hidden });
+    node.label.hidden = false;
+    node.label.style.visibility = "hidden";
+  }
+  for (const { node } of previous) {
+    node.labelWidth = node.label.offsetWidth;
+    node.labelHeight = node.label.offsetHeight;
+  }
+  for (const { node, hidden } of previous) {
+    node.label.hidden = hidden;
+    node.label.style.visibility = "";
+  }
+  bodyLabelLayoutDirty = true;
+}
+
+function paintBodyLabelObstacles() {
+  bodyLabelObstacles.length = 0;
+  for (const element of [ui.topbar, ui.card, ui.dock, ui.version]) {
+    if (!element || element.hidden || element.getClientRects().length === 0) continue;
+    const box = element.getBoundingClientRect();
+    bodyLabelObstacles.push({
+      left: box.left - BODY_LABEL_CLEARANCE,
+      right: box.right + BODY_LABEL_CLEARANCE,
+      top: box.top - BODY_LABEL_CLEARANCE,
+      bottom: box.bottom + BODY_LABEL_CLEARANCE,
+    });
+  }
+  bodyLabelLayoutDirty = false;
+}
+
+function bodyLabelFits(anchorX, anchorY, node, viewportWidth, viewportHeight) {
+  const left = anchorX - node.labelWidth / 2;
+  const right = left + node.labelWidth;
+  const top = anchorY - node.labelHeight * 1.2;
+  const bottom = top + node.labelHeight;
+  if (
+    left < BODY_LABEL_CLEARANCE
+    || right > viewportWidth - BODY_LABEL_CLEARANCE
+    || top < BODY_LABEL_CLEARANCE
+    || bottom > viewportHeight - BODY_LABEL_CLEARANCE
+  ) return false;
+  for (const obstacle of bodyLabelObstacles) {
+    const separate = right <= obstacle.left
+      || left >= obstacle.right
+      || bottom <= obstacle.top
+      || top >= obstacle.bottom;
+    if (!separate) return false;
+  }
+  return true;
+}
+
 function updateLabels() {
   camera.updateMatrixWorld(true);
   if (celestial) celestial.updateMatrixWorld(true);
@@ -1471,17 +1554,24 @@ function updateLabels() {
   const width = window.innerWidth;
   const height = window.innerHeight;
   const focused = findBody(state.focusedId);
+  if (bodyLabelLayoutDirty) paintBodyLabelObstacles();
   for (const node of nodes.values()) {
     node.mesh.getWorldPosition(world);
     projected.copy(world).project(camera);
     const onScreen = projected.z > -1 && projected.z < 1
       && Math.abs(projected.x) < 1.12
       && Math.abs(projected.y) < 1.12;
-    const show = !hidePlanets && onScreen && canShowLabel(node.body, focused);
+    const anchorX = (projected.x * 0.5 + 0.5) * width;
+    const anchorY = (-projected.y * 0.5 + 0.5) * height;
+    const show = !hidePlanets
+      && onScreen
+      && canShowLabel(node.body, focused)
+      && bodyLabelFits(anchorX, anchorY, node, width, height);
+    if (!show && document.activeElement === node.label) canvasFocus();
     node.label.hidden = !show;
     if (!show) continue;
     node.label.classList.toggle("is-active", node.body.id === state.selectedId);
-    node.label.style.transform = `translate(-50%, -120%) translate(${(projected.x * 0.5 + 0.5) * width}px, ${(-projected.y * 0.5 + 0.5) * height}px)`;
+    node.label.style.transform = `translate(-50%, -120%) translate(${anchorX}px, ${anchorY}px)`;
   }
 }
 
