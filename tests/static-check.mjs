@@ -319,6 +319,21 @@ assert.doesNotMatch(app, /extraZoomTailMix/);
 assert.match(app, /pinchZoomDistance/);
 assert.match(app, /wheelZoomMultiplier/);
 assert.match(app, /minimumFocusDistance/);
+assert.deepEqual(Object.keys(CONFIG.nightSideInspectionFill).sort(), ["neptune", "uranus"]);
+assert.ok(Object.isFrozen(CONFIG.nightSideInspectionFill));
+for (const [bodyId, intensity] of Object.entries(CONFIG.nightSideInspectionFill)) {
+  // Neptune's dark-map tail needs a higher material factor; the rendered
+  // night-readability floors and day/night hierarchy remain the behavior gate.
+  const ceiling = bodyId === "neptune" ? 0.25 : 0.2;
+  assert.ok(Number.isFinite(intensity) && intensity > 0 && intensity <= ceiling,
+    "ice-giant inspection fill stays a bounded display-only contribution");
+}
+assert.match(app, /material\.emissiveMap = material\.map/);
+assert.match(app, /material\.emissiveIntensity = inspectionFill/);
+assert.match(provenance, /CONFIG\.nightSideInspectionFill/);
+assert.match(provenance, /not physical\nplanetary emission or calibrated photometric brightness/);
+assert.match(app, /new THREE\.AmbientLight\(0x24334a, 0\.21\)/,
+  "inspection fill does not change shared ambient lighting or Saturn's rings");
 assert.match(configSource, /minimumFocusDistance/);
 assert.match(configSource, /focusSurfaceClearance/);
 assert.match(configSource, /parentGlobeClearance/);

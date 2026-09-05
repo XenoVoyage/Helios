@@ -45,6 +45,13 @@ day/night terminator while a deliberate ambient fill keeps night sides
 readable. Solar/lunar eclipses and shadow contacts are therefore outside this
 orrery model rather than claimed simulations.
 
+Uranus and Neptune additionally reuse their unchanged color maps as a faint
+material-level inspection fill, with texture-dependent factors owned by
+`CONFIG.nightSideInspectionFill`. This display-only contribution is not physical
+planetary emission or calibrated photometric brightness. The Sun still supplies
+the terminator; no scientific data, scene lights, other globes, or Saturn ring
+materials are changed by this fill.
+
 ## Image assets
 
 | Files | Origin, terms, projection, and transformations | Local SHA-256 |
