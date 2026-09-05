@@ -16,7 +16,9 @@ for (let index = 2; index < process.argv.length; index += 1) {
 }
 const inventoryOnly = options.has("--inventory-only");
 for (const name of ["--source-root", "--source-label", ...(inventoryOnly ? [] : ["--output"])]) assert.ok(options.has(name), `${name} is required`);
-for (const name of options.keys()) assert.ok(["--source-root", "--output", "--source-label", "--inventory-only"].includes(name), `unknown argument ${name}`);
+for (const name of options.keys()) assert.ok(["--source-root", "--output", "--source-label", "--inventory-only", "--group"].includes(name), `unknown argument ${name}`);
+const group = options.get("--group") || "all";
+assert.ok(["all", "bodies", "desktop-moons", "touch-moons", "other"].includes(group), "group must be all, bodies, desktop-moons, touch-moons or other");
 const sourceRoot = path.resolve(options.get("--source-root"));
 const output = options.has("--output") ? path.resolve(options.get("--output")) : null;
 const sourceLabel = options.get("--source-label");
@@ -75,10 +77,21 @@ for (const body of BODIES) {
 const responsiveSizes = [[320, 568], [568, 320], [390, 844], [844, 390], [768, 1024], [1024, 768]];
 for (const [width, height] of responsiveSizes) expect(`supplement-responsive-${width}x${height}`);
 assert.equal(expected.size, 200);
+const completeMatrix = [...expected];
+const groupFor = (name) => {
+  if (name.includes("-moon-parent-")) return name.startsWith("desktop-") ? "desktop-moons" : "touch-moons";
+  if (name.startsWith("desktop-minimum-zoom-") || (name.startsWith("supplement-desktop-") && !name.includes("-busy-"))) return "bodies";
+  return "other";
+};
+for (const name of expected) if (group !== "all" && groupFor(name) !== group) expected.delete(name);
+assert.equal(expected.size, { all: 200, bodies: 69, "desktop-moons": 56, "touch-moons": 26, other: 49 }[group]);
 
 if (inventoryOnly) {
   console.log(JSON.stringify({
     mode: "inventory only; no browser launched, no screenshots captured, no visual pass asserted",
+    group,
+    completeMatrixCount: completeMatrix.length,
+    fullExpected: completeMatrix,
     source: sourceIdentity,
     harness: { commit: git(harnessRoot, "rev-parse", "HEAD"), tree: git(harnessRoot, "rev-parse", "HEAD^{tree}"), clean: harnessClean, sha256: sha256(await readFile(fileURLToPath(import.meta.url))) },
     expected: [...expected].map((name) => {
@@ -97,6 +110,9 @@ if (inventoryOnly) {
 await mkdir(output, { recursive: true });
 const manifest = {
   schema: 1,
+  group,
+  completeMatrixCount: completeMatrix.length,
+  fullExpected: completeMatrix,
   source: sourceIdentity,
   harness: {
     commit: git(harnessRoot, "rev-parse", "HEAD"),
@@ -119,6 +135,7 @@ const manifest = {
   captures: [],
   failures: [],
   browserErrors: [],
+  timings: [],
 };
 const flush = () => writeFile(path.join(output, "capture-details.json"), JSON.stringify(manifest, null, 2) + "\n");
 const port = Number(process.env.VISUAL_CAPTURE_PORT || 4177);
@@ -128,10 +145,42 @@ const server = spawn(process.execPath, [path.join(sourceRoot, "tests/serve.mjs")
 });
 let browser;
 const states = new WeakMap();
+let nextPageId = 1;
 
 async function advance(page, milliseconds) {
-  await page.clock.runFor(milliseconds);
-  states.get(page).elapsed += milliseconds;
+  const state = states.get(page);
+  const started = performance.now();
+  const timing = { page: state.id, operation: "clock.runFor", controlledBefore: state.elapsed, milliseconds };
+  try {
+    await page.clock.runFor(milliseconds);
+    state.elapsed += milliseconds;
+  } catch (error) {
+    timing.error = String(error);
+    throw error;
+  } finally {
+    timing.wallMilliseconds = Math.round(performance.now() - started);
+    manifest.timings.push(timing);
+  }
+}
+
+async function screenshot(page, purpose) {
+  const state = states.get(page);
+  const started = performance.now();
+  const timing = { page: state.id, operation: "page.screenshot", purpose, controlledAt: state.elapsed };
+  try {
+    // Screenshot acquisition exceeded 15s in CI after many controlled animation frames.
+    // This bounds acquisition only; the stable-frame and semantic criteria are unchanged.
+    const png = await page.screenshot({ timeout: 60_000 });
+    timing.bytes = png.length;
+    return png;
+  } catch (error) {
+    timing.error = String(error);
+    throw error;
+  } finally {
+    timing.wallMilliseconds = Math.round(performance.now() - started);
+    manifest.timings.push(timing);
+    if (timing.wallMilliseconds >= 15_000) console.log(`Slow screenshot ${sourceLabel}/${group} ${purpose}: ${timing.wallMilliseconds}ms`);
+  }
 }
 
 async function observe(page) {
@@ -173,7 +222,7 @@ async function newPage(touch = false, size = touch ? [390, 844] : [1440, 900], s
   });
   const page = await context.newPage();
   page.setDefaultTimeout(15_000);
-  const state = { context, touch, elapsed: 0, inputs: [], cdp: touch ? await context.newCDPSession(page) : null, errors: [] };
+  const state = { id: nextPageId++, context, touch, elapsed: 0, inputs: [], cdp: touch ? await context.newCDPSession(page) : null, errors: [] };
   states.set(page, state);
   page.on("pageerror", (error) => state.errors.push(`page: ${error.message}`));
   page.on("console", (message) => { if (message.type() === "error") state.errors.push(`console: ${message.text()}`); });
@@ -310,13 +359,13 @@ async function orbit(page, dx, dy = 0) {
 
 async function settle(page) {
   await advance(page, 1500);
-  let previous = await page.screenshot();
+  let previous = await screenshot(page, "settle-before");
   let stable = false;
   let elapsed = 1500;
   for (let attempt = 0; attempt < 15; attempt += 1) {
     await advance(page, 400);
     elapsed += 400;
-    const next = await page.screenshot();
+    const next = await screenshot(page, `settle-after-${attempt + 1}`);
     const busy = await page.locator("#viewport").getAttribute("aria-busy");
     if (sha256(previous) === sha256(next) && busy !== "true") { stable = true; break; }
     previous = next;
@@ -325,11 +374,12 @@ async function settle(page) {
 }
 
 async function capture(page, name, details = {}, moving = false) {
+  const started = performance.now();
   assert.ok(expected.has(name), `unexpected filename ${name}`);
   assert.ok(!manifest.captures.some((entry) => entry.name === name), `duplicate capture ${name}`);
   const settled = moving ? null : await settle(page);
   const state = states.get(page);
-  const png = await page.screenshot();
+  const png = await screenshot(page, name);
   await writeFile(path.join(output, `${name}.png`), png);
   const entry = {
     name, file: `${name}.png`, sha256: sha256(png), bytes: png.length,
@@ -337,6 +387,7 @@ async function capture(page, name, details = {}, moving = false) {
     controlledElapsed: state.elapsed, initial: state.initial, observable: await observe(page),
     inputs: state.inputs.slice(), settled, moving, ...details,
   };
+  entry.acquisitionWallMilliseconds = Math.round(performance.now() - started);
   manifest.captures.push(entry);
   if (settled && !settled.stable) manifest.failures.push({ name, reason: "bounded stable-frame criterion was not reached; original retained for review" });
   if (sourceLabel !== "main") {
@@ -349,7 +400,7 @@ async function capture(page, name, details = {}, moving = false) {
     }
   }
   await flush();
-  console.log(`Captured ${sourceLabel} ${manifest.captures.length}/200 ${name}${settled?.stable === false ? " (UNSETTLED)" : ""}`);
+  console.log(`Captured ${sourceLabel}/${group} ${manifest.captures.length}/${expected.size} ${name}${settled?.stable === false ? " (UNSETTLED)" : ""}`);
 }
 
 async function scenario(label, work) {
@@ -547,15 +598,19 @@ try {
   browser = await chromium.launch({ headless: true, executablePath: process.env.HELIOS_CHROMIUM_PATH || undefined,
     args: ["--no-sandbox", "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
   manifest.browser = browser.version();
-  await scenario("desktop body sweep", bodySweep);
-  await scenario("touch primary minimum", primaryTouch);
+  if (["all", "bodies"].includes(group)) await scenario("desktop body sweep", bodySweep);
+  if (["all", "other"].includes(group)) await scenario("touch primary minimum", primaryTouch);
   for (const touch of [false, true]) {
-    await scenario(`moon sweep touch=${touch}`, () => moonSweep(touch));
-    await scenario(`phases touch=${touch}`, () => phases(touch));
-    await scenario(`lifecycle touch=${touch}`, () => lifecycle(touch));
+    if (["all", touch ? "touch-moons" : "desktop-moons"].includes(group)) await scenario(`moon sweep touch=${touch}`, () => moonSweep(touch));
+    if (["all", "other"].includes(group)) {
+      await scenario(`phases touch=${touch}`, () => phases(touch));
+      await scenario(`lifecycle touch=${touch}`, () => lifecycle(touch));
+    }
   }
-  await scenario("Saturn and Earth sky", ringsAndSky);
-  await responsive();
+  if (["all", "other"].includes(group)) {
+    await scenario("Saturn and Earth sky", ringsAndSky);
+    await responsive();
+  }
 } catch (error) {
   manifest.failures.push({ scenario: "capture infrastructure", reason: String(error.stack || error) });
 } finally {
@@ -574,5 +629,5 @@ assert.equal(manifest.sourceCommitAfter, sourceIdentity.commit);
 assert.equal(manifest.sourceTreeAfter, sourceIdentity.tree);
 assert.deepEqual(manifest.browserErrors, [], "no browser, console, request or HTTP errors");
 assert.deepEqual(manifest.failures, [], "every capture scenario reaches its stated bounded criterion");
-assert.deepEqual(manifest.missing, [], "all 200 requested captures exist");
-console.log(`Visual capture complete: ${sourceLabel}, ${manifest.captures.length}/200 originals; ${sourceIdentity.commit} ${sourceIdentity.tree}`);
+assert.deepEqual(manifest.missing, [], `all ${expected.size} requested ${group} captures exist`);
+console.log(`Visual capture complete: ${sourceLabel}/${group}, ${manifest.captures.length}/${expected.size} originals; ${sourceIdentity.commit} ${sourceIdentity.tree}`);
