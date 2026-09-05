@@ -257,6 +257,8 @@ async function assertViewportBusyLifecycle(context, prefix) {
     }
     await assertViewportBusyIdle(page, `${prefix} settled after ${action}`);
   }
+  await openReady(page, "?look=sky");
+  await assertViewportBusyIdle(page, `${prefix} Earth-sky startup`);
   assert.deepEqual(errors, [], `${prefix} busy-state lifecycle has no browser errors`);
   await page.close();
 }
