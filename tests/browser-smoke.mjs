@@ -2284,6 +2284,9 @@ try {
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
   });
+  // Check the issue's new pixel gate before the longer unchanged scale and
+  // moon sweeps, so a calibration failure reports its actual surface promptly.
+  await assertOuterPlanetNightSides(desktop, "desktop");
   const desktopPage = await desktop.newPage();
   const desktopErrors = captureErrors(desktopPage);
   await openReady(desktopPage);
@@ -2393,7 +2396,6 @@ try {
   await captureEarthSolstice(desktop, "earth-june-solstice", "2000-06-21");
   await captureEarthSolstice(desktop, "earth-december-solstice", "2000-12-21", true);
   await assertMinimumZoomViews(desktop, "desktop", PRIMARY_BODY_IDS);
-  await assertOuterPlanetNightSides(desktop, "desktop");
   await assertMoonParentCloseViews(desktop, "desktop");
   await assertSaturnRingReferenceViews(desktop);
   await desktop.close();
@@ -2404,6 +2406,7 @@ try {
     hasTouch: true,
     isMobile: true,
   });
+  await assertOuterPlanetNightSides(touch, "touch-portrait", true);
   const touchControlPage = await touch.newPage();
   const touchControlErrors = captureErrors(touchControlPage);
   await openReady(touchControlPage);
@@ -2512,7 +2515,6 @@ try {
   await auditResponsiveCosmology(touch, "touch-portrait");
   await touchPage.close();
   await assertMinimumZoomViews(touch, "touch-portrait", ["sun", "jupiter", "saturn"], true);
-  await assertOuterPlanetNightSides(touch, "touch-portrait", true);
   await assertMoonParentCloseViews(touch, "touch-portrait", true);
   await touch.close();
 

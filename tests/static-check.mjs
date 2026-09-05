@@ -321,8 +321,11 @@ assert.match(app, /wheelZoomMultiplier/);
 assert.match(app, /minimumFocusDistance/);
 assert.deepEqual(Object.keys(CONFIG.nightSideInspectionFill).sort(), ["neptune", "uranus"]);
 assert.ok(Object.isFrozen(CONFIG.nightSideInspectionFill));
-for (const intensity of Object.values(CONFIG.nightSideInspectionFill)) {
-  assert.ok(Number.isFinite(intensity) && intensity > 0 && intensity <= 0.2,
+for (const [bodyId, intensity] of Object.entries(CONFIG.nightSideInspectionFill)) {
+  // Neptune's dark-map tail needs a higher material factor; the rendered
+  // night-readability floors and day/night hierarchy remain the behavior gate.
+  const ceiling = bodyId === "neptune" ? 0.25 : 0.2;
+  assert.ok(Number.isFinite(intensity) && intensity > 0 && intensity <= ceiling,
     "ice-giant inspection fill stays a bounded display-only contribution");
 }
 assert.match(app, /material\.emissiveMap = material\.map/);
