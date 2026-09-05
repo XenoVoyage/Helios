@@ -36,6 +36,10 @@ export const CONFIG = Object.freeze({
   // published radiusKm stays 1:1 in the catalog; only the display size
   // is floored, like every other visual-scale knob.
   moonMinRadius: 0.05,
+  // Display-only textured fill for the two unreadable ice-giant night sides;
+  // not physical emission. Neptune's darker source map needs a larger factor.
+  // All other globes, scene lights, and Saturn's rings retain their treatment.
+  nightSideInspectionFill: Object.freeze({ uranus: 0.03, neptune: 0.15 }),
   defaultDaysPerSecond: 1 / 24,
   minDaysPerSecond: 1 / 24,
   maxDaysPerSecond: 400,

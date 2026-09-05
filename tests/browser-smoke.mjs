@@ -12,8 +12,9 @@ import {
   findBody,
   keplerOffset,
   moonOrbitAttachment,
+  visualBodyRadius,
 } from "../js/bodies.js";
-import { CONFIG, wheelZoomMultiplier } from "../js/config.js";
+import { CONFIG, minimumFocusDistance, wheelZoomMultiplier } from "../js/config.js";
 import { cmbSkyOpacity, sceneHierarchyId } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
 
@@ -1800,6 +1801,192 @@ async function assertFocusedGlobeSurfaceVisible(page, label) {
   );
 }
 
+async function outerPlanetSurfaceMetrics(
+  page, bodyId, distance,
+  azimuth = CONFIG.cameraAzimuth, elevation = CONFIG.cameraElevation,
+) {
+  const body = findBody(bodyId);
+  const png = await stableCanvasFrame(page, page.locator("#viewport"));
+  return page.evaluate(async ({ source, center, radius, distance, azimuth, elevation }) => {
+    const THREE = await import("./vendor/three.module.min.js");
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", reject, { once: true });
+    });
+    image.src = `data:image/png;base64,${source}`;
+    await ready;
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const context = surface.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, surface.width, surface.height).data;
+    const viewport = document.querySelector("#viewport").getBoundingClientRect();
+    // Element screenshots include overlaid HTML. Exclude every label and
+    // persistent panel, including their antialiased borders, from both masks.
+    const obstacles = [...document.querySelectorAll(
+      ".sky-label, #stage .topbar, #body-card, #dock, #version-label",
+    )].filter((element) => element.getClientRects().length > 0)
+      .map((element) => element.getBoundingClientRect());
+    const globeCenter = new THREE.Vector3(center.x, center.y, center.z);
+    const camera = new THREE.PerspectiveCamera(52, surface.width / surface.height, 0.05, 7000000);
+    camera.position.copy(globeCenter).add(new THREE.Vector3(
+      Math.cos(elevation) * Math.sin(azimuth),
+      Math.sin(elevation),
+      Math.cos(elevation) * Math.cos(azimuth),
+    ).multiplyScalar(distance));
+    camera.lookAt(globeCenter);
+    camera.updateMatrixWorld();
+    const sphere = new THREE.Sphere(globeCenter, radius);
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    const hit = new THREE.Vector3();
+    const normal = new THREE.Vector3();
+    const direction = new THREE.Vector3();
+    const night = [];
+    const day = [];
+    for (let y = 1; y < surface.height; y += 2) {
+      for (let x = 1; x < surface.width; x += 2) {
+        const cssX = viewport.left + (x + 0.5) * viewport.width / surface.width;
+        const cssY = viewport.top + (y + 0.5) * viewport.height / surface.height;
+        if (obstacles.some((box) => cssX >= box.left - 3 && cssX <= box.right + 3
+          && cssY >= box.top - 3 && cssY <= box.bottom + 3)) continue;
+        ndc.set((x + 0.5) / surface.width * 2 - 1, 1 - (y + 0.5) / surface.height * 2);
+        raycaster.setFromCamera(ndc, camera);
+        if (!raycaster.ray.intersectSphere(sphere, hit)) continue;
+        normal.copy(hit).sub(globeCenter).normalize();
+        // Discard the limb, where sphere tessellation and antialiasing can
+        // disagree with the analytic sphere; never count sky as globe pixels.
+        if (normal.dot(direction.copy(camera.position).sub(hit).normalize()) < 0.2) continue;
+        const sunCosine = normal.dot(direction.copy(hit).negate().normalize());
+        const offset = (y * surface.width + x) * 4;
+        const luma = pixels[offset] * 0.2126 + pixels[offset + 1] * 0.7152
+          + pixels[offset + 2] * 0.0722;
+        if (sunCosine < -0.2) night.push(luma);
+        if (sunCosine > 0.08) day.push(luma);
+      }
+    }
+    const summarize = (values) => {
+      values.sort((a, b) => a - b);
+      return {
+        samples: values.length,
+        mean: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0,
+        p10: values[Math.floor(values.length * 0.1)] ?? 0,
+      };
+    };
+    return { night: summarize(night), day: summarize(day) };
+  }, {
+    source: png.toString("base64"),
+    center: keplerOffset(body, findBody(body.parent), 0),
+    radius: visualBodyRadius(body),
+    distance,
+    azimuth,
+    elevation,
+  });
+}
+
+async function assertOuterPlanetNightSides(context, prefix, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  const textures = new Map();
+  page.on("response", (response) => {
+    for (const id of ["uranus", "neptune"]) {
+      if (response.url().endsWith(`/assets/textures/${id}.jpg`)) textures.set(id, response.status());
+    }
+  });
+  await page.addInitScript(() => {
+    const observer = new MutationObserver(() => {
+      if (document.documentElement?.dataset.heliosReady !== "1") return;
+      const play = document.querySelector("#play-button");
+      if (play?.getAttribute("aria-pressed") === "true") play.click();
+      observer.disconnect();
+    });
+    observer.observe(document, {
+      attributes: true,
+      attributeFilter: ["data-helios-ready"],
+      subtree: true,
+    });
+  });
+  await openReady(page);
+  assert.equal(await page.locator("#play-button").getAttribute("aria-pressed"), "false");
+  assert.equal(await page.locator("#clock").textContent(), "2000-01-01");
+  const cdp = touch ? await context.newCDPSession(page) : null;
+  for (const bodyId of ["uranus", "neptune"]) {
+    assert.equal(textures.get(bodyId), 200, `${bodyId} source texture loads successfully`);
+    await page.locator("#reset-button").click();
+    await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), bodyId);
+    await page.locator("#body-card:not([hidden])").waitFor();
+    await waitForCenteredBodyLabel(page, bodyId, 0.1);
+    const radius = visualBodyRadius(findBody(bodyId));
+    const framedDistance = Math.max(radius * 7.5, 5.5);
+    // A camera near the globe sees less than a hemisphere. At Neptune's
+    // closest J2000 seat there is no visible sunlit crescent; check it in
+    // the unchanged, farther focus-arrival seat instead of inventing a phase.
+    for (const [seat, distance] of [
+      ["framed", framedDistance],
+      ["minimum", minimumFocusDistance(radius)],
+    ]) {
+      if (seat === "minimum") {
+        if (cdp) await touchPinch(page, cdp, 40, 370, `${prefix} ${bodyId} night side`);
+        else await zoomBetweenAuditDistances(page, framedDistance, distance);
+        await waitForTwoAnimationFrames(page);
+      }
+      const label = `${prefix} ${bodyId} ${seat}`;
+      const metrics = await outerPlanetSurfaceMetrics(page, bodyId, distance);
+      console.log(`${label} globe-only luminance ${JSON.stringify(metrics)}`);
+      await saveScreenshot(page, `${prefix}-night-side-${seat}-${bodyId}`);
+      // Display-readability floors, not astronomical brightness or WCAG claims.
+      assert.ok(metrics.night.samples >= 500, `${label} has a substantial actual-night-globe ROI`);
+      assert.ok(metrics.night.mean >= 10, `${label} night surface mean stays readable`);
+      assert.ok(metrics.night.p10 >= 8, `${label} night surface does not collapse to black`);
+      if (seat === "framed") {
+        assert.ok(metrics.day.samples >= 30, `${label} samples a genuine sunlit crescent`);
+        assert.ok(metrics.day.mean >= metrics.night.mean * 2
+          && metrics.day.mean >= metrics.night.mean + 20,
+        `${label} sunlight stays distinctly brighter than the inspection fill`);
+      }
+    }
+    const body = findBody(bodyId);
+    const position = keplerOffset(body, findBody(body.parent), 0);
+    const sunAzimuth = Math.atan2(-position.x, -position.z);
+    const sunElevation = Math.asin(-position.y / Math.hypot(position.x, position.y, position.z));
+    for (const [seat, azimuth, elevation] of [
+      // Horizontal perpendicular to the Sun direction: a true 90-degree phase.
+      ["half-lit", sunAzimuth + Math.PI / 2, 0],
+      ["sunward", sunAzimuth, sunElevation],
+    ]) {
+      await page.locator("#reset-button").click();
+      await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), bodyId);
+      await waitForCenteredBodyLabel(page, bodyId, 0.1);
+      const deltaAzimuth = Math.atan2(
+        Math.sin(azimuth - CONFIG.cameraAzimuth), Math.cos(azimuth - CONFIG.cameraAzimuth),
+      );
+      const dx = -deltaAzimuth / 0.005;
+      const dy = (elevation - CONFIG.cameraElevation) / 0.004;
+      if (cdp) await touchOrbitBy(page, cdp, page.viewportSize(), dx, dy);
+      else await dragCamera(page, dx, dy);
+      await waitForCenteredBodyLabel(page, bodyId, 0.1);
+      const metrics = await outerPlanetSurfaceMetrics(page, bodyId, framedDistance, azimuth, elevation);
+      const label = `${prefix} ${bodyId} ${seat}`;
+      console.log(`${label} globe-only luminance ${JSON.stringify(metrics)}`);
+      await saveScreenshot(page, `${prefix}-night-side-${seat}-${bodyId}`);
+      assert.ok(metrics.day.samples >= 500, `${label} has a substantial sunlit-globe ROI`);
+      if (seat === "half-lit") {
+        assert.ok(metrics.night.samples >= 500, `${label} also contains genuine night surface`);
+        assert.ok(metrics.day.mean >= metrics.night.mean * 2
+          && metrics.day.mean >= metrics.night.mean + 20,
+        `${label} preserves the physical terminator and bright-side hierarchy`);
+      } else {
+        assert.equal(metrics.night.samples, 0, `${label} geometry faces the Sun`);
+      }
+    }
+  }
+  if (cdp) await cdp.detach();
+  assert.deepEqual(errors, [], `${prefix} outer-planet night views have no browser errors`);
+  await page.close();
+}
+
 async function assertSaturnRingReferenceViews(context) {
   const page = await context.newPage();
   const errors = captureErrors(page);
@@ -2206,6 +2393,7 @@ try {
   await captureEarthSolstice(desktop, "earth-june-solstice", "2000-06-21");
   await captureEarthSolstice(desktop, "earth-december-solstice", "2000-12-21", true);
   await assertMinimumZoomViews(desktop, "desktop", PRIMARY_BODY_IDS);
+  await assertOuterPlanetNightSides(desktop, "desktop");
   await assertMoonParentCloseViews(desktop, "desktop");
   await assertSaturnRingReferenceViews(desktop);
   await desktop.close();
@@ -2324,6 +2512,7 @@ try {
   await auditResponsiveCosmology(touch, "touch-portrait");
   await touchPage.close();
   await assertMinimumZoomViews(touch, "touch-portrait", ["sun", "jupiter", "saturn"], true);
+  await assertOuterPlanetNightSides(touch, "touch-portrait", true);
   await assertMoonParentCloseViews(touch, "touch-portrait", true);
   await touch.close();
 

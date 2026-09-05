@@ -488,6 +488,15 @@ function createBodyNode(body) {
       roughness: body.kind === "planet" ? 0.72 : 0.88,
       metalness: 0,
     });
+  const inspectionFill = CONFIG.nightSideInspectionFill[body.id];
+  if (inspectionFill) {
+    // Reuse the same color texture for a subtle presentation floor. This is
+    // not a light source: the Sun still owns the terminator, and rings and
+    // unrelated bodies receive no extra light or material change.
+    material.emissiveMap = material.map;
+    material.emissive.set(0xffffff);
+    material.emissiveIntensity = inspectionFill;
+  }
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, segments, segments), material);
   mesh.userData.bodyId = body.id;
   tilt.add(mesh);
