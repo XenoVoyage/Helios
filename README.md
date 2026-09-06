@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.9.5](https://img.shields.io/badge/version-v2026.9.5-66f7ff)](VERSION.txt)
+[![Version v2026.9.6](https://img.shields.io/badge/version-v2026.9.6-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D orrery of the solar system.
@@ -38,6 +38,8 @@ An interactive 3D orrery of the solar system.
 Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch-out zooms in; pinch-in zooms out. Play, pause, and change the speed of time from the bar at the bottom. Close the body card with the X or by tapping empty space. Zoom out past the solar overview and the orrery shrinks to a Sun among the stars. The Hipparcos sky, IAU figures, and Gaia band stay at constant brightness through the solar cap, so the first extra-zoom frame is already inside the Milky Way tail. The moment the camera leaves that tail, that solar sky and the Constellations control go off. The control offers Off, Major (the ten familiar default names), and All; All packs eligible names inside the viewport with a responsive collision budget. Extra-zoom sky from the tail through Virgo is a camera-centered spherical point-density illustration with unresolved bright concentrations and dark gaps. It has no cube faces, named generated objects, or claimed survey coordinates. The full disk, neighborhood, Local Group, and Virgo are catalog neighbors against that field, not a scatter of invented nearby galaxies. After Virgo, seven measured group anchors lead into 42,927 public 2MRS galaxy directions with approximate redshift distances; there are no invented web connections. Beyond the survey's 300 Mpc display cap, a small first-party density illustration provides continuity to the Planck-style CMB shell. That shell is deliberately drawn at the particle-horizon display radius. Leaving it is only an outside-camera/scale metaphor, not a physically possible observer. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
 
 Helios is a local page: no accounts, no telemetry, and no CDN.
+
+Marins Voyage: [X @MarinsVoyage](https://x.com/MarinsVoyage) · [YouTube](https://www.youtube.com/@MarinsVoyage).
 
 ## At a glance
 

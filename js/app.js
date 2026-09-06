@@ -227,11 +227,13 @@ function boot() {
   ui.sceneContext = $("scene-context");
   ui.unsupported = $("unsupported");
   ui.version = $("version-label");
+  ui.brand = $("brand-label");
   ui.dock = $("dock");
   ui.skip = $("skip-link");
   setMoonFocusTransition(false);
 
   ui.version.textContent = CONFIG.VERSION;
+  ui.brand.textContent = CONFIG.BRAND;
   const galaxyLook = earthSkyLook ? null : requestedGalaxyLook();
   paintSpeed();
   paintClock();
