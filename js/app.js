@@ -157,13 +157,24 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function syncViewportBusy() {
+  if (!ui.viewport) return;
+  const busy = String(Boolean(
+    moonFocusTransition.active
+      || (parentGlobeContinuity.active && !parentGlobeContinuity.settled),
+  ));
+  if (ui.viewport.getAttribute("aria-busy") !== busy) {
+    ui.viewport.setAttribute("aria-busy", busy);
+  }
+}
+
 function setMoonFocusTransition(active) {
   moonFocusTransition.active = active;
   if (!active) {
     moonFocusTransition.progress = 1;
     moonFocusTransition.route = {};
   }
-  if (ui.viewport) ui.viewport.setAttribute("aria-busy", String(active));
+  syncViewportBusy();
 }
 
 function beginMoonFocusTransition(targetDistance, progress, startVisible = null) {
@@ -796,7 +807,7 @@ function zoomTo(distance) {
         startNear: camera.near,
         targetNear: extraZoomCameraNear(next),
       };
-      ui.viewport.setAttribute("aria-busy", "true");
+      syncViewportBusy();
     }
   }
   state.distance = next;
@@ -1406,10 +1417,7 @@ function placeCamera(blend) {
     resetParentGlobeContinuity(parentGlobeContinuity);
     moonFocusTransition.flightDistance = null;
   }
-  ui.viewport.setAttribute("aria-busy", String(
-    moonFocusTransition.active
-      || (parentGlobeContinuity.active && !parentGlobeContinuity.settled),
-  ));
+  syncViewportBusy();
   camera.lookAt(focusPoint);
   camera.near = near;
   camera.far = CONFIG.cameraFar;

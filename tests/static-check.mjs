@@ -48,8 +48,14 @@ const issueConfig = await read(".github/ISSUE_TEMPLATE/config.yml");
 const pullRequestTemplate = await read(".github/pull_request_template.md");
 
 assert.equal(version, CONFIG.VERSION);
-assert.match(version, /^v\d{4}\.\d{1,2}\.\d{1,2}[a-z]$/);
-assert.ok(readme.includes(`Version ${version}`));
+const versionParts = version.match(/^v(\d{4})\.([1-9]|1[0-2])\.([1-9]|[12]\d|3[01])([a-z])?$/);
+assert.ok(versionParts, "version uses vYYYY.M.D with an optional lowercase daily suffix and no zero-padding");
+const [, year, month, day] = versionParts;
+const versionDate = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00Z`);
+assert.equal(versionDate.getUTCFullYear(), Number(year), "version year is a valid calendar date");
+assert.equal(versionDate.getUTCMonth() + 1, Number(month), "version month is a valid calendar date");
+assert.equal(versionDate.getUTCDate(), Number(day), "version day is a valid calendar date");
+assert.ok(readme.includes(`[![Version ${version}](https://img.shields.io/badge/version-${version}-66f7ff)](VERSION.txt)`));
 assert.match(agents, /\*\*Repository Standard:\*\* \[Repository Standard\]\(REPOSITORY_STANDARD\.md\)/);
 assert.match(agents, /\*\*Standard Status:\*\* adopting/);
 assert.match(agents, /`develop` is the\s+protected\s+long-lived \*\*Alpha Development\*\*/);

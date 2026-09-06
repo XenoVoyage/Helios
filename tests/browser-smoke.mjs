@@ -144,6 +144,125 @@ async function openReady(page, suffix = "") {
   );
 }
 
+async function beginViewportBusyAudit(page) {
+  await page.locator("#viewport").evaluate((viewport) => {
+    const oldValues = [];
+    const observer = new MutationObserver((records) => {
+      oldValues.push(...records.map((record) => record.oldValue));
+    });
+    observer.observe(viewport, {
+      attributes: true,
+      attributeFilter: ["aria-busy"],
+      attributeOldValue: true,
+    });
+    globalThis.__heliosBusyAudit = {
+      observer,
+      oldValues,
+      initial: viewport.getAttribute("aria-busy"),
+    };
+  });
+}
+
+async function endViewportBusyAudit(page) {
+  return page.locator("#viewport").evaluate((viewport) => {
+    const { observer, oldValues, initial } = globalThis.__heliosBusyAudit;
+    oldValues.push(...observer.takeRecords().map((record) => record.oldValue));
+    observer.disconnect();
+    delete globalThis.__heliosBusyAudit;
+    return { initial, oldValues, final: viewport.getAttribute("aria-busy") };
+  });
+}
+
+async function assertViewportBusyIdle(page, label) {
+  await waitForMoonCameraSettled(page);
+  await beginViewportBusyAudit(page);
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 12; frame += 1) {
+      await new Promise(requestAnimationFrame);
+    }
+  });
+  const trace = await endViewportBusyAudit(page);
+  const evidence = `${label}: at least 12 idle frames, ${trace.oldValues.length} aria-busy writes; ${JSON.stringify(trace)}`;
+  assert.equal(trace.initial, "false", evidence);
+  assert.equal(trace.final, "false", evidence);
+  assert.equal(trace.oldValues.length, 0, evidence);
+  console.log(evidence);
+}
+
+async function assertViewportBusyChanges(page, label, expected = null) {
+  const trace = await endViewportBusyAudit(page);
+  // Each following old value is the preceding write's new value, including
+  // several synchronous writes delivered in one MutationObserver callback.
+  const values = [...trace.oldValues, trace.final];
+  const evidence = `${label}: ${trace.oldValues.length} aria-busy writes; ${JSON.stringify(trace)}`;
+  assert.equal(trace.initial, "false", evidence);
+  assert.equal(values[0], trace.initial, evidence);
+  assert.equal(trace.final, "false", evidence);
+  assert.ok(values.includes("true"), `${evidence}; a real transition becomes busy`);
+  for (let index = 1; index < values.length; index += 1) {
+    assert.ok(["true", "false"].includes(values[index]), evidence);
+    assert.notEqual(values[index], values[index - 1], `${evidence}; no redundant writes`);
+  }
+  if (expected) assert.deepEqual(values, expected, evidence);
+  console.log(evidence);
+}
+
+async function assertViewportBusyLifecycle(context, prefix) {
+  // Keep these extra interactions off the existing visual-evidence pages.
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page);
+  await assertViewportBusyIdle(page, `${prefix} startup`);
+  await page.locator("#play-button").click();
+  const canvas = page.locator("#viewport");
+  for (const action of ["Reset", "Escape", "planet interruption", "repeated focus", "zoom reversal"]) {
+    await page.locator("#reset-button").click();
+    await beginViewportBusyAudit(page);
+    await page.evaluate(() => document.querySelector('[data-body-id="io"]').click());
+    assert.equal(await canvas.getAttribute("aria-busy"), "true", `${prefix} ${action} starts busy`);
+    await waitForTwoAnimationFrames(page);
+    if (action === "Reset") {
+      await page.locator("#reset-button").click();
+    } else if (action === "Escape") {
+      await canvas.press("Escape");
+    } else if (action === "planet interruption") {
+      await page.evaluate(() => document.querySelector('[data-body-id="earth"]').click());
+    } else if (action === "repeated focus") {
+      await page.evaluate(() => {
+        for (const id of ["io", "triton", "triton", "io"]) {
+          document.querySelector(`[data-body-id="${id}"]`).click();
+        }
+      });
+      assert.equal(await canvas.getAttribute("aria-busy"), "true", `${prefix} retargeting stays busy`);
+    } else {
+      await canvas.evaluate((viewport) => {
+        for (const deltaY of [-10_000, 800, -800]) {
+          viewport.dispatchEvent(new WheelEvent("wheel", {
+            deltaY,
+            bubbles: true,
+            cancelable: true,
+          }));
+        }
+      });
+      assert.equal(await canvas.getAttribute("aria-busy"), "true", `${prefix} zoom reversal stays busy`);
+    }
+    await waitForMoonCameraSettled(page);
+    await assertViewportBusyChanges(page, `${prefix} ${action}`, ["false", "true", "false"]);
+    if (["Reset", "Escape"].includes(action)) {
+      assert.equal(await page.locator("#body-card").getAttribute("hidden"), "");
+      assert.equal(await page.locator("#status-live").textContent(), "Returned to the overview");
+    } else {
+      const target = action === "planet interruption" ? "Earth" : "Io";
+      assert.equal(await page.locator("#card-name").textContent(), target);
+    }
+    await assertViewportBusyIdle(page, `${prefix} settled after ${action}`);
+  }
+  await openReady(page, "?look=sky");
+  await assertViewportBusyIdle(page, `${prefix} Earth-sky startup`);
+  assert.deepEqual(errors, [], `${prefix} busy-state lifecycle has no browser errors`);
+  await page.close();
+}
+
 async function assertRenderedCanvas(page) {
   const canvas = page.locator("#viewport");
   const details = await canvas.evaluate((element) => ({
@@ -1581,6 +1700,7 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     : ["moon", "phobos", "deimos", "io", "europa", "ganymede", "callisto", "titan", "triton"];
 
   for (const bodyId of bodies) {
+    await beginViewportBusyAudit(page);
     await page.locator("#reset-button").click();
     await page.evaluate(
       (id) => document.querySelector(`[data-body-id="${id}"]`).click(),
@@ -1692,6 +1812,7 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     await waitForCenteredBodyLabel(page, bodyId, 0.25);
     await page.waitForTimeout(250);
     await assertCenteredCanvasPicksMoon(page, bodyId, prefix, cdp);
+    await assertViewportBusyChanges(page, `${prefix} ${bodyId} focus, parent crossing, reverse and pick`);
   }
 
   if (cdp) await cdp.detach();
@@ -2284,6 +2405,7 @@ try {
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
   });
+  await assertViewportBusyLifecycle(desktop, "desktop");
   // Check the issue's new pixel gate before the longer unchanged scale and
   // moon sweeps, so a calibration failure reports its actual surface promptly.
   await assertOuterPlanetNightSides(desktop, "desktop");
@@ -2406,6 +2528,7 @@ try {
     hasTouch: true,
     isMobile: true,
   });
+  await assertViewportBusyLifecycle(touch, "touch-portrait emulation");
   await assertOuterPlanetNightSides(touch, "touch-portrait", true);
   const touchControlPage = await touch.newPage();
   const touchControlErrors = captureErrors(touchControlPage);

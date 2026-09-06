@@ -72,3 +72,62 @@ jobs:
           path: browser-stills/
           if-no-files-found: ignore
           retention-days: 7
+
+  visual-capture:
+    name: visual-capture (${{ matrix.source }}, ${{ matrix.group }})
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.base_ref == 'develop' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [main, develop, candidate]
+        group: [bodies, desktop-moons, touch-moons, other]
+    steps:
+      - name: Check out capture harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: harness
+          persist-credentials: false
+
+      - name: Check out renderer source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.source == 'main' && 'refs/heads/main' || matrix.source == 'develop' && github.event.pull_request.base.sha || github.event.pull_request.head.sha }}
+          path: renderer
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install capture dependencies
+        working-directory: harness
+        run: npm ci
+
+      - name: Install browser
+        working-directory: harness
+        run: npx playwright install --with-deps chromium
+
+      - name: Capture exact source views
+        working-directory: harness
+        run: >-
+          node tests/visual-capture.mjs
+          --source-root ../renderer
+          --output ../visual-stills/${{ matrix.source }}/${{ matrix.group }}
+          --source-label ${{ matrix.source }}
+          --group ${{ matrix.group }}
+
+      - name: Upload matched visual evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: helios-visual-${{ matrix.source }}-${{ matrix.group }}
+          path: visual-stills/
+          if-no-files-found: warn
+          retention-days: 7

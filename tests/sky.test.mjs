@@ -157,7 +157,6 @@ test("catalog is a few thousand brightest Hipparcos stars and the far plane clea
   assert.equal(STARS.length, 5043);
   assert.ok(STARS.every((row) => row[0] > 0 && Number.isFinite(row[1]) && Number.isFinite(row[2])));
   assert.ok(CONFIG.cameraFar > CONFIG.skyRadius);
-  assert.equal(CONFIG.VERSION, "v2026.8.23a");
 });
 
 test("bright-star subset identity is the HYG v3.1-v3.4 Hipparcos selection", async () => {
