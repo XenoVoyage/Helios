@@ -316,6 +316,11 @@ assert.match(
   "author CSS must preserve native hidden semantics for 44px body-label buttons",
 );
 assert.match(css, /--dock-clearance/);
+assert.match(
+  css,
+  /@media \(orientation: landscape\) and \(max-height: 500px\) and \(max-width: 720px\)[\s\S]*grid-template-areas:\s*"eyebrow eyebrow"\s*"title clock"/,
+  "compact landscape keeps the date under the brand word so a longer chrome label cannot overlap the card",
+);
 assert.doesNotMatch(css, /\.speed-group\s*\{[^}]*overflow:\s*hidden/);
 assert.doesNotMatch(css, /:hover\s*\{[^}]*display:\s*block/);
 assert.doesNotMatch(css, /--gold|#e8c872/i);

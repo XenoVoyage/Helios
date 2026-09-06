@@ -421,6 +421,35 @@ input[type="range"] {
 }
 
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
+  /* Keep the date under the brand word so a longer chrome label cannot
+     push the topbar into the right-side card. */
+  .topbar {
+    display: grid;
+    grid-template-columns: auto auto;
+    grid-template-areas:
+      "eyebrow eyebrow"
+      "title clock";
+    column-gap: 10px;
+    row-gap: 0;
+    align-items: baseline;
+  }
+
+  .topbar .brand {
+    display: contents;
+  }
+
+  .topbar .eyebrow {
+    grid-area: eyebrow;
+  }
+
+  .topbar h1 {
+    grid-area: title;
+  }
+
+  .topbar .clock {
+    grid-area: clock;
+  }
+
   .card {
     width: min(324px, calc(100vw - 24px));
     max-height: calc(
