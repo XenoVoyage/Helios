@@ -2,7 +2,7 @@
   "name": "helios",
   "private": true,
   "type": "module",
-  "description": "Marins Voyage Helios: interactive 3D solar system.",
+  "description": "Interactive 3D solar system.",
   "license": "MIT",
   "engines": {
     "node": "22.x"

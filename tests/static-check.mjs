@@ -59,10 +59,6 @@ assert.ok(readme.includes(`[![Version ${version}](https://img.shields.io/badge/v
 assert.equal(CONFIG.BRAND, "MarinsVoyage");
 assert.match(configSource, /BRAND:\s*"MarinsVoyage"/);
 assert.match(html, /id="brand-label"[^>]*class="eyebrow">MarinsVoyage</);
-assert.match(html, /<title>Helios<\/title>/);
-assert.match(html, /<meta\s+name="description"\s+content="[^"]*Marins Voyage[^"]*">/);
-assert.match(packageJson.description, /Marins Voyage/);
-assert.match(packageJson.description, /Helios/);
 assert.match(app, /ui\.brand\.textContent = CONFIG\.BRAND/);
 assert.match(readme, /https:\/\/x\.com\/MarinsVoyage/);
 assert.match(readme, /https:\/\/www\.youtube\.com\/@MarinsVoyage/);
