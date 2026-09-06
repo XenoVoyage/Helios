@@ -648,6 +648,28 @@ export function farGalaxySkyOpacity(distance) {
   return 1 - smoothstep01((progress - 0.12) / 0.76);
 }
 
+/**
+ * Persistent scientific context for accessibility. Uses the same opacity
+ * windows as the visual hierarchy labels so Local Group, Virgo Cluster,
+ * Local (Virgo) Supercluster, Laniakea, 2MRS/web, CMB, and the warm
+ * observable-universe view stay distinct. Coarse scaleLayer buckets alone
+ * cannot name that sequence.
+ */
+export function sceneHierarchyId(distance) {
+  const layer = scaleLayer(distance);
+  if (layer !== "virgo" && layer !== "web") return layer;
+  if (layer === "web") {
+    return cmbSkyOpacity(distance) > 0 ? "cmb" : "web";
+  }
+  const labels = semanticLabelOpacities(distance);
+  if (labels.laniakea >= 0.5) return "laniakea";
+  if (labels.virgoSupercluster >= 0.5 && distance > CONFIG.virgoViewDistance) {
+    return "virgoSupercluster";
+  }
+  if (webOpacity(distance) >= 0.5) return "web";
+  return "virgo";
+}
+
 /** Microwave sky is invisible from inside and fades only after shell exit. */
 export function cmbSkyOpacity(distance) {
   if (distance >= CONFIG.universeViewDistance) return 1;

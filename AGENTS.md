@@ -38,7 +38,7 @@ alone.
 | Galactic neighborhood, Local Group, Virgo, 2MRS, outer density, CMB, and observable universe | `js/galaxy.js`, `js/galaxy-catalog.js`, `js/cosmic-web.js`, `js/2mrs-data.js` |
 | Semantic shell and CSP | `index.html` |
 | Presentation | `styles.css` |
-| Public product version | `VERSION.txt` (`js/config.js` must match) |
+| Public product version | `VERSION.txt` (`CONFIG.VERSION` and README badge must match) |
 | Scientific and asset provenance | `PROVENANCE.md` |
 | Reusable contributor policy | `REPOSITORY_STANDARD.md` |
 | Helios-specific contributor contract | `AGENTS.md` |
@@ -49,9 +49,13 @@ header—not the base64 body—unless the task specifically owns catalog
 regeneration or data integrity. `scripts/build-2mrs.mjs` is its canonical
 generator.
 
-Public product releases use `vYYYY.M.D<suffix>` without zero-padding. Increment
-the lowercase suffix for another release on the same date. `VERSION.txt` is
-canonical; `CONFIG.VERSION` and the README badge are intentional mirrors.
+Every issue PR landing on `develop` increments the public product version in
+all three mirrors together: canonical `VERSION.txt`, `CONFIG.VERSION` in
+`js/config.js`, and the README badge's displayed text and URL. The first version
+on a new date is `vYYYY.M.D` without zero-padding or a suffix; subsequent versions
+on that date append `a`, `b`, `c`, etc. Refresh the live mirrors before choosing
+the next version; never downgrade or overwrite a newer concurrent version.
+Reconcile a concurrent bump before integration and rerun the candidate gate.
 
 ## Product boundaries
 
@@ -76,7 +80,8 @@ owner-approved J2000 scientific data and object coordinates; Solar System;
 camera and scale transitions; label and visual hierarchy; spherical distant
 sky; 2MRS and cosmic-web transition; warm CMB observable-universe view;
 controls; accessibility; performance; responsive behavior; dependencies;
-product version; provenance; and all unrelated runtime behavior.
+provenance; and all unrelated runtime behavior. Apply the required issue-PR
+version increment above without bundling unrelated behavior.
 
 Issue #44 exclusively owns Saturn's back-facing ring-shading correction. Do not
 change Saturn ring material, shading, texture, UVs, geometry, lighting, or

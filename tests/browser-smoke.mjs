@@ -6,9 +6,16 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { bodyOrientationBasis, findBody } from "../js/bodies.js";
-import { CONFIG, wheelZoomMultiplier } from "../js/config.js";
-import { cmbSkyOpacity } from "../js/galaxy.js";
+import {
+  BODIES,
+  bodyOrientationBasis,
+  findBody,
+  keplerOffset,
+  moonOrbitAttachment,
+  visualBodyRadius,
+} from "../js/bodies.js";
+import { CONFIG, minimumFocusDistance, wheelZoomMultiplier } from "../js/config.js";
+import { cmbSkyOpacity, sceneHierarchyId } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -26,6 +33,7 @@ const CMB_LUMINANCE_STDDEV_FLOOR = 12;
 const CMB_WARM_COLOR_COVERAGE_FLOOR = 0.08;
 const CMB_COOL_COLOR_COVERAGE_FLOOR = 0.005;
 const CMB_BLUE_RED_RATIO_CEILING = 1.15;
+const PRIMARY_BODY_IDS = BODIES.filter((body) => body.kind !== "moon").map((body) => body.id);
 const child = spawn(process.execPath, ["tests/serve.mjs"], {
   cwd: root,
   env: { ...process.env, PORT: String(port) },
@@ -136,6 +144,125 @@ async function openReady(page, suffix = "") {
   );
 }
 
+async function beginViewportBusyAudit(page) {
+  await page.locator("#viewport").evaluate((viewport) => {
+    const oldValues = [];
+    const observer = new MutationObserver((records) => {
+      oldValues.push(...records.map((record) => record.oldValue));
+    });
+    observer.observe(viewport, {
+      attributes: true,
+      attributeFilter: ["aria-busy"],
+      attributeOldValue: true,
+    });
+    globalThis.__heliosBusyAudit = {
+      observer,
+      oldValues,
+      initial: viewport.getAttribute("aria-busy"),
+    };
+  });
+}
+
+async function endViewportBusyAudit(page) {
+  return page.locator("#viewport").evaluate((viewport) => {
+    const { observer, oldValues, initial } = globalThis.__heliosBusyAudit;
+    oldValues.push(...observer.takeRecords().map((record) => record.oldValue));
+    observer.disconnect();
+    delete globalThis.__heliosBusyAudit;
+    return { initial, oldValues, final: viewport.getAttribute("aria-busy") };
+  });
+}
+
+async function assertViewportBusyIdle(page, label) {
+  await waitForMoonCameraSettled(page);
+  await beginViewportBusyAudit(page);
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 12; frame += 1) {
+      await new Promise(requestAnimationFrame);
+    }
+  });
+  const trace = await endViewportBusyAudit(page);
+  const evidence = `${label}: at least 12 idle frames, ${trace.oldValues.length} aria-busy writes; ${JSON.stringify(trace)}`;
+  assert.equal(trace.initial, "false", evidence);
+  assert.equal(trace.final, "false", evidence);
+  assert.equal(trace.oldValues.length, 0, evidence);
+  console.log(evidence);
+}
+
+async function assertViewportBusyChanges(page, label, expected = null) {
+  const trace = await endViewportBusyAudit(page);
+  // Each following old value is the preceding write's new value, including
+  // several synchronous writes delivered in one MutationObserver callback.
+  const values = [...trace.oldValues, trace.final];
+  const evidence = `${label}: ${trace.oldValues.length} aria-busy writes; ${JSON.stringify(trace)}`;
+  assert.equal(trace.initial, "false", evidence);
+  assert.equal(values[0], trace.initial, evidence);
+  assert.equal(trace.final, "false", evidence);
+  assert.ok(values.includes("true"), `${evidence}; a real transition becomes busy`);
+  for (let index = 1; index < values.length; index += 1) {
+    assert.ok(["true", "false"].includes(values[index]), evidence);
+    assert.notEqual(values[index], values[index - 1], `${evidence}; no redundant writes`);
+  }
+  if (expected) assert.deepEqual(values, expected, evidence);
+  console.log(evidence);
+}
+
+async function assertViewportBusyLifecycle(context, prefix) {
+  // Keep these extra interactions off the existing visual-evidence pages.
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page);
+  await assertViewportBusyIdle(page, `${prefix} startup`);
+  await page.locator("#play-button").click();
+  const canvas = page.locator("#viewport");
+  for (const action of ["Reset", "Escape", "planet interruption", "repeated focus", "zoom reversal"]) {
+    await page.locator("#reset-button").click();
+    await beginViewportBusyAudit(page);
+    await page.evaluate(() => document.querySelector('[data-body-id="io"]').click());
+    assert.equal(await canvas.getAttribute("aria-busy"), "true", `${prefix} ${action} starts busy`);
+    await waitForTwoAnimationFrames(page);
+    if (action === "Reset") {
+      await page.locator("#reset-button").click();
+    } else if (action === "Escape") {
+      await canvas.press("Escape");
+    } else if (action === "planet interruption") {
+      await page.evaluate(() => document.querySelector('[data-body-id="earth"]').click());
+    } else if (action === "repeated focus") {
+      await page.evaluate(() => {
+        for (const id of ["io", "triton", "triton", "io"]) {
+          document.querySelector(`[data-body-id="${id}"]`).click();
+        }
+      });
+      assert.equal(await canvas.getAttribute("aria-busy"), "true", `${prefix} retargeting stays busy`);
+    } else {
+      await canvas.evaluate((viewport) => {
+        for (const deltaY of [-10_000, 800, -800]) {
+          viewport.dispatchEvent(new WheelEvent("wheel", {
+            deltaY,
+            bubbles: true,
+            cancelable: true,
+          }));
+        }
+      });
+      assert.equal(await canvas.getAttribute("aria-busy"), "true", `${prefix} zoom reversal stays busy`);
+    }
+    await waitForMoonCameraSettled(page);
+    await assertViewportBusyChanges(page, `${prefix} ${action}`, ["false", "true", "false"]);
+    if (["Reset", "Escape"].includes(action)) {
+      assert.equal(await page.locator("#body-card").getAttribute("hidden"), "");
+      assert.equal(await page.locator("#status-live").textContent(), "Returned to the overview");
+    } else {
+      const target = action === "planet interruption" ? "Earth" : "Io";
+      assert.equal(await page.locator("#card-name").textContent(), target);
+    }
+    await assertViewportBusyIdle(page, `${prefix} settled after ${action}`);
+  }
+  await openReady(page, "?look=sky");
+  await assertViewportBusyIdle(page, `${prefix} Earth-sky startup`);
+  assert.deepEqual(errors, [], `${prefix} busy-state lifecycle has no browser errors`);
+  await page.close();
+}
+
 async function assertRenderedCanvas(page) {
   const canvas = page.locator("#viewport");
   const details = await canvas.evaluate((element) => ({
@@ -167,6 +294,164 @@ async function assertBodyLabelsHidden(page) {
   assert.equal(labels.painted, 0, "hidden body labels have no rendered boxes");
   assert.equal(labels.displayed, 0, "author CSS preserves hidden display semantics");
   assert.equal(labels.hitTested, 0, "hidden body labels cannot intercept pointer input");
+}
+
+async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = true) {
+  const audit = await page.evaluate(() => {
+    // Runtime reserves 8px; tolerate subpixel DOMRect rounding at the boundary.
+    const clearance = 7.5;
+    const obstacles = [
+      document.querySelector(".topbar"),
+      document.querySelector("#body-card"),
+      document.querySelector("#dock"),
+      document.querySelector("#version-label"),
+    ].filter((element) => element && !element.hidden && element.getClientRects().length > 0)
+      .map((element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          name: element.id || element.className,
+          left: box.left - clearance,
+          right: box.right + clearance,
+          top: box.top - clearance,
+          bottom: box.bottom + clearance,
+        };
+      });
+    return [...document.querySelectorAll(".sky-label:not([hidden])")].map((element) => {
+      const box = element.getBoundingClientRect();
+      const center = document.elementFromPoint(
+        box.left + box.width / 2,
+        box.top + box.height / 2,
+      );
+      const blocker = obstacles.find((obstacle) => (
+        box.right > obstacle.left
+        && box.left < obstacle.right
+        && box.bottom > obstacle.top
+        && box.top < obstacle.bottom
+      ));
+      return {
+        name: element.textContent,
+        width: box.width,
+        height: box.height,
+        left: box.left,
+        right: box.right,
+        top: box.top,
+        bottom: box.bottom,
+        insideViewport: box.left >= clearance
+          && box.right <= window.innerWidth - clearance
+          && box.top >= clearance
+          && box.bottom <= window.innerHeight - clearance,
+        blocker: blocker?.name ?? null,
+        hit: center?.closest?.(".sky-label") === element,
+      };
+    });
+  });
+  if (requireVisible) {
+    assert.ok(audit.length > 0, `${label}: at least one body label remains visible`);
+  }
+  for (const item of audit) {
+    assert.ok(item.width >= 43.5 && item.height >= 43.5, `${label}: ${item.name} keeps a 44px target`);
+    assert.equal(item.insideViewport, true, `${label}: ${item.name} stays inside the viewport: ${JSON.stringify(item)}`);
+    assert.equal(item.blocker, null, `${label}: ${item.name} clears persistent chrome: ${JSON.stringify(item)}`);
+    assert.equal(item.hit, true, `${label}: ${item.name} remains hit-testable`);
+  }
+}
+
+const LOOK_SEMANTICS = {
+  sky: { layer: /Earth sky/, focus: /Focused on Earth/ },
+  solarfar: { layer: /Solar system/, focus: /Focused on the Sun/ },
+  tailsky: { layer: /Milky Way/ },
+  growing: { layer: /Milky Way/ },
+  disk: { layer: /Milky Way/ },
+  milkyway: { layer: /Milky Way/ },
+  mwedge: { layer: /Milky Way/ },
+  mwbelow: { layer: /Milky Way/ },
+  neighborhood: { layer: /Nearby galaxies/ },
+  localgroup: { layer: /Local Group/ },
+  virgo: { layer: /Virgo Cluster/ },
+  preweb: { layer: /Laniakea Supercluster/ },
+  web: { layer: /2MRS galaxy distribution/ },
+  universe: { layer: /Schematic observable universe/ },
+};
+
+async function assertAccessibleHierarchy(page, expectation, label = "scene") {
+  const canvas = page.locator("#viewport");
+  assert.equal(await canvas.getAttribute("aria-label"), "Helios scene", `${label}: canvas name stays scale-neutral`);
+  assert.equal(await canvas.getAttribute("aria-describedby"), "scene-context");
+  const context = await page.locator("#scene-context").textContent();
+  assert.ok(context.length > 0, `${label}: persistent scene context is populated`);
+  assert.doesNotMatch(context, /Interactive solar system/, `${label}: no stale solar-system canvas copy`);
+  assert.match(context, expectation.layer, `${label}: layer text ${context}`);
+  if (expectation.focus) {
+    assert.match(context, expectation.focus, `${label}: focus text ${context}`);
+  }
+  const canvasSnapshot = await canvas.ariaSnapshot();
+  const contextSnapshot = await page.locator("#scene-context").ariaSnapshot();
+  assert.match(canvasSnapshot, /Helios scene/, `${label}: accessibility snapshot names the canvas`);
+  const snapshotBlob = `${canvasSnapshot}\n${contextSnapshot}\n${context}`;
+  assert.match(
+    snapshotBlob,
+    expectation.layer,
+    `${label}: accessibility snapshot exposes the scientific layer`,
+  );
+  if (expectation.focus) {
+    assert.match(snapshotBlob, expectation.focus, `${label}: accessibility snapshot exposes focus`);
+  }
+  const tree = await page.evaluate(() => ({
+    buttons: document.querySelectorAll("button").length,
+    worldLabels: document.querySelectorAll("#labels .sky-label").length,
+    visibleWorldLabels: [...document.querySelectorAll("#labels .sky-label")]
+      .filter((node) => !node.hidden).length,
+    liveRole: document.querySelector("#status-live")?.getAttribute("role"),
+  }));
+  assert.equal(tree.worldLabels, 20, `${label}: a11y tree keeps the v1 body set, not catalog galaxies`);
+  assert.ok(tree.buttons < 40, `${label}: accessibility tree is not dumped with rendered objects`);
+  assert.equal(tree.liveRole, "status");
+  return { context, canvasSnapshot, contextSnapshot };
+}
+
+async function assertEarthSkyReset(page) {
+  for (const action of ["button", "escape"]) {
+    await openReady(page, "?look=sky");
+    const canvas = page.locator("#viewport");
+    const before = await stableCanvasFrame(page, canvas);
+    if (action === "button") {
+      await page.locator("#reset-button").click();
+    } else {
+      await canvas.focus();
+      await canvas.press("Escape");
+    }
+    await page.waitForTimeout(100);
+    assert.equal(
+      await page.locator("#body-card").getAttribute("hidden"),
+      "",
+      `Earth-sky ${action} clears the selected-body card`,
+    );
+    assert.equal(
+      await page.locator("#status-live").textContent(),
+      "Returned to the Earth sky",
+      `Earth-sky ${action} announces the restored direct look`,
+    );
+    const semantics = await assertAccessibleHierarchy(
+      page,
+      LOOK_SEMANTICS.sky,
+      `desktop-sky-${action}`,
+    );
+    assert.equal(
+      semantics.context,
+      "Earth sky. Focused on Earth.",
+      `Earth-sky ${action} retains Earth as the real focus`,
+    );
+    const after = await stableCanvasFrame(page, canvas);
+    const difference = await frameDifferenceMetrics(page, before, after);
+    await saveScreenshot(page, `desktop-sky-${action}`);
+    // The focus-derived semantics prove state; this only rejects a visible
+    // camera change while tolerating repeat WebGL rasterization noise.
+    assert.ok(
+      difference.meanAbsoluteDifference <= 1.25
+        && difference.strongCoverage <= 0.02,
+      `Earth-sky ${action} preserves the Earth-centered camera: ${JSON.stringify(difference)}`,
+    );
+  }
 }
 
 async function saveScreenshot(page, name, options = {}) {
@@ -450,6 +735,52 @@ async function dispatchWheelZoom(page, from, to) {
   }, deltaY);
 }
 
+async function waitForTwoAnimationFrames(page) {
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
+    requestAnimationFrame(resolve);
+  })));
+}
+
+async function unobstructedCanvasPoint(page, candidates, spread = 0) {
+  return page.locator("#viewport").evaluate((viewport, options) => {
+    const box = viewport.getBoundingClientRect();
+    for (const [x, y] of options.candidates) {
+      const clientX = box.left + box.width * x;
+      const clientY = box.top + box.height * y;
+      if ([-options.spread, 0, options.spread].every((offset) => (
+        document.elementFromPoint(clientX + offset, clientY) === viewport
+      ))) {
+        return { x: clientX, y: clientY };
+      }
+    }
+    return null;
+  }, { candidates, spread });
+}
+
+async function touchPinch(page, cdp, startGap, endGap, label) {
+  const spread = Math.max(startGap, endGap) / 2;
+  const center = await unobstructedCanvasPoint(
+    page,
+    [[0.5, 0.38], [0.5, 0.52], [0.5, 0.28], [0.5, 0.65]],
+    spread,
+  );
+  assert.ok(center, `${label} has an unobstructed pinch corridor`);
+  const touches = (gap) => [
+    { id: 0, x: center.x - gap / 2, y: center.y, radiusX: 4, radiusY: 4, force: 1 },
+    { id: 1, x: center.x + gap / 2, y: center.y, radiusX: 4, radiusY: 4, force: 1 },
+  ];
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: touches(startGap),
+  });
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: touches(endGap),
+  });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await waitForTwoAnimationFrames(page);
+}
+
 async function assertConstellationModesAndFreshLabels(page) {
   const select = page.locator("#sky-mode");
   const control = page.locator("#sky-control");
@@ -637,6 +968,7 @@ async function auditScaleTransitions(context) {
   if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
     await page.locator("#play-button").click();
   }
+  await assertAccessibleHierarchy(page, LOOK_SEMANTICS.virgo, "scale-transition-virgo");
   await page.waitForTimeout(350);
 
   const virgoToWeb = [0.15, 0.35, 0.55, 0.75, 0.92].map((fraction) => ({
@@ -669,6 +1001,22 @@ async function auditScaleTransitions(context) {
         .filter({ hasText: "Schematic observable universe" }).waitFor();
     }
     await assertBodyLabelsHidden(page);
+    const hierarchyId = sceneHierarchyId(stop.distance);
+    const hierarchyText = {
+      virgo: /Virgo Cluster/,
+      virgoSupercluster: /Local \(Virgo\) Supercluster/,
+      laniakea: /Laniakea Supercluster/,
+      web: /2MRS galaxy distribution/,
+      cmb: /Cosmic microwave background/,
+      universe: /Schematic observable universe/,
+    }[hierarchyId];
+    if (hierarchyText) {
+      assert.match(
+        await page.locator("#scene-context").textContent(),
+        hierarchyText,
+        `${stop.name} scene context is ${hierarchyId}`,
+      );
+    }
     const frame = await auditedCanvasFrame(
       page,
       stop.name,
@@ -881,6 +1229,7 @@ async function auditResponsiveCosmology(context, prefix) {
     const errors = captureErrors(page);
     await openReady(page, `?look=${look}`);
     await assertRenderedCanvas(page);
+    await assertAccessibleHierarchy(page, LOOK_SEMANTICS[look], `${prefix}-${look}`);
     assert.equal(await page.getAttribute("html", "data-galaxy-ready"), "1");
     await assertBodyLabelsHidden(page);
     await page.waitForTimeout(250);
@@ -907,6 +1256,99 @@ async function orbitCameraHalfTurn(page) {
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.72, y, { steps: 8 });
   await page.mouse.up();
+}
+
+async function orbitCameraDrag(page, dxFrac, dyFrac = 0) {
+  const box = await page.locator("#viewport").boundingBox();
+  assert.ok(box);
+  const start = await unobstructedCanvasPoint(page, [
+    [0.28, 0.45], [0.72, 0.45], [0.5, 0.35], [0.15, 0.35], [0.85, 0.35],
+  ]);
+  assert.ok(start, "moon orbit drag has an unobstructed canvas start");
+  const startX = start.x;
+  const startY = start.y;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(
+    startX + box.width * dxFrac,
+    startY + box.height * dyFrac,
+    { steps: 12 },
+  );
+  await page.mouse.up();
+  await waitForTwoAnimationFrames(page);
+}
+
+function moonWorldOffset(body, days) {
+  const parent = findBody(body.parent);
+  const offset = keplerOffset(body, parent, days);
+  if (moonOrbitAttachment(body) !== "parent-equatorial") return offset;
+  const basis = bodyOrientationBasis(parent);
+  const xAxis = equatorialVectorToScene(basis.xAxis);
+  const yAxis = equatorialVectorToScene(basis.yAxis);
+  const zAxis = equatorialVectorToScene(basis.zAxis);
+  return {
+    x: offset.x * xAxis.x + offset.y * zAxis.x - offset.z * yAxis.x,
+    y: offset.x * xAxis.y + offset.y * zAxis.y - offset.z * yAxis.y,
+    z: offset.x * xAxis.z + offset.y * zAxis.z - offset.z * yAxis.z,
+  };
+}
+
+function parentFacingPointerDelta(bodyId, width, height) {
+  const moon = findBody(bodyId);
+  const offset = moonWorldOffset(moon, 0);
+  const sep = Math.hypot(offset.x, offset.y, offset.z) || 1;
+  const targetAzimuth = Math.atan2(-offset.x, -offset.z);
+  const targetElevation = Math.max(
+    -1.2,
+    Math.min(1.2, Math.asin(Math.max(-1, Math.min(1, -offset.y / sep)))),
+  );
+  let deltaAzimuth = targetAzimuth - CONFIG.cameraAzimuth;
+  while (deltaAzimuth > Math.PI) deltaAzimuth -= Math.PI * 2;
+  while (deltaAzimuth < -Math.PI) deltaAzimuth += Math.PI * 2;
+  const deltaElevation = targetElevation - CONFIG.cameraElevation;
+  return {
+    dx: -deltaAzimuth / 0.005,
+    dy: deltaElevation / 0.004,
+    dxFrac: (-deltaAzimuth / 0.005) / width,
+    dyFrac: (deltaElevation / 0.004) / height,
+  };
+}
+
+async function touchOrbitBy(page, cdp, viewport, dx, dy) {
+  let remainX = dx;
+  let remainY = dy;
+  for (let step = 0; step < 12 && (Math.abs(remainX) > 2 || Math.abs(remainY) > 2); step += 1) {
+    const startXFraction = remainX < -2 ? 0.86 : remainX > 2 ? 0.14 : 0.5;
+    const startYFraction = remainY < -2 ? 0.78 : remainY > 2 ? 0.22 : 0.4;
+    const start = await unobstructedCanvasPoint(page, [
+      [startXFraction, startYFraction],
+      [startXFraction, 0.4],
+      [0.5, startYFraction],
+      [startXFraction, 0.55],
+      [0.5, 0.35],
+    ]);
+    assert.ok(start, "moon touch orbit has an unobstructed canvas start");
+    const startX = start.x;
+    const startY = start.y;
+    const endX = Math.max(24, Math.min(viewport.width - 24, startX + remainX));
+    const endY = Math.max(24, Math.min(viewport.height - 24, startY + remainY));
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ id: 0, x: startX, y: startY, radiusX: 4, radiusY: 4, force: 1 }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ id: 0, x: endX, y: endY, radiusX: 4, radiusY: 4, force: 1 }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    remainX -= endX - startX;
+    remainY -= endY - startY;
+  }
+  assert.ok(
+    Math.abs(remainX) <= 2 && Math.abs(remainY) <= 2,
+    `moon touch orbit applies its full delta (remaining ${remainX}, ${remainY})`,
+  );
+  await waitForTwoAnimationFrames(page);
 }
 
 async function assertBodySelectionSweep(page) {
@@ -958,11 +1400,32 @@ async function assertZoomStress(page) {
   await moveToCanvas();
   await canvas.focus();
 
+  await page.evaluate(() => {
+    window.__heliosAnnouncements = [];
+    const live = document.querySelector("#status-live");
+    const observer = new MutationObserver(() => {
+      window.__heliosAnnouncements.push(live.textContent);
+    });
+    observer.observe(live, { childList: true, characterData: true, subtree: true });
+    window.__heliosAnnouncementObserver = observer;
+  });
+
   // Enter the measured-volume layer through the real wheel path so its
   // transition announcement remains observable after boot's ready message.
   await wheelFourSteps(1_000);
   await page.locator("#status-live").filter({ hasText: "2MRS galaxy distribution" }).waitFor();
   await assertBodyLabelsHidden(page);
+  await assertAccessibleHierarchy(
+    page,
+    { layer: /2MRS galaxy distribution/ },
+    "desktop-wheel-web",
+  );
+  const outbound = await page.evaluate(() => window.__heliosAnnouncements.slice());
+  assert.ok(outbound.length <= 12, `outbound wheel announcements stay bounded (${outbound.length})`);
+  assert.ok(
+    outbound.some((message) => message.includes("2MRS galaxy distribution")),
+    `outbound wheel announces 2MRS: ${JSON.stringify(outbound)}`,
+  );
   await wheelFourSteps(-1_000);
   await page.locator("#sky-control:not([hidden])").waitFor();
 
@@ -994,6 +1457,680 @@ async function assertZoomStress(page) {
     await wheelFourSteps(-1_000);
     await page.locator("#sky-control:not([hidden])").waitFor();
   }
+  const allAnnouncements = await page.evaluate(() => {
+    window.__heliosAnnouncementObserver.disconnect();
+    return window.__heliosAnnouncements;
+  });
+  assert.ok(
+    allAnnouncements.length <= 48,
+    `rapid wheel cycles stay bounded (${allAnnouncements.length} live-region writes)`,
+  );
+}
+
+async function assertMinimumZoomViews(context, prefix, bodyIds, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page);
+  const play = page.locator("#play-button");
+  if (await play.getAttribute("aria-pressed") === "true") {
+    if (touch) await play.tap();
+    else await play.click();
+  }
+  const canvas = page.locator("#viewport");
+  const cdp = touch ? await context.newCDPSession(page) : null;
+
+  for (const bodyId of bodyIds) {
+    await page.locator("#reset-button").click();
+    if (prefix === "desktop" && bodyId === "sun") {
+      const earthLabel = page.locator('.sky-label[data-body-id="earth"]');
+      await earthLabel.waitFor();
+      await earthLabel.focus();
+      assert.equal(
+        await page.evaluate(() => document.activeElement?.dataset.bodyId),
+        "earth",
+        "the Earth label owns focus before its edge cull",
+      );
+    }
+    await page.evaluate(
+      (id) => document.querySelector(`[data-body-id="${id}"]`).click(),
+      bodyId,
+    );
+    await page.locator("#body-card:not([hidden])").waitFor();
+
+    if (cdp) {
+      await touchPinch(page, cdp, 40, 370, `${prefix} ${bodyId} minimum zoom`);
+    } else {
+      const point = await canvas.evaluate((viewport) => {
+        const box = viewport.getBoundingClientRect();
+        for (const [x, y] of [[0.5, 0.7], [0.2, 0.6], [0.8, 0.6]]) {
+          const clientX = box.left + box.width * x;
+          const clientY = box.top + box.height * y;
+          if (document.elementFromPoint(clientX, clientY) === viewport) {
+            return { x: clientX, y: clientY };
+          }
+        }
+        return null;
+      });
+      assert.ok(point, `${prefix} ${bodyId} has an unobstructed wheel target`);
+      await page.mouse.move(point.x, point.y);
+      await page.mouse.wheel(0, -10_000);
+    }
+
+    await waitForTwoAnimationFrames(page);
+    await waitForMoonCameraSettled(page);
+    await waitForCenteredBodyLabel(page, bodyId);
+    await page.waitForTimeout(250);
+    assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
+    await assertRenderedCanvas(page);
+    await saveScreenshot(page, `${prefix}-minimum-zoom-${bodyId}`);
+    if (["sun", "jupiter", "saturn"].includes(bodyId)) {
+      await assertFocusedGlobeSurfaceVisible(page, `${prefix} ${bodyId}`);
+    }
+    await assertPersistentChromeContrast(page, `${prefix} ${bodyId}`);
+    await assertVisibleBodyLabelsClearChrome(page, `${prefix} ${bodyId} minimum zoom`);
+    if (prefix === "desktop" && bodyId === "sun") {
+      assert.equal(
+        await page.locator('.sky-label[data-body-id="earth"]').getAttribute("hidden"),
+        "",
+        "desktop Sun minimum zoom hides the unsafe Earth edge label",
+      );
+      assert.equal(
+        await page.evaluate(() => document.activeElement?.id),
+        "viewport",
+        "hiding a focused edge label returns focus to the scene",
+      );
+      await page.locator("#viewport").evaluate((element) => element.blur());
+    }
+  }
+
+  if (cdp) await cdp.detach();
+  assert.deepEqual(errors, [], `${prefix} minimum zoom has no browser errors`);
+  await page.close();
+}
+
+async function assertPersistentChromeContrast(page, label) {
+  const audit = await page.evaluate(() => {
+    const parseColor = (value) => {
+      const channels = value.match(/[\d.]+/g)?.map(Number);
+      if (!channels || channels.length < 3) throw new Error(`Unsupported CSS color: ${value}`);
+      return {
+        red: channels[0],
+        green: channels[1],
+        blue: channels[2],
+        alpha: channels[3] ?? 1,
+      };
+    };
+    const composite = (foreground, background) => ({
+      red: foreground.red * foreground.alpha + background.red * (1 - foreground.alpha),
+      green: foreground.green * foreground.alpha
+        + background.green * (1 - foreground.alpha),
+      blue: foreground.blue * foreground.alpha + background.blue * (1 - foreground.alpha),
+      alpha: 1,
+    });
+    const linearChannel = (value) => {
+      const channel = value / 255;
+      return channel <= 0.04045
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4;
+    };
+    const luminance = (color) => (
+      0.2126 * linearChannel(color.red)
+      + 0.7152 * linearChannel(color.green)
+      + 0.0722 * linearChannel(color.blue)
+    );
+    const contrast = (first, second) => {
+      const firstLuminance = luminance(first);
+      const secondLuminance = luminance(second);
+      return (Math.max(firstLuminance, secondLuminance) + 0.05)
+        / (Math.min(firstLuminance, secondLuminance) + 0.05);
+    };
+    const whiteCanvas = { red: 255, green: 255, blue: 255, alpha: 1 };
+    const effectiveBackground = (element, root) => {
+      const ancestry = [];
+      let current = element;
+      while (current && current !== root) {
+        ancestry.push(current);
+        current = current.parentElement;
+      }
+      if (current !== root) throw new Error("Contrast root is not an ancestor");
+      ancestry.push(root);
+      return ancestry.reverse().reduce((background, item) => (
+        composite(parseColor(getComputedStyle(item).backgroundColor), background)
+      ), whiteCanvas);
+    };
+    const textPairs = [
+      [".topbar .eyebrow", ".topbar"],
+      [".topbar h1", ".topbar"],
+      [".topbar .clock", ".topbar"],
+      ["#play-button", "#dock"],
+      ["#slower-button", "#dock"],
+      ["#faster-button", "#dock"],
+      ["#speed-readout", "#dock"],
+      ["#sky-mode", "#dock"],
+      ["#reset-button", "#dock"],
+      ["#version-label", "#version-label"],
+    ].map(([selector, rootSelector]) => {
+      const element = document.querySelector(selector);
+      const root = document.querySelector(rootSelector);
+      if (!element || !root) throw new Error(`Missing contrast target: ${selector}`);
+      const background = effectiveBackground(element, root);
+      const foreground = composite(parseColor(getComputedStyle(element).color), background);
+      return { selector, ratio: contrast(foreground, background) };
+    });
+    const controlBoundaries = [...document.querySelectorAll("#dock button, #sky-mode")]
+      .map((element) => {
+        const root = document.querySelector("#dock");
+        const outer = effectiveBackground(root, root);
+        const inner = effectiveBackground(element, root);
+        // CSS backgrounds paint beneath translucent borders by default, so
+        // evaluate the real border color against both adjacent surfaces.
+        const border = composite(parseColor(getComputedStyle(element).borderTopColor), inner);
+        return {
+          selector: `#${element.id}`,
+          ratio: Math.min(contrast(border, outer), contrast(border, inner)),
+        };
+      });
+    const dockBackground = effectiveBackground(
+      document.querySelector("#dock"),
+      document.querySelector("#dock"),
+    );
+    const sliderAccent = parseColor(getComputedStyle(
+      document.querySelector("#speed-slider"),
+    ).accentColor);
+    const backing = [".topbar", "#dock", "#version-label"].map((selector) => {
+      const shadow = getComputedStyle(document.querySelector(selector)).boxShadow;
+      const lengths = shadow.match(/-?[\d.]+px/g)?.map(Number.parseFloat) ?? [];
+      return { selector, spread: lengths[3] ?? 0 };
+    });
+    return {
+      textPairs,
+      controls: [
+        ...controlBoundaries,
+        { selector: "#speed-slider accent", ratio: contrast(sliderAccent, dockBackground) },
+      ],
+      backing,
+    };
+  });
+
+  for (const result of audit.textPairs) {
+    assert.ok(
+      result.ratio >= 4.5,
+      `${label} ${result.selector} worst-case text contrast is ${result.ratio}`,
+    );
+  }
+  for (const result of audit.controls) {
+    assert.ok(
+      result.ratio >= 3,
+      `${label} ${result.selector} worst-case control contrast is ${result.ratio}`,
+    );
+  }
+  for (const result of audit.backing) {
+    assert.ok(
+      result.spread >= 6,
+      `${label} ${result.selector} backing covers its ${result.spread}px focus-ring halo`,
+    );
+  }
+}
+
+async function assertMoonParentCloseViews(context, prefix, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await page.addInitScript(() => {
+    const observer = new MutationObserver(() => {
+      if (document.documentElement?.dataset.heliosReady !== "1") return;
+      const play = document.querySelector("#play-button");
+      if (play?.getAttribute("aria-pressed") === "true") play.click();
+      globalThis.__heliosPausedAtReady = play?.getAttribute("aria-pressed") === "false";
+      observer.disconnect();
+    });
+    observer.observe(document, {
+      attributes: true,
+      attributeFilter: ["data-helios-ready"],
+      subtree: true,
+    });
+  });
+  await openReady(page);
+  const play = page.locator("#play-button");
+  assert.equal(await play.getAttribute("aria-pressed"), "false");
+  assert.equal(await page.evaluate(() => globalThis.__heliosPausedAtReady), true);
+  const canvas = page.locator("#viewport");
+  const cdp = touch ? await context.newCDPSession(page) : null;
+  const bodies = touch
+    ? ["moon", "phobos", "io", "triton"]
+    : ["moon", "phobos", "deimos", "io", "europa", "ganymede", "callisto", "titan", "triton"];
+
+  for (const bodyId of bodies) {
+    await beginViewportBusyAudit(page);
+    await page.locator("#reset-button").click();
+    await page.evaluate(
+      (id) => document.querySelector(`[data-body-id="${id}"]`).click(),
+      bodyId,
+    );
+    await page.locator("#body-card:not([hidden])").waitFor();
+
+    if (cdp) {
+      await touchPinch(page, cdp, 40, 370, `${prefix} ${bodyId} parent close zoom`);
+    } else {
+      const point = await canvas.evaluate((viewport) => {
+        const box = viewport.getBoundingClientRect();
+        for (const [x, y] of [[0.5, 0.7], [0.2, 0.6], [0.8, 0.6]]) {
+          const clientX = box.left + box.width * x;
+          const clientY = box.top + box.height * y;
+          if (document.elementFromPoint(clientX, clientY) === viewport) {
+            return { x: clientX, y: clientY };
+          }
+        }
+        return null;
+      });
+      assert.ok(point, `${prefix} ${bodyId} has an unobstructed wheel target`);
+      await page.mouse.move(point.x, point.y);
+      await page.mouse.wheel(0, -10_000);
+    }
+
+    if (bodyId === "io") {
+      assert.equal(await canvas.getAttribute("aria-busy"), "true");
+      await waitForTwoAnimationFrames(page);
+      await saveScreenshot(page, `${prefix}-moon-parent-transition-${bodyId}-start`);
+      await page.waitForTimeout(350);
+      assert.equal(await canvas.getAttribute("aria-busy"), "true");
+      await saveScreenshot(page, `${prefix}-moon-parent-transition-${bodyId}-mid`);
+    }
+    await waitForMoonCameraSettled(page);
+    await waitForCenteredBodyLabel(page, bodyId);
+    await page.waitForTimeout(250);
+    assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
+    await assertRenderedCanvas(page);
+    await saveScreenshot(page, `${prefix}-moon-parent-min-${bodyId}`);
+
+    const viewport = page.viewportSize();
+    assert.ok(viewport);
+    const towardParent = parentFacingPointerDelta(bodyId, viewport.width, viewport.height);
+    if (cdp) {
+      await touchOrbitBy(page, cdp, viewport, towardParent.dx, towardParent.dy);
+    } else {
+      await orbitCameraDrag(page, towardParent.dxFrac, towardParent.dyFrac);
+    }
+    await waitForMoonCameraSettled(page);
+    await waitForCenteredBodyLabel(page, bodyId);
+    await page.waitForTimeout(250);
+    assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
+    await assertRenderedCanvas(page);
+    await saveScreenshot(page, `${prefix}-moon-parent-close-${bodyId}`);
+
+    if (cdp) {
+      await touchPinch(page, cdp, 370, 40, `${prefix} ${bodyId} parent crossing zoom`);
+    } else {
+      const point = await canvas.evaluate((viewport) => {
+        const box = viewport.getBoundingClientRect();
+        const clientX = box.left + box.width * 0.5;
+        const clientY = box.top + box.height * 0.7;
+        return { x: clientX, y: clientY };
+      });
+      await page.mouse.move(point.x, point.y);
+      await page.mouse.wheel(0, 800);
+      await page.mouse.wheel(0, 800);
+    }
+    assert.equal(
+      await canvas.getAttribute("aria-busy"),
+      "true",
+      `${prefix} ${bodyId} parent-crossing zoom uses a continuous flight`,
+    );
+    await waitForTwoAnimationFrames(page);
+    await waitForMoonCameraSettled(page);
+    await waitForCenteredBodyLabel(page, bodyId);
+    await page.waitForTimeout(250);
+    assert.equal(
+      await page.locator("#card-name").textContent(),
+      findBody(bodyId).name,
+      `${prefix} ${bodyId} zoom through the parent keeps the moon focused`,
+    );
+    await assertRenderedCanvas(page);
+    await saveScreenshot(page, `${prefix}-moon-parent-cross-${bodyId}`);
+
+    if (cdp) {
+      await touchOrbitBy(page, cdp, viewport, -towardParent.dx, -towardParent.dy);
+    } else {
+      await orbitCameraDrag(page, -towardParent.dxFrac, -towardParent.dyFrac);
+    }
+    await waitForMoonCameraSettled(page);
+    await waitForCenteredBodyLabel(page, bodyId);
+    await page.waitForTimeout(250);
+    assert.equal(
+      await page.locator("#card-name").textContent(),
+      findBody(bodyId).name,
+      `${prefix} ${bodyId} reverse orbit keeps the moon focused`,
+    );
+    await assertRenderedCanvas(page);
+    await saveScreenshot(page, `${prefix}-moon-parent-reverse-${bodyId}`);
+
+    if (cdp) {
+      await touchOrbitBy(page, cdp, viewport, towardParent.dx, towardParent.dy);
+    } else {
+      await orbitCameraDrag(page, towardParent.dxFrac, towardParent.dyFrac);
+    }
+    await waitForMoonCameraSettled(page);
+    await waitForCenteredBodyLabel(page, bodyId, 0.25);
+    await page.waitForTimeout(250);
+    await assertCenteredCanvasPicksMoon(page, bodyId, prefix, cdp);
+    await assertViewportBusyChanges(page, `${prefix} ${bodyId} focus, parent crossing, reverse and pick`);
+  }
+
+  if (cdp) await cdp.detach();
+  assert.deepEqual(errors, [], `${prefix} moon-parent close views have no browser errors`);
+  await page.close();
+}
+
+async function assertCenteredCanvasPicksMoon(page, bodyId, prefix, cdp) {
+  const canvas = page.locator("#viewport");
+  await saveScreenshot(page, `${prefix}-moon-parent-pick-target-${bodyId}`);
+  await page.locator("#card-close").click();
+  await page.locator("#body-card[hidden]").waitFor({ state: "attached" });
+  await page.locator(".sky-label").evaluateAll((labels) => {
+    for (const label of labels) label.style.pointerEvents = "none";
+  });
+  const bounds = await canvas.boundingBox();
+  assert.ok(bounds);
+  const x = bounds.x + bounds.width / 2;
+  const y = bounds.y + bounds.height / 2;
+  if (cdp) {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ id: 0, x, y, radiusX: 4, radiusY: 4, force: 1 }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  } else {
+    await page.mouse.click(x, y);
+  }
+  await waitForTwoAnimationFrames(page);
+  await page.locator("#body-card:not([hidden])").waitFor();
+  assert.equal(
+    await page.locator("#card-name").textContent(),
+    findBody(bodyId).name,
+    `${prefix} ${bodyId} real center ${cdp ? "tap" : "click"} raycasts the focused moon`,
+  );
+  assert.equal(
+    await page.locator("#status-live").textContent(),
+    `Focused ${findBody(bodyId).name}`,
+  );
+  await waitForMoonCameraSettled(page);
+  await saveScreenshot(page, `${prefix}-moon-parent-picked-${bodyId}`);
+  await page.locator(".sky-label").evaluateAll((labels) => {
+    for (const label of labels) label.style.pointerEvents = "";
+  });
+}
+
+async function waitForCenteredBodyLabel(page, bodyId, tolerance = 2) {
+  await page.waitForFunction(({ id, tolerance }) => {
+    const label = document.querySelector(`[data-body-id="${id}"]`);
+    if (!label || label.hidden) return false;
+    const match = label.style.transform.match(
+      /translate\(([-\d.eE]+)px,\s*([-\d.eE]+)px\)$/,
+    );
+    if (!match) return false;
+    return Math.abs(Number(match[1]) - innerWidth / 2) <= tolerance
+      && Math.abs(Number(match[2]) - innerHeight / 2) <= tolerance;
+  }, { id: bodyId, tolerance }, { timeout: 20_000 });
+}
+
+async function waitForMoonCameraSettled(page) {
+  await page.waitForFunction(
+    () => document.querySelector("#viewport")?.getAttribute("aria-busy") === "false",
+    null,
+    { timeout: 20_000 },
+  );
+  await waitForTwoAnimationFrames(page);
+}
+
+async function assertFocusedGlobeSurfaceVisible(page, label) {
+  const png = await page.locator("#viewport").screenshot();
+  const metrics = await page.evaluate(async (source) => {
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", reject, { once: true });
+    });
+    image.src = `data:image/png;base64,${source}`;
+    await ready;
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const context = surface.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+    const x = Math.floor(surface.width * 0.4);
+    const y = Math.floor(surface.height * 0.4);
+    const width = Math.max(1, Math.floor(surface.width * 0.2));
+    const height = Math.max(1, Math.floor(surface.height * 0.2));
+    const pixels = context.getImageData(x, y, width, height).data;
+    let luminance = 0;
+    let dark = 0;
+    let samples = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      const value = 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+      luminance += value;
+      if (value < 8) dark += 1;
+      samples += 1;
+    }
+    return { mean: luminance / samples, dark: dark / samples };
+  }, png.toString("base64"));
+  assert.ok(
+    metrics.mean > 40,
+    `${label} closest view shows globe surface (mean=${metrics.mean.toFixed(1)})`,
+  );
+  assert.ok(
+    metrics.dark < 0.05,
+    `${label} closest view is not an inside-sphere void (dark=${metrics.dark.toFixed(3)})`,
+  );
+}
+
+async function outerPlanetSurfaceMetrics(
+  page, bodyId, distance,
+  azimuth = CONFIG.cameraAzimuth, elevation = CONFIG.cameraElevation,
+) {
+  const body = findBody(bodyId);
+  const png = await stableCanvasFrame(page, page.locator("#viewport"));
+  return page.evaluate(async ({ source, center, radius, distance, azimuth, elevation }) => {
+    const THREE = await import("./vendor/three.module.min.js");
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", reject, { once: true });
+    });
+    image.src = `data:image/png;base64,${source}`;
+    await ready;
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const context = surface.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, surface.width, surface.height).data;
+    const viewport = document.querySelector("#viewport").getBoundingClientRect();
+    // Element screenshots include overlaid HTML. Exclude every label and
+    // persistent panel, including their antialiased borders, from both masks.
+    const obstacles = [...document.querySelectorAll(
+      ".sky-label, #stage .topbar, #body-card, #dock, #version-label",
+    )].filter((element) => element.getClientRects().length > 0)
+      .map((element) => element.getBoundingClientRect());
+    const globeCenter = new THREE.Vector3(center.x, center.y, center.z);
+    const camera = new THREE.PerspectiveCamera(52, surface.width / surface.height, 0.05, 7000000);
+    camera.position.copy(globeCenter).add(new THREE.Vector3(
+      Math.cos(elevation) * Math.sin(azimuth),
+      Math.sin(elevation),
+      Math.cos(elevation) * Math.cos(azimuth),
+    ).multiplyScalar(distance));
+    camera.lookAt(globeCenter);
+    camera.updateMatrixWorld();
+    const sphere = new THREE.Sphere(globeCenter, radius);
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    const hit = new THREE.Vector3();
+    const normal = new THREE.Vector3();
+    const direction = new THREE.Vector3();
+    const night = [];
+    const day = [];
+    for (let y = 1; y < surface.height; y += 2) {
+      for (let x = 1; x < surface.width; x += 2) {
+        const cssX = viewport.left + (x + 0.5) * viewport.width / surface.width;
+        const cssY = viewport.top + (y + 0.5) * viewport.height / surface.height;
+        if (obstacles.some((box) => cssX >= box.left - 3 && cssX <= box.right + 3
+          && cssY >= box.top - 3 && cssY <= box.bottom + 3)) continue;
+        ndc.set((x + 0.5) / surface.width * 2 - 1, 1 - (y + 0.5) / surface.height * 2);
+        raycaster.setFromCamera(ndc, camera);
+        if (!raycaster.ray.intersectSphere(sphere, hit)) continue;
+        normal.copy(hit).sub(globeCenter).normalize();
+        // Discard the limb, where sphere tessellation and antialiasing can
+        // disagree with the analytic sphere; never count sky as globe pixels.
+        if (normal.dot(direction.copy(camera.position).sub(hit).normalize()) < 0.2) continue;
+        const sunCosine = normal.dot(direction.copy(hit).negate().normalize());
+        const offset = (y * surface.width + x) * 4;
+        const luma = pixels[offset] * 0.2126 + pixels[offset + 1] * 0.7152
+          + pixels[offset + 2] * 0.0722;
+        if (sunCosine < -0.2) night.push(luma);
+        if (sunCosine > 0.08) day.push(luma);
+      }
+    }
+    const summarize = (values) => {
+      values.sort((a, b) => a - b);
+      return {
+        samples: values.length,
+        mean: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0,
+        p10: values[Math.floor(values.length * 0.1)] ?? 0,
+      };
+    };
+    return { night: summarize(night), day: summarize(day) };
+  }, {
+    source: png.toString("base64"),
+    center: keplerOffset(body, findBody(body.parent), 0),
+    radius: visualBodyRadius(body),
+    distance,
+    azimuth,
+    elevation,
+  });
+}
+
+async function assertOuterPlanetNightSides(context, prefix, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  const textures = new Map();
+  page.on("response", (response) => {
+    for (const id of ["uranus", "neptune"]) {
+      if (response.url().endsWith(`/assets/textures/${id}.jpg`)) textures.set(id, response.status());
+    }
+  });
+  await page.addInitScript(() => {
+    const observer = new MutationObserver(() => {
+      if (document.documentElement?.dataset.heliosReady !== "1") return;
+      const play = document.querySelector("#play-button");
+      if (play?.getAttribute("aria-pressed") === "true") play.click();
+      observer.disconnect();
+    });
+    observer.observe(document, {
+      attributes: true,
+      attributeFilter: ["data-helios-ready"],
+      subtree: true,
+    });
+  });
+  await openReady(page);
+  assert.equal(await page.locator("#play-button").getAttribute("aria-pressed"), "false");
+  assert.equal(await page.locator("#clock").textContent(), "2000-01-01");
+  const cdp = touch ? await context.newCDPSession(page) : null;
+  for (const bodyId of ["uranus", "neptune"]) {
+    assert.equal(textures.get(bodyId), 200, `${bodyId} source texture loads successfully`);
+    await page.locator("#reset-button").click();
+    await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), bodyId);
+    await page.locator("#body-card:not([hidden])").waitFor();
+    await waitForCenteredBodyLabel(page, bodyId, 0.1);
+    const radius = visualBodyRadius(findBody(bodyId));
+    const framedDistance = Math.max(radius * 7.5, 5.5);
+    // A camera near the globe sees less than a hemisphere. At Neptune's
+    // closest J2000 seat there is no visible sunlit crescent; check it in
+    // the unchanged, farther focus-arrival seat instead of inventing a phase.
+    for (const [seat, distance] of [
+      ["framed", framedDistance],
+      ["minimum", minimumFocusDistance(radius)],
+    ]) {
+      if (seat === "minimum") {
+        if (cdp) await touchPinch(page, cdp, 40, 370, `${prefix} ${bodyId} night side`);
+        else await zoomBetweenAuditDistances(page, framedDistance, distance);
+        await waitForTwoAnimationFrames(page);
+      }
+      const label = `${prefix} ${bodyId} ${seat}`;
+      const metrics = await outerPlanetSurfaceMetrics(page, bodyId, distance);
+      console.log(`${label} globe-only luminance ${JSON.stringify(metrics)}`);
+      await saveScreenshot(page, `${prefix}-night-side-${seat}-${bodyId}`);
+      // Display-readability floors, not astronomical brightness or WCAG claims.
+      assert.ok(metrics.night.samples >= 500, `${label} has a substantial actual-night-globe ROI`);
+      assert.ok(metrics.night.mean >= 10, `${label} night surface mean stays readable`);
+      assert.ok(metrics.night.p10 >= 8, `${label} night surface does not collapse to black`);
+      if (seat === "framed") {
+        assert.ok(metrics.day.samples >= 30, `${label} samples a genuine sunlit crescent`);
+        assert.ok(metrics.day.mean >= metrics.night.mean * 2
+          && metrics.day.mean >= metrics.night.mean + 20,
+        `${label} sunlight stays distinctly brighter than the inspection fill`);
+      }
+    }
+    const body = findBody(bodyId);
+    const position = keplerOffset(body, findBody(body.parent), 0);
+    const sunAzimuth = Math.atan2(-position.x, -position.z);
+    const sunElevation = Math.asin(-position.y / Math.hypot(position.x, position.y, position.z));
+    for (const [seat, azimuth, elevation] of [
+      // Horizontal perpendicular to the Sun direction: a true 90-degree phase.
+      ["half-lit", sunAzimuth + Math.PI / 2, 0],
+      ["sunward", sunAzimuth, sunElevation],
+    ]) {
+      await page.locator("#reset-button").click();
+      await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), bodyId);
+      await waitForCenteredBodyLabel(page, bodyId, 0.1);
+      const deltaAzimuth = Math.atan2(
+        Math.sin(azimuth - CONFIG.cameraAzimuth), Math.cos(azimuth - CONFIG.cameraAzimuth),
+      );
+      const dx = -deltaAzimuth / 0.005;
+      const dy = (elevation - CONFIG.cameraElevation) / 0.004;
+      if (cdp) await touchOrbitBy(page, cdp, page.viewportSize(), dx, dy);
+      else await dragCamera(page, dx, dy);
+      await waitForCenteredBodyLabel(page, bodyId, 0.1);
+      const metrics = await outerPlanetSurfaceMetrics(page, bodyId, framedDistance, azimuth, elevation);
+      const label = `${prefix} ${bodyId} ${seat}`;
+      console.log(`${label} globe-only luminance ${JSON.stringify(metrics)}`);
+      await saveScreenshot(page, `${prefix}-night-side-${seat}-${bodyId}`);
+      assert.ok(metrics.day.samples >= 500, `${label} has a substantial sunlit-globe ROI`);
+      if (seat === "half-lit") {
+        assert.ok(metrics.night.samples >= 500, `${label} also contains genuine night surface`);
+        assert.ok(metrics.day.mean >= metrics.night.mean * 2
+          && metrics.day.mean >= metrics.night.mean + 20,
+        `${label} preserves the physical terminator and bright-side hierarchy`);
+      } else {
+        assert.equal(metrics.night.samples, 0, `${label} geometry faces the Sun`);
+      }
+    }
+  }
+  if (cdp) await cdp.detach();
+  assert.deepEqual(errors, [], `${prefix} outer-planet night views have no browser errors`);
+  await page.close();
+}
+
+async function assertSaturnRingReferenceViews(context) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page);
+  const play = page.locator("#play-button");
+  if (await play.getAttribute("aria-pressed") === "true") {
+    await play.click();
+  }
+  await page.locator("#reset-button").click();
+  await page.evaluate(() => document.querySelector('[data-body-id="saturn"]').click());
+  await page.locator("#body-card:not([hidden])").waitFor();
+  assert.equal(await page.locator("#card-name").textContent(), "Saturn");
+  await waitForCenteredBodyLabel(page, "saturn");
+  await page.waitForTimeout(250);
+  await assertRenderedCanvas(page);
+  await saveScreenshot(page, "desktop-saturn-rings-front");
+  await orbitCameraHalfTurn(page);
+  await waitForCenteredBodyLabel(page, "saturn");
+  await page.waitForTimeout(250);
+  await assertRenderedCanvas(page);
+  await saveScreenshot(page, "desktop-saturn-rings-back");
+  assert.deepEqual(errors, [], "Saturn ring reference views have no browser errors");
+  await page.close();
 }
 
 async function saveTritonScreenshot(page, name) {
@@ -1031,7 +2168,7 @@ async function captureTriton(page) {
   await page.locator("#card-close").click();
   await orbitCameraHalfTurn(page);
   await page.mouse.wheel(0, -1_200);
-  await page.waitForTimeout(500);
+  await waitForMoonCameraSettled(page);
   await saveTritonScreenshot(page, "triton-rotation-a");
   await page.locator("#speed-slider").evaluate((slider) => {
     const minimum = 1 / 24;
@@ -1044,7 +2181,7 @@ async function captureTriton(page) {
   await page.locator("#play-button").click();
   await page.waitForTimeout(500);
   await page.locator("#play-button").click();
-  await page.waitForTimeout(1_500);
+  await waitForMoonCameraSettled(page);
   await saveTritonScreenshot(page, "triton-rotation-b");
 }
 
@@ -1217,6 +2354,11 @@ async function assertCardClearsDock(page, viewport) {
   assert.ok(layout.card.top >= 0 && layout.card.bottom <= viewport.height + 1);
   assert.ok(Math.abs(layout.clearance - Math.ceil(layout.dockHeight)) <= 1);
   assert.equal(layout.speedOverflow, "visible");
+  await assertVisibleBodyLabelsClearChrome(
+    page,
+    `${viewport.width}x${viewport.height} responsive body labels`,
+    false,
+  );
 }
 
 async function assertCreditsClearDock(page, viewport) {
@@ -1263,11 +2405,22 @@ try {
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
   });
+  await assertViewportBusyLifecycle(desktop, "desktop");
+  // Check the issue's new pixel gate before the longer unchanged scale and
+  // moon sweeps, so a calibration failure reports its actual surface promptly.
+  await assertOuterPlanetNightSides(desktop, "desktop");
   const desktopPage = await desktop.newPage();
   const desktopErrors = captureErrors(desktopPage);
   await openReady(desktopPage);
+  assert.equal(await desktopPage.locator("#brand-label").textContent(), "MarinsVoyage");
   assert.equal(await desktopPage.getAttribute("html", "data-galaxy-ready"), null);
   await assertRenderedCanvas(desktopPage);
+  await assertAccessibleHierarchy(
+    desktopPage,
+    { layer: /Solar system/, focus: /Focused on the Sun/ },
+    "desktop-boot",
+  );
+  await assertVisibleBodyLabelsClearChrome(desktopPage, "desktop-boot");
 
   await desktopPage.locator("#play-button").click();
   const canvas = desktopPage.locator("#viewport");
@@ -1291,8 +2444,19 @@ try {
   await earth.click();
   await desktopPage.locator("#body-card:not([hidden])").waitFor();
   assert.equal(await desktopPage.locator("#card-name").textContent(), "Earth");
+  await assertAccessibleHierarchy(
+    desktopPage,
+    { layer: /Solar system/, focus: /Focused on Earth/ },
+    "desktop-earth-focus",
+  );
   await desktopPage.locator("#reset-button").click();
   assert.equal(await desktopPage.locator("#body-card").getAttribute("hidden"), "");
+  assert.equal(await desktopPage.locator("#status-live").textContent(), "Returned to the overview");
+  await assertAccessibleHierarchy(
+    desktopPage,
+    { layer: /Solar system/, focus: /Focused on the Sun/ },
+    "desktop-reset",
+  );
 
   await assertBodySelectionSweep(desktopPage);
   await assertConstellationModesAndFreshLabels(desktopPage);
@@ -1333,6 +2497,7 @@ try {
     const directErrors = captureErrors(directPage);
     await openReady(directPage, `?look=${look}`);
     await assertRenderedCanvas(directPage);
+    await assertAccessibleHierarchy(directPage, LOOK_SEMANTICS[look], `desktop-${look}`);
     if (look === "sky") {
       assert.equal(await directPage.locator("#card-name").textContent(), "Earth");
     } else if (look === "solarfar") {
@@ -1343,6 +2508,7 @@ try {
     }
     await directPage.waitForTimeout(250);
     await saveScreenshot(directPage, `desktop-${look}`);
+    if (look === "sky") await assertEarthSkyReset(directPage);
     if (look === "universe") await assertCmbTextureVisible(directPage);
     assert.deepEqual(directErrors, [], `${look} has no browser errors`);
     await directPage.close();
@@ -1352,6 +2518,9 @@ try {
   await auditFarSkyDirections(desktop);
   await captureEarthSolstice(desktop, "earth-june-solstice", "2000-06-21");
   await captureEarthSolstice(desktop, "earth-december-solstice", "2000-12-21", true);
+  await assertMinimumZoomViews(desktop, "desktop", PRIMARY_BODY_IDS);
+  await assertMoonParentCloseViews(desktop, "desktop");
+  await assertSaturnRingReferenceViews(desktop);
   await desktop.close();
 
   const touch = await browser.newContext({
@@ -1360,10 +2529,41 @@ try {
     hasTouch: true,
     isMobile: true,
   });
+  await assertViewportBusyLifecycle(touch, "touch-portrait emulation");
+  await assertOuterPlanetNightSides(touch, "touch-portrait", true);
+  const touchControlPage = await touch.newPage();
+  const touchControlErrors = captureErrors(touchControlPage);
+  await openReady(touchControlPage);
+  for (const bodyId of ["moon", "phobos", "io", "triton"]) {
+    await touchControlPage.locator("#reset-button").click();
+    await touchControlPage.evaluate(
+      (id) => document.querySelector(`[data-body-id="${id}"]`).click(),
+      bodyId,
+    );
+    await touchControlPage.locator("#body-card:not([hidden])").waitFor();
+    await touchControlPage.locator("#card-close").tap();
+    await touchControlPage
+      .locator("#body-card[hidden]")
+      .waitFor({ state: "attached" });
+    assert.equal(
+      await touchControlPage.locator("#status-live").textContent(),
+      "Selection cleared",
+      `touch ${bodyId} close control clears the selection`,
+    );
+  }
+  assert.deepEqual(touchControlErrors, []);
+  await touchControlPage.close();
+
   const touchPage = await touch.newPage();
   const touchErrors = captureErrors(touchPage);
   await openReady(touchPage);
+  assert.equal(await touchPage.locator("#brand-label").textContent(), "MarinsVoyage");
   await assertRenderedCanvas(touchPage);
+  await assertAccessibleHierarchy(
+    touchPage,
+    { layer: /Solar system/, focus: /Focused on the Sun/ },
+    "touch-portrait-boot",
+  );
   const credits = touchPage.locator("#version-label");
   await credits.waitFor();
   assert.equal(await credits.getAttribute("href"), "./PROVENANCE.md");
@@ -1382,22 +2582,24 @@ try {
     assert.equal(await touchSky.isEnabled(), true);
     assert.equal(await touchSky.inputValue(), "all");
   }
-  await touchPage.locator("#reset-button").click();
   await touchPage.setViewportSize({ width: 390, height: 844 });
-
+  await touchPage.locator("#reset-button").click();
   const cdp = await touch.newCDPSession(touchPage);
+  // Pinch on empty canvas. Ceres's corrected J2000 seat places its 44px
+  // label over the former (70, 320) start, which selected Ceres instead
+  // of zooming.
   await cdp.send("Input.dispatchTouchEvent", {
     type: "touchStart",
     touchPoints: [
-      { id: 0, x: 70, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-      { id: 1, x: 320, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 0, x: 70, y: 240, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 1, x: 320, y: 240, radiusX: 4, radiusY: 4, force: 1 },
     ],
   });
   await cdp.send("Input.dispatchTouchEvent", {
     type: "touchMove",
     touchPoints: [
-      { id: 0, x: 165, y: 320, radiusX: 4, radiusY: 4, force: 1 },
-      { id: 1, x: 225, y: 320, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 0, x: 165, y: 240, radiusX: 4, radiusY: 4, force: 1 },
+      { id: 1, x: 225, y: 240, radiusX: 4, radiusY: 4, force: 1 },
     ],
   });
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
@@ -1408,6 +2610,11 @@ try {
   assert.equal(await touchSky.inputValue(), "all", "touch preference survives sky unavailability");
   assert.equal(await touchSky.isEnabled(), false, "unavailable touch control is disabled");
   await assertBodyLabelsHidden(touchPage);
+  await assertAccessibleHierarchy(
+    touchPage,
+    { layer: /Milky Way|Nearby galaxies|Local Group|Virgo Cluster|Laniakea Supercluster|2MRS galaxy distribution/ },
+    "touch-portrait-pinch",
+  );
 
   for (const viewport of [
     { width: 320, height: 568 },
@@ -1431,6 +2638,9 @@ try {
   await saveScreenshot(touchPage, "touch-landscape-card");
   assert.deepEqual(touchErrors, []);
   await auditResponsiveCosmology(touch, "touch-portrait");
+  await touchPage.close();
+  await assertMinimumZoomViews(touch, "touch-portrait", ["sun", "jupiter", "saturn"], true);
+  await assertMoonParentCloseViews(touch, "touch-portrait", true);
   await touch.close();
 
   const compactLandscape = await browser.newContext({

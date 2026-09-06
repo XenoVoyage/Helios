@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BODIES } from "../js/bodies.js";
@@ -48,8 +48,56 @@ const issueConfig = await read(".github/ISSUE_TEMPLATE/config.yml");
 const pullRequestTemplate = await read(".github/pull_request_template.md");
 
 assert.equal(version, CONFIG.VERSION);
-assert.match(version, /^v\d{4}\.\d{1,2}\.\d{1,2}[a-z]$/);
-assert.ok(readme.includes(`Version ${version}`));
+const versionParts = version.match(/^v(\d{4})\.([1-9]|1[0-2])\.([1-9]|[12]\d|3[01])([a-z])?$/);
+assert.ok(versionParts, "version uses vYYYY.M.D with an optional lowercase daily suffix and no zero-padding");
+const [, year, month, day] = versionParts;
+const versionDate = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00Z`);
+assert.equal(versionDate.getUTCFullYear(), Number(year), "version year is a valid calendar date");
+assert.equal(versionDate.getUTCMonth() + 1, Number(month), "version month is a valid calendar date");
+assert.equal(versionDate.getUTCDate(), Number(day), "version day is a valid calendar date");
+assert.ok(readme.includes(`[![Version ${version}](https://img.shields.io/badge/version-${version}-66f7ff)](VERSION.txt)`));
+assert.equal(CONFIG.BRAND, "MarinsVoyage");
+assert.match(configSource, /BRAND:\s*"MarinsVoyage"/);
+assert.match(html, /id="brand-label"[^>]*class="eyebrow">MarinsVoyage</);
+assert.match(app, /ui\.brand\.textContent = CONFIG\.BRAND/);
+assert.match(readme, /https:\/\/x\.com\/MarinsVoyage/);
+assert.match(readme, /https:\/\/www\.youtube\.com\/@MarinsVoyage/);
+assert.doesNotMatch(readme, /x\.com\/XenoVoyage|youtube\.com\/(?:@|c\/|user\/)?XenoVoyage/i);
+assert.match(license, /Copyright \(c\) 2026 Marins Voyage/);
+assert.match(readme, /xenovoyage\.github\.io\/Helios\//);
+
+const skipBrandScanDirs = new Set([".git", "node_modules", "vendor", "assets", "browser-stills"]);
+const skipBrandScanNames = new Set(["2mrs-data.js"]);
+const leftoverBrand = /xeno[\s._-]*voyage/i;
+const allowedGithubBrand = /https?:\/\/(?:www\.)?github\.com\/XenoVoyage(?:\/[^\s)"'\]]*)?|https?:\/\/xenovoyage\.github\.io(?:\/[^\s)"'\]]*)?|@XenoVoyage\b|XenoVoyage\/Helios/gi;
+
+async function firstPartyFiles(dir = root, files = []) {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      if (skipBrandScanDirs.has(entry.name)) continue;
+      await firstPartyFiles(path.join(dir, entry.name), files);
+      continue;
+    }
+    if (skipBrandScanNames.has(entry.name)) continue;
+    if (
+      !/\.(?:js|mjs|cjs|html|css|md|txt|yml|yaml|json)$/i.test(entry.name)
+      && entry.name !== "LICENSE"
+      && entry.name !== "CODEOWNERS"
+    ) continue;
+    files.push(path.relative(root, path.join(dir, entry.name)));
+  }
+  return files;
+}
+
+for (const relative of await firstPartyFiles()) {
+  if (relative === "tests/static-check.mjs") continue;
+  const stripped = (await read(relative)).replace(allowedGithubBrand, "");
+  assert.doesNotMatch(
+    stripped,
+    leftoverBrand,
+    `${relative} still contains leftover Xeno Voyage display brand outside GitHub/Pages path segments`,
+  );
+}
 assert.match(agents, /\*\*Repository Standard:\*\* \[Repository Standard\]\(REPOSITORY_STANDARD\.md\)/);
 assert.match(agents, /\*\*Standard Status:\*\* adopting/);
 assert.match(agents, /`develop` is the\s+protected\s+long-lived \*\*Alpha Development\*\*/);
@@ -62,6 +110,43 @@ assert.match(agents, /Issue #44 exclusively owns Saturn's back-facing ring-shadi
 assert.match(readme, /\[Repository Standard\]\(REPOSITORY_STANDARD\.md\)/);
 assert.match(provenance, /`AGENTS\.md` is the sole owner of Helios's Repository Standard status/);
 assert.match(provenance, /provenance blockers contributing to its `adopting` state/);
+assert.match(provenance, /hyg_v31\.csv\.gz/);
+assert.match(provenance, /hyg_v34\.csv\.gz/);
+assert.match(provenance, /CC BY-SA 2\.5/);
+assert.match(provenance, /HIP 55203/);
+assert.match(provenance, /HIP 7751/);
+assert.match(provenance, /p Eridani/);
+assert.match(provenance, /first non-empty `proper`/);
+assert.match(
+  provenance,
+  /^The latest source evidence recorded in this ledger is dated 2026-09-03;\nsource-specific retrieval and check dates are recorded per entry when known\./m,
+);
+assert.match(provenance, /`round\(float\(ra\) \* 15, 5\)`/);
+assert.match(provenance, /`round\(float\(dec\), 5\)`/);
+assert.match(provenance, /`round\(float\(mag\), 2\)`/);
+assert.match(provenance, /`round\(float\(ci\), 2\)`/);
+assert.match(provenance, /IEEE-754 binary64/);
+assert.match(provenance, /not exact-decimal half-even rounding/);
+assert.doesNotMatch(provenance, /B-V is HYG `ci` quantized to 2 decimals/);
+assert.doesNotMatch(provenance, /identical, field-for-field, to a first-HIP/);
+assert.match(provenance, /600ce39342ee1452da5fdd9d9b7b8f51a1e1b5f7892abeace61f7c56f4382fce/);
+assert.match(provenance, /b39c1d6dbab932bb624965241b6a13995886370781b9a398d0f1fb36d098b325/);
+assert.match(provenance, /193dee77cbfef7179bf1eb6188cfdede9fd0d622760e4bc658ab775c1965c375/);
+assert.match(provenance, /01736aeafecb7f5082c9d2bbed1c6bb36bb9ea6bc4c9ebb3429ed2e8a3a0a4e1/);
+assert.match(provenance, /e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34/);
+assert.match(provenance, /inherited image\s+transformation records/);
+assert.doesNotMatch(
+  provenance,
+  /exact upstream HYG release and its matching license version were not retained/,
+);
+assert.match(readme, /v3\.1–v3\.4 \(CC BY-SA 2\.5\)/);
+assert.match(readme, /Ceres's stored heliocentric state is one Horizons/);
+assert.match(readme, /Neptune's six orbital elements are one JPL Approximate Positions Table 1/);
+assert.doesNotMatch(readme, /not JPL Horizons or a perturbation ephemeris/);
+assert.equal(
+  await sha256("js/sky-catalog.js"),
+  "e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34",
+);
 assert.match(repositoryStandard, /canonical, versionless standard/);
 assert.match(repositoryStandard, /### New repository/);
 assert.match(repositoryStandard, /### Existing repository/);
@@ -208,6 +293,18 @@ assert.match(license, /MIT License/);
 assert.match(threeLicense, /three\.js authors/);
 assert.match(provenance, /MIT license covers first-party code only/);
 assert.match(provenance, /not JPL Horizons ephemerides/);
+assert.match(provenance, /JPL#48/);
+assert.match(provenance, /DE441/);
+assert.match(provenance, /2451545\.0 TDB/);
+assert.match(provenance, /geometric osculating-element snapshot/);
+assert.match(provenance, /Ecliptic of J2000\.0/);
+assert.match(provenance, /469\.7 km/);
+assert.match(provenance, /JPL Approximate Positions of the Planets/);
+assert.match(provenance, /Table 1/);
+assert.match(provenance, /1800 AD – 2050 AD/);
+assert.match(provenance, /mean ecliptic and equinox of J2000/);
+assert.match(provenance, /ω = ϖ − Ω/);
+assert.match(provenance, /M = L − ϖ/);
 assert.match(provenance, /No inpainting or synthetic terrain/);
 assert.match(provenance, /doi:10\.1093\/mnras\/staa1946/);
 assert.match(galaxyCatalog, /doi:10\.1093\/mnras\/staa1946/);
@@ -219,6 +316,11 @@ assert.match(
   "author CSS must preserve native hidden semantics for 44px body-label buttons",
 );
 assert.match(css, /--dock-clearance/);
+assert.match(
+  css,
+  /@media \(orientation: landscape\) and \(max-height: 500px\) and \(max-width: 720px\)[\s\S]*grid-template-areas:\s*"eyebrow eyebrow"\s*"title clock"/,
+  "compact landscape keeps the date under the brand word so a longer chrome label cannot overlap the card",
+);
 assert.doesNotMatch(css, /\.speed-group\s*\{[^}]*overflow:\s*hidden/);
 assert.doesNotMatch(css, /:hover\s*\{[^}]*display:\s*block/);
 assert.doesNotMatch(css, /--gold|#e8c872/i);
@@ -269,6 +371,29 @@ assert.doesNotMatch(app, /milkyWayTailSeat/, "no tail seat: orbit input stays li
 assert.doesNotMatch(app, /extraZoomTailMix/);
 assert.match(app, /pinchZoomDistance/);
 assert.match(app, /wheelZoomMultiplier/);
+assert.match(app, /minimumFocusDistance/);
+assert.deepEqual(Object.keys(CONFIG.nightSideInspectionFill).sort(), ["neptune", "uranus"]);
+assert.ok(Object.isFrozen(CONFIG.nightSideInspectionFill));
+for (const [bodyId, intensity] of Object.entries(CONFIG.nightSideInspectionFill)) {
+  // Neptune's dark-map tail needs a higher material factor; the rendered
+  // night-readability floors and day/night hierarchy remain the behavior gate.
+  const ceiling = bodyId === "neptune" ? 0.25 : 0.2;
+  assert.ok(Number.isFinite(intensity) && intensity > 0 && intensity <= ceiling,
+    "ice-giant inspection fill stays a bounded display-only contribution");
+}
+assert.match(app, /material\.emissiveMap = material\.map/);
+assert.match(app, /material\.emissiveIntensity = inspectionFill/);
+assert.match(provenance, /CONFIG\.nightSideInspectionFill/);
+assert.match(provenance, /not physical\nplanetary emission or calibrated photometric brightness/);
+assert.match(app, /new THREE\.AmbientLight\(0x24334a, 0\.21\)/,
+  "inspection fill does not change shared ambient lighting or Saturn's rings");
+assert.match(configSource, /minimumFocusDistance/);
+assert.match(configSource, /focusSurfaceClearance/);
+assert.match(configSource, /parentGlobeClearance/);
+assert.match(configSource, /resolveParentGlobePoint/);
+assert.match(app, /resolveParentGlobePoint/);
+assert.doesNotMatch(app, /transitioned\.dot\(/, "plain flight coordinates use scalar math");
+assert.match(app, /kind === "moon" && Boolean\(focused\.body\.parent\)/);
 assert.match(app, /clearSelection/);
 assert.match(app, /function showUnsupported/);
 assert.match(app, /ui\.version\.hidden = true/);
@@ -288,6 +413,16 @@ for (const rootName of ["sun.pivot", "asteroidBelt", "kuiperBelt", "orbitLines"]
 }
 assert.match(html, /id="card-close"/);
 assert.match(html, /aria-label="Close"/);
+assert.match(html, /id="viewport"[^>]*role="img"[^>]*aria-label="Helios scene"/);
+assert.match(html, /aria-describedby="scene-context"/);
+assert.doesNotMatch(html, /Interactive solar system/);
+assert.match(html, /id="scene-context"[^>]*class="visually-hidden"/);
+assert.match(html, /id="status-live"[^>]*aria-live="polite"/);
+assert.match(app, /sceneHierarchyId/);
+assert.match(app, /paintSceneSemantics/);
+assert.match(app, /ui\.sceneContext/);
+assert.doesNotMatch(app, /lastScaleLayer/);
+assert.match(galaxy, /export function sceneHierarchyId/);
 assert.doesNotMatch(html, /user-scalable=no|maximum-scale=1/);
 assert.match(css, /#card-close/);
 assert.match(configSource, /pinchZoomDistance/);

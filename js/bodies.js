@@ -57,7 +57,10 @@ function orientationJ2000(bodyId, spinDirection, primeMeridianDeg = null) {
  *
  * Physical numbers follow the NASA planetary fact sheet where it and JPL
  * agree, and JPL SSD satellite phys_par (IAU WGCCRE 2015) for moons.
- * Heliocentric Kepler angles stay J2000 approximations, not Horizons.
+ * Heliocentric Kepler angles stay J2000 approximations, not Horizons,
+ * except Ceres, which uses one geometric Horizons J2000 snapshot, and
+ * Neptune, whose six orbital elements come from one JPL Approximate
+ * Positions Table 1 J2000 snapshot at T=0.
  */
 export const BODIES = Object.freeze([
   {
@@ -225,14 +228,17 @@ export const BODIES = Object.freeze([
     name: "Ceres",
     kind: "dwarf",
     parent: "sun",
-    radiusKm: 473,
-    orbitAu: 2.769165,
-    eccentricity: 0.0758,
-    inclinationDeg: 10.59,
-    nodeDeg: 80.31,
-    periDeg: 73.47,
-    meanAnomalyDeg: 95.99,
-    orbitDays: 1681.63,
+    // JPL Horizons JPL#48/DE441 geometric osculating elements at
+    // JD 2451545.0 TDB, Sun center, ecliptic J2000, AU-days. Mean
+    // radius is JPL SSD phys_par 469.7 km, not the inherited 473 km.
+    radiusKm: 469.7,
+    orbitAu: 2.766496019994375,
+    eccentricity: 0.07837562647163041,
+    inclinationDeg: 10.58336045805628,
+    nodeDeg: 80.49435747295276,
+    periDeg: 73.92286274285223,
+    meanAnomalyDeg: 6.176654513180486,
+    orbitDays: 1680.712776442072,
     rotationHours: 9.074,
     tiltDeg: 4,
     orientationJ2000: orientationJ2000("ceres", 1),
@@ -405,13 +411,17 @@ export const BODIES = Object.freeze([
     name: "Neptune",
     kind: "planet",
     parent: "sun",
+    // JPL Approximate Positions Table 1 at T=0 (JD 2451545.0), mean
+    // ecliptic and equinox of J2000, valid 1800 AD – 2050 AD. ω and M
+    // are derived from L and the longitude of perihelion. Period,
+    // radius, spin, pole, and texture stay on their existing owners.
     radiusKm: 24622,
-    orbitAu: 30.068963,
-    eccentricity: 0.0086,
-    inclinationDeg: 1.77,
-    nodeDeg: 131.784,
-    periDeg: 273.219,
-    meanAnomalyDeg: 256.228,
+    orbitAu: 30.06992276,
+    eccentricity: 0.00859048,
+    inclinationDeg: 1.77004347,
+    nodeDeg: 131.78422574,
+    periDeg: 273.18053653,
+    meanAnomalyDeg: 259.91520804,
     orbitDays: 60189,
     rotationHours: 16.11,
     tiltDeg: 28.32,
@@ -705,6 +715,18 @@ export function keplerPathOffset(body, parent, phase) {
   const direction = Math.sign(renderedPeriod(body.orbitDays, body.inclinationDeg));
   const meanAnomaly = body.meanAnomalyDeg * DEG + direction * TAU * phase;
   return orbitalPosition(body, parent, meanAnomaly);
+}
+
+/** Signed normal of the rendered orbit plane in the body's attachment frame. */
+export function keplerOrbitNormal(body, parent) {
+  const first = keplerPathOffset(body, parent, 0);
+  const quarter = keplerPathOffset(body, parent, 0.25);
+  const x = first.y * quarter.z - first.z * quarter.y;
+  const y = first.z * quarter.x - first.x * quarter.z;
+  const z = first.x * quarter.y - first.y * quarter.x;
+  const length = Math.hypot(x, y, z);
+  if (!(length > 1e-12)) return { x: 0, y: 1, z: 0 };
+  return { x: x / length, y: y / length, z: z / length };
 }
 
 /**
