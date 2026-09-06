@@ -2412,6 +2412,7 @@ try {
   const desktopPage = await desktop.newPage();
   const desktopErrors = captureErrors(desktopPage);
   await openReady(desktopPage);
+  assert.equal(await desktopPage.locator("#brand-label").textContent(), "MarinsVoyage");
   assert.equal(await desktopPage.getAttribute("html", "data-galaxy-ready"), null);
   await assertRenderedCanvas(desktopPage);
   await assertAccessibleHierarchy(
@@ -2556,6 +2557,7 @@ try {
   const touchPage = await touch.newPage();
   const touchErrors = captureErrors(touchPage);
   await openReady(touchPage);
+  assert.equal(await touchPage.locator("#brand-label").textContent(), "MarinsVoyage");
   await assertRenderedCanvas(touchPage);
   await assertAccessibleHierarchy(
     touchPage,

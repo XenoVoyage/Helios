@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BODIES } from "../js/bodies.js";
@@ -56,6 +56,48 @@ assert.equal(versionDate.getUTCFullYear(), Number(year), "version year is a vali
 assert.equal(versionDate.getUTCMonth() + 1, Number(month), "version month is a valid calendar date");
 assert.equal(versionDate.getUTCDate(), Number(day), "version day is a valid calendar date");
 assert.ok(readme.includes(`[![Version ${version}](https://img.shields.io/badge/version-${version}-66f7ff)](VERSION.txt)`));
+assert.equal(CONFIG.BRAND, "MarinsVoyage");
+assert.match(configSource, /BRAND:\s*"MarinsVoyage"/);
+assert.match(html, /id="brand-label"[^>]*class="eyebrow">MarinsVoyage</);
+assert.match(app, /ui\.brand\.textContent = CONFIG\.BRAND/);
+assert.match(readme, /https:\/\/x\.com\/MarinsVoyage/);
+assert.match(readme, /https:\/\/www\.youtube\.com\/@MarinsVoyage/);
+assert.doesNotMatch(readme, /x\.com\/XenoVoyage|youtube\.com\/(?:@|c\/|user\/)?XenoVoyage/i);
+assert.match(license, /Copyright \(c\) 2026 Marins Voyage/);
+assert.match(readme, /xenovoyage\.github\.io\/Helios\//);
+
+const skipBrandScanDirs = new Set([".git", "node_modules", "vendor", "assets", "browser-stills"]);
+const skipBrandScanNames = new Set(["2mrs-data.js"]);
+const leftoverBrand = /xeno[\s._-]*voyage/i;
+const allowedGithubBrand = /https?:\/\/(?:www\.)?github\.com\/XenoVoyage(?:\/[^\s)"'\]]*)?|https?:\/\/xenovoyage\.github\.io(?:\/[^\s)"'\]]*)?|@XenoVoyage\b|XenoVoyage\/Helios/gi;
+
+async function firstPartyFiles(dir = root, files = []) {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      if (skipBrandScanDirs.has(entry.name)) continue;
+      await firstPartyFiles(path.join(dir, entry.name), files);
+      continue;
+    }
+    if (skipBrandScanNames.has(entry.name)) continue;
+    if (
+      !/\.(?:js|mjs|cjs|html|css|md|txt|yml|yaml|json)$/i.test(entry.name)
+      && entry.name !== "LICENSE"
+      && entry.name !== "CODEOWNERS"
+    ) continue;
+    files.push(path.relative(root, path.join(dir, entry.name)));
+  }
+  return files;
+}
+
+for (const relative of await firstPartyFiles()) {
+  if (relative === "tests/static-check.mjs") continue;
+  const stripped = (await read(relative)).replace(allowedGithubBrand, "");
+  assert.doesNotMatch(
+    stripped,
+    leftoverBrand,
+    `${relative} still contains leftover Xeno Voyage display brand outside GitHub/Pages path segments`,
+  );
+}
 assert.match(agents, /\*\*Repository Standard:\*\* \[Repository Standard\]\(REPOSITORY_STANDARD\.md\)/);
 assert.match(agents, /\*\*Standard Status:\*\* adopting/);
 assert.match(agents, /`develop` is the\s+protected\s+long-lived \*\*Alpha Development\*\*/);
