@@ -62,21 +62,44 @@ async function openReady(page, url, touch = false) {
 }
 
 async function canvasSample(page) {
-  // Read only rendered pixels in an animation frame; no application state hooks.
-  const pending = await page.locator("#viewport").evaluateHandle((canvas) => ({
-    sample: new Promise((resolve) => requestAnimationFrame(() => {
-      const sample = document.createElement("canvas");
-      sample.width = 128;
-      sample.height = 96;
-      const context = sample.getContext("2d", { willReadFrequently: true });
-      context.drawImage(canvas, 0, 0, sample.width, sample.height);
-      resolve([...context.getImageData(0, 0, sample.width, sample.height).data]);
-    })),
-  }));
+  // Copy immediately after the application's render, in the same callback. With
+  // the emulated clock, a separate RAF callback may run after compositing has
+  // cleared WebGL's default drawing buffer. Preserve the callback and timestamp;
+  // observe pixels only, without accessing or changing application state.
+  const pending = await page.locator("#viewport").evaluateHandle((canvas) => {
+    const requestFrame = window.requestAnimationFrame;
+    let armed = true;
+    const readback = {
+      pixels: null,
+      restore() {
+        armed = false;
+        if (window.requestAnimationFrame === captureFrame) window.requestAnimationFrame = requestFrame;
+      },
+    };
+    function captureFrame(callback) {
+      // tick schedules its next frame immediately after renderer.render.
+      if (armed && callback.name === "tick") {
+        readback.restore();
+        const sample = document.createElement("canvas");
+        sample.width = 128;
+        sample.height = 96;
+        const context = sample.getContext("2d", { willReadFrequently: true });
+        context.drawImage(canvas, 0, 0, sample.width, sample.height);
+        readback.pixels = [...context.getImageData(0, 0, sample.width, sample.height).data];
+      }
+      return requestFrame.call(window, callback);
+    }
+    window.requestAnimationFrame = captureFrame;
+    return readback;
+  });
   try {
     await page.clock.fastForward(50);
-    return await pending.evaluate(({ sample }) => sample);
+    const pixels = await pending.evaluate(({ pixels }) => pixels);
+    assert.ok(pixels, "pixel sampler observed an application frame");
+    assert.ok(pixels.some((channel, index) => index % 4 !== 3 && channel > 0), "pixel sampler read real rendered color");
+    return pixels;
   } finally {
+    await pending.evaluate((readback) => readback.restore());
     await pending.dispose();
   }
 }
