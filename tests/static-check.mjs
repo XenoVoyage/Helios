@@ -414,7 +414,8 @@ for (const rootName of ["sun.pivot", "asteroidBelt", "kuiperBelt", "orbitLines"]
 assert.match(html, /id="card-close"/);
 assert.match(html, /aria-label="Close"/);
 assert.match(html, /id="viewport"[^>]*role="img"[^>]*aria-label="Helios scene"/);
-assert.match(html, /aria-describedby="scene-context"/);
+assert.match(html, /id="viewport"[^>]*aria-describedby="scene-context camera-help"/);
+assert.match(html, /id="camera-help"/);
 assert.doesNotMatch(html, /Interactive solar system/);
 assert.match(html, /id="scene-context"[^>]*class="visually-hidden"/);
 assert.match(html, /id="status-live"[^>]*aria-live="polite"/);

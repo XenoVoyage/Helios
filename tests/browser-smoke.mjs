@@ -17,6 +17,7 @@ import {
 import { CONFIG, minimumFocusDistance, wheelZoomMultiplier } from "../js/config.js";
 import { cmbSkyOpacity, sceneHierarchyId } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
+import { auditCameraNavigation } from "./camera-navigation.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.BROWSER_SMOKE_PORT || 4175);
@@ -376,7 +377,10 @@ const LOOK_SEMANTICS = {
 async function assertAccessibleHierarchy(page, expectation, label = "scene") {
   const canvas = page.locator("#viewport");
   assert.equal(await canvas.getAttribute("aria-label"), "Helios scene", `${label}: canvas name stays scale-neutral`);
-  assert.equal(await canvas.getAttribute("aria-describedby"), "scene-context");
+  assert.equal(
+    await canvas.getAttribute("aria-describedby"),
+    new URL(page.url()).searchParams.get("look") === "sky" ? "scene-context" : "scene-context camera-help",
+  );
   const context = await page.locator("#scene-context").textContent();
   assert.ok(context.length > 0, `${label}: persistent scene context is populated`);
   assert.doesNotMatch(context, /Interactive solar system/, `${label}: no stale solar-system canvas copy`);
@@ -2400,6 +2404,7 @@ try {
   assert.match(String(line), /Helios local server/);
 
   browser = await launchBrowser();
+  await auditCameraNavigation(browser, base, screenshotDir);
 
   const desktop = await browser.newContext({
     viewport: { width: 1440, height: 900 },

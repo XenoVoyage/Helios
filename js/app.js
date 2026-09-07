@@ -230,6 +230,14 @@ function boot() {
   ui.brand = $("brand-label");
   ui.dock = $("dock");
   ui.skip = $("skip-link");
+  ui.cameraControls = $("camera-controls");
+  ui.cameraToggle = $("camera-toggle");
+  ui.cameraPanel = $("camera-panel");
+  if (earthSkyLook) {
+    ui.cameraControls.hidden = true;
+    ui.viewport.setAttribute("aria-describedby", "scene-context");
+    ui.viewport.removeAttribute("aria-keyshortcuts");
+  }
   setMoonFocusTransition(false);
 
   ui.version.textContent = CONFIG.VERSION;
@@ -638,6 +646,17 @@ function createGlowMap() {
 }
 
 function bindInput() {
+  ui.cameraToggle.addEventListener("click", () => {
+    ui.cameraPanel.hidden = !ui.cameraPanel.hidden;
+    ui.cameraToggle.setAttribute("aria-expanded", String(!ui.cameraPanel.hidden));
+    bodyLabelLayoutDirty = true;
+  });
+  $("orbit-left").addEventListener("click", () => orbitBy(-CONFIG.cameraOrbitStep, 0));
+  $("orbit-right").addEventListener("click", () => orbitBy(CONFIG.cameraOrbitStep, 0));
+  $("orbit-up").addEventListener("click", () => orbitBy(0, CONFIG.cameraOrbitStep));
+  $("orbit-down").addEventListener("click", () => orbitBy(0, -CONFIG.cameraOrbitStep));
+  $("zoom-in").addEventListener("click", () => zoomTo(state.distance / CONFIG.cameraZoomFactor));
+  $("zoom-out").addEventListener("click", () => zoomTo(state.distance * CONFIG.cameraZoomFactor));
   ui.play.addEventListener("click", togglePlay);
   ui.slower.addEventListener("click", () => scaleSpeed(0.5));
   ui.faster.addEventListener("click", () => scaleSpeed(2));
@@ -701,16 +720,19 @@ function onPointerMove(event) {
     state.tap.moved += Math.hypot(dx, dy);
   }
   if (!state.tap || state.tap.moved >= CONFIG.tapMovePx) {
-    state.azimuth -= dx * 0.005;
-    // A parent guard can finish just beyond the normal input latitude. Keep
-    // the first horizontal drag exact and only let out-of-range seats move
-    // back toward the standard orbit band instead of snapping into it.
-    state.elevation = clamp(
-      state.elevation + dy * 0.004,
-      Math.min(-1.2, state.elevation),
-      Math.max(1.2, state.elevation),
-    );
+    orbitBy(-dx * 0.005, dy * 0.004);
   }
+}
+
+function orbitBy(azimuth, elevation) {
+  state.azimuth += azimuth;
+  // A parent guard can finish beyond the normal input latitude. Preserve
+  // horizontal movement and let vertical input return without snapping.
+  state.elevation = clamp(
+    state.elevation + elevation,
+    Math.min(-1.2, state.elevation),
+    Math.max(1.2, state.elevation),
+  );
 }
 
 function onPointerUp(event) {
@@ -732,6 +754,29 @@ function onWheel(event) {
 }
 
 function onKey(event) {
+  if (
+    event.target === ui.viewport && !earthSkyLook && !event.isComposing
+    && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+  ) {
+    const step = CONFIG.cameraOrbitStep;
+    switch (event.key) {
+      case "ArrowLeft": orbitBy(-step, 0); break;
+      case "ArrowRight": orbitBy(step, 0); break;
+      case "ArrowUp": orbitBy(0, step); break;
+      case "ArrowDown": orbitBy(0, -step); break;
+      case "I":
+      case "i": zoomTo(state.distance / CONFIG.cameraZoomFactor); break;
+      case "O":
+      case "o": zoomTo(state.distance * CONFIG.cameraZoomFactor); break;
+      default: return onTimeKey(event);
+    }
+    event.preventDefault();
+    return;
+  }
+  onTimeKey(event);
+}
+
+function onTimeKey(event) {
   if (event.repeat || isShortcutTargetInteractive(event.target)) return;
   if (event.code === "Space") {
     event.preventDefault();
@@ -1108,15 +1153,24 @@ function paintDockClearance() {
 
 function observeDock() {
   paintDockClearance();
+  const paintCameraClearance = () => {
+    document.documentElement.style.setProperty(
+      "--camera-clearance",
+      `${Math.ceil(ui.cameraControls.getBoundingClientRect().height)}px`,
+    );
+  };
+  paintCameraClearance();
   if (!("ResizeObserver" in window)) return;
   chromeObserver = new ResizeObserver((entries) => {
     bodyLabelLayoutDirty = true;
     if (entries.some((entry) => entry.target === ui.dock)) paintDockClearance();
+    if (entries.some((entry) => entry.target === ui.cameraControls)) paintCameraClearance();
   });
   chromeObserver.observe(ui.dock);
   chromeObserver.observe(ui.topbar);
   chromeObserver.observe(ui.card);
   chromeObserver.observe(ui.version);
+  chromeObserver.observe(ui.cameraControls);
 }
 
 function tick(now) {
@@ -1524,7 +1578,7 @@ function measureBodyLabels() {
 
 function paintBodyLabelObstacles() {
   bodyLabelObstacles.length = 0;
-  for (const element of [ui.topbar, ui.card, ui.dock, ui.version]) {
+  for (const element of [ui.topbar, ui.card, ui.dock, ui.version, ui.cameraControls]) {
     if (!element || element.hidden || element.getClientRects().length === 0) continue;
     const box = element.getBoundingClientRect();
     bodyLabelObstacles.push({
