@@ -452,9 +452,14 @@ input[type="range"] {
 
 @media (max-width: 720px) and (orientation: portrait) {
   #stage:has(#camera-controls:not([hidden])) .card {
-    bottom: calc(max(168px, var(--dock-clearance) + var(--camera-clearance) + 40px) + env(safe-area-inset-bottom));
-    max-height: calc(100dvh - max(168px, var(--dock-clearance) + var(--camera-clearance) + 40px) - 72px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    --camera-card-gap: 24px;
+    bottom: calc(max(168px, var(--dock-clearance) + var(--camera-clearance) + var(--camera-card-gap)) + env(safe-area-inset-bottom));
+    max-height: calc(100dvh - max(168px, var(--dock-clearance) + var(--camera-clearance) + var(--camera-card-gap)) - 72px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     overflow: auto;
+  }
+
+  #stage:has(#camera-panel:not([hidden])) .card {
+    --camera-card-gap: 40px;
   }
 }
 
