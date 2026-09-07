@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import * as THREE from "../vendor/three.module.min.js";
 import { CONFIG, formatDaysPerSecond } from "../js/config.js";
 import {
@@ -25,6 +26,113 @@ import {
 } from "../js/bodies.js";
 import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
+
+const orbitalProvenance = JSON.parse(await readFile(
+  new URL("./fixtures/orbital-provenance.json", import.meta.url), "utf8",
+));
+
+test("every scientific catalog row has a complete preservation and provenance record", () => {
+  const expectedSources = {
+    sun: "fixed-sun",
+    mercury: "legacy-heliocentric",
+    venus: "legacy-heliocentric",
+    earth: "legacy-heliocentric",
+    moon: "satellite-de405-le405",
+    mars: "legacy-heliocentric",
+    phobos: "satellite-mar099",
+    deimos: "satellite-mar099",
+    ceres: "ceres-horizons",
+    jupiter: "legacy-heliocentric",
+    io: "satellite-jup365",
+    europa: "satellite-jup365",
+    ganymede: "satellite-jup365",
+    callisto: "satellite-jup365",
+    saturn: "legacy-heliocentric",
+    titan: "satellite-sat441",
+    uranus: "legacy-heliocentric",
+    neptune: "neptune-table-1",
+    triton: "satellite-nep097",
+    pluto: "legacy-heliocentric",
+  };
+  assert.deepEqual(Object.keys(expectedSources), BODIES.map((body) => body.id));
+  assert.deepEqual(orbitalProvenance.rows.map((row) => row.id), BODIES.map((body) => body.id));
+  for (const body of BODIES) {
+    const row = orbitalProvenance.rows.find((entry) => entry.id === body.id);
+    // Omit only presentation metadata; new scientific fields require a ledger update.
+    const { id, name, kind, texture, color, ring, ...scientific } = body;
+    assert.deepEqual(scientific, row.catalog, `${id}: update the source record with any scientific change`);
+    assert.equal(row.record, name);
+    assert.equal(row.source, expectedSources[id], `${id}: retain the independently verified source classification`);
+    for (const sourceId of [row.source, row.periodSource].filter(Boolean)) {
+      const source = orbitalProvenance.sources[sourceId];
+      assert.ok(source, `${id}: source ${sourceId} exists`);
+      for (const field of ["uri", "table", "version", "epoch", "timeScale", "center", "frame", "elementType", "units", "derivation", "validity"]) {
+        assert.equal(typeof source[field], "string", `${id}: ${field} is documented`);
+        assert.ok(source[field].trim(), `${id}: ${field} is not empty`);
+      }
+      assert.equal(new URL(source.uri).protocol, "https:");
+      if (sourceId === "legacy-heliocentric") {
+        assert.equal(source.upstreamUri, null, "unrecovered upstream provenance is explicit");
+        assert.equal(source.upstreamTable, null);
+        assert.equal(source.upstreamVersion, null);
+        assert.ok(source.gap.startsWith("https://github.com/XenoVoyage/Helios/issues/"));
+        assert.match(source.gap.slice("https://github.com/XenoVoyage/Helios/issues/".length), /^\d+$/);
+      } else if (sourceId !== "fixed-sun") {
+        assert.match(source.timeScale, /^TDB\b/, `${id}: verified epoch time scale is TDB`);
+        assert.match(source.epoch, /\bJD 2451545\.0\b/, `${id}: verified source epoch is JD 2451545.0`);
+      }
+    }
+  }
+});
+
+test("published orbital source columns and derived angles reproduce their catalog rows", () => {
+  const wrapDegrees = (degrees) => ((degrees % 360) + 360) % 360;
+  for (const row of orbitalProvenance.rows) {
+    const body = findBody(row.id);
+    const ref = row.reference;
+    let expected;
+    if (row.source === "ceres-horizons") {
+      assert.ok(ref, "Ceres has its retained Horizons source fields");
+      expected = { orbitAu: ref.A, eccentricity: ref.EC, inclinationDeg: ref.IN, nodeDeg: ref.OM, periDeg: ref.W, meanAnomalyDeg: ref.MA, orbitDays: ref.PR };
+    } else if (row.source === "neptune-table-1") {
+      assert.ok(ref, "Neptune has all six original Table 1 coefficients");
+      expected = { orbitAu: ref.a, eccentricity: ref.e, inclinationDeg: ref.I, nodeDeg: ref.longNode };
+      assert.ok(Math.abs(body.periDeg - wrapDegrees(ref.longPeri - ref.longNode)) < 1e-10);
+      assert.ok(Math.abs(body.meanAnomalyDeg - wrapDegrees(ref.L - ref.longPeri)) < 1e-10);
+      assert.equal(row.periodSource, "legacy-heliocentric", "Table 1 does not own the inherited period");
+    } else if (row.source.startsWith("satellite-")) {
+      assert.ok(ref, `${row.id}: published moon row is retained`);
+      assert.equal(body.kind, "moon");
+      const source = orbitalProvenance.sources[row.source];
+      assert.equal(source.center, `${findBody(body.parent).name} (planet center)`, `${row.id}: source center matches the parent`);
+      const fields = ["a", "e", "i", "node", "w", "M", "P"];
+      if (row.id !== "moon") fields.push("poleRA", "poleDec");
+      for (const field of fields) {
+        assert.equal(typeof ref[field], "string", `${row.id}: ${field} retains source decimal text`);
+        assert.match(ref[field], /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/, `${row.id}: ${field} is nonempty decimal text`);
+      }
+      expected = { orbitKm: Number(ref.a), eccentricity: Number(ref.e), inclinationDeg: Number(ref.i), nodeDeg: Number(ref.node), periDeg: Number(ref.w), meanAnomalyDeg: Number(ref.M), orbitDays: Number(ref.P) };
+      if (row.id === "moon") {
+        assert.match(source.frame, /^ecliptic(?:;|$)/);
+        assert.equal(ref.poleRA, null);
+        assert.equal(ref.poleDec, null);
+        assert.deepEqual(body.orbitFrame, { kind: "ecliptic" });
+      } else {
+        assert.match(source.frame, /^local Laplace plane(?:;|$)/);
+        assert.equal(body.orbitFrame.kind, "laplace");
+        assert.equal(body.orbitFrame.poleRaDeg, Number(ref.poleRA));
+        assert.equal(body.orbitFrame.poleDecDeg, Number(ref.poleDec));
+        const parent = findBody(body.parent).orientationJ2000;
+        assert.deepEqual(body.orbitFrame.parentPole, { raDeg: parent.poleRaDeg, decDeg: parent.poleDecDeg });
+      }
+    } else {
+      assert.ok(["fixed-sun", "legacy-heliocentric"].includes(row.source));
+      assert.equal(ref, undefined, `${row.id}: do not fabricate authoritative reference columns`);
+      continue;
+    }
+    assert.deepEqual(Object.fromEntries(Object.keys(expected).map((key) => [key, body[key]])), expected, `${row.id}: published orbital fields`);
+  }
+});
 
 const required = [
   "sun",

@@ -50,17 +50,17 @@ function orientationJ2000(bodyId, spinDirection, primeMeridianDeg = null) {
 }
 
 /**
- * Published NASA / JPL values used by v1.
+ * Reference data and inherited approximations; orbital row ledger: PROVENANCE.md.
  * Distances: AU for heliocentric bodies, km for moons.
  * Periods: Earth days. Rotation: hours (negative = retrograde).
  * Tilts and inclinations: degrees. Epoch angles are J2000 approximations.
  *
  * Physical numbers follow the NASA planetary fact sheet where it and JPL
  * agree, and JPL SSD satellite phys_par (IAU WGCCRE 2015) for moons.
- * Heliocentric Kepler angles stay J2000 approximations, not Horizons,
- * except Ceres, which uses one geometric Horizons J2000 snapshot, and
- * Neptune, whose six orbital elements come from one JPL Approximate
- * Positions Table 1 J2000 snapshot at T=0.
+ * Heliocentric angles stay fixed J2000 approximations, not an ephemeris.
+ * Ceres uses one geometric Horizons snapshot; Neptune uses the six
+ * best-fit JPL Approximate Positions Table 1 coefficients at T=0.
+ * Other heliocentric rows have unrecovered upstream source records.
  */
 export const BODIES = Object.freeze([
   {

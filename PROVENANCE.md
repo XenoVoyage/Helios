@@ -4,7 +4,7 @@ This ledger records what Helios imports, what it transforms, and what remains
 unresolved. The repository's MIT license covers first-party code only.
 Third-party images, data, and Three.js retain their own terms and attribution.
 
-The latest source evidence recorded in this ledger is dated 2026-09-03;
+The latest source evidence recorded in this ledger is dated 2026-09-07;
 source-specific retrieval and check dates are recorded per entry when known.
 Hashes are SHA-256 of the tracked local files.
 
@@ -12,10 +12,10 @@ Hashes are SHA-256 of the tracked local files.
 
 | Area | Source snapshot | How Helios uses it |
 | --- | --- | --- |
-| Planet properties and heliocentric elements | [NASA planetary fact sheet](https://nssdc.gsfc.nasa.gov/planetary/factsheet/), NASA New Horizons' [Pluto seasons explanation](https://science.nasa.gov/blogs/new-horizons/2015/10/23/a-planet-for-all-seasons/), and published J2000 mean elements | Fixed J2000 Keplerian approximations with two-body propagation. Calendar positions are not JPL Horizons ephemerides and do not model perturbations. Ceres's stored heliocentric state is the separate Horizons snapshot below. Neptune's six orbital elements are the separate Table 1 snapshot below. Other heliocentric rows remain published J2000 mean-element approximations. Pluto's displayed retrograde obliquity is 119.6°, the angle between its PCK spin axis and this fixed orbit (consistent with NASA's approximately 119.5°); the inherited 122.53° value was not consistent with either. |
+| Planet properties and heliocentric elements | [NASA planetary fact sheet](https://nssdc.gsfc.nasa.gov/planetary/factsheet/), NASA New Horizons' [Pluto seasons explanation](https://science.nasa.gov/blogs/new-horizons/2015/10/23/a-planet-for-all-seasons/); individual orbital records and gaps are identified in the fixture below | Fixed J2000 Keplerian approximations with two-body propagation. Calendar positions are not JPL Horizons ephemerides and do not model perturbations. Ceres's stored heliocentric state is the separate Horizons snapshot below. Neptune's six orbital elements are the separate Table 1 snapshot below. Other heliocentric rows retain inherited approximations with explicit upstream source gaps; the row ledger below records their exact first-party history without claiming a recovered scientific source. Pluto's displayed retrograde obliquity is 119.6°, the angle between its PCK spin axis and this fixed orbit (consistent with NASA's approximately 119.5°); the inherited 122.53° value was not consistent with either. |
 | Ceres J2000 heliocentric state | [JPL Horizons API](https://ssd-api.jpl.nasa.gov/doc/horizons.html) retrieved 2026-08-27: target `1;`, center `500@10` (Sun / DE441), `ELEMENTS` and geometric `VECTORS`, JD `2451545.0 TDB`, Ecliptic of J2000.0, geometric, AU-days. Solution `JPL#48`. Mean radius `469.7 km` from [JPL planetary physical parameters](https://ssd.jpl.nasa.gov/planets/phys_par.html) (Park et al. 2016), matching Horizons `RAD`. | One geometric osculating-element snapshot stored in the Ceres catalog row, including `a`, `e`, `i`, `Ω`, `ω`, `M`, and `P`. Helios still propagates that frozen two-body Kepler ellipse; later dates are not a Horizons ephemeris and do not model perturbations, small perturbers, or non-osculating motion. Pole, tilt, spin, texture, focus seat, and display compression stay on their existing owners. |
-| Neptune J2000 heliocentric state | [JPL Approximate Positions of the Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html) Table 1 (Keplerian elements versus the mean ecliptic and equinox of J2000), retrieved 2026-09-03. Epoch `T=0` is JD `2451545.0`. The table states validity for 1800 AD – 2050 AD. Table-1 T=0 values: `a=30.06992276 AU`, `e=0.00859048`, `i=1.77004347°`, `L=304.87997031°` (printed as `−55.12002969°`), longitude of perihelion `ϖ=44.96476227°`, `Ω=131.78422574°`. Derived `ω = ϖ − Ω = 273.18053653°`; derived `M = L − ϖ = 259.91520804°`. | One coherent Table 1 snapshot stored in the Neptune catalog row (`a`, `e`, `i`, `Ω`, `ω`, `M`). Helios still uses the inherited `60,189 d` period and frozen two-body Kepler ellipse; later dates are not a JPL ephemeris and do not apply Table 1 rates or perturbations. Radius, spin, pole, texture, Triton, and display compression stay on their existing owners. |
-| Moon properties and mean elements | [JPL satellite physical parameters and mean elements](https://ssd.jpl.nasa.gov/sats/elem/) (`DE405/LE405`, `MAR099`, `JUP365`, `SAT441`, `NEP097`) and NASA's [tidal-locking explanation](https://science.nasa.gov/moon/tidal-locking/) | One J2000 snapshot. JPL describes the elements as a fitted precessing ellipse useful for general shape and orientation, not ephemeris computation. Helios uses `orbitDays` as the mean-anomaly clock in its frozen Kepler ellipse. For the nine cataloged synchronous moons, `rotationHours` supplies a signed display-longitude rate; the difference between those clocks advances periapsis uniformly to prevent secular longitudinal drift. This is a display correction, not propagation of the published apsidal or nodal periods. The Moon and Triton have source-registered poles and prime meridians. The other moon maps retain unverified phases and simple parent-frame axes, so they are not registered near-side models. Laplace-plane rows are transformed once into the parent-equatorial display basis. |
+| Neptune J2000 heliocentric state | [JPL Approximate Positions of the Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html) Table 1 (Keplerian elements versus the mean ecliptic and equinox of J2000), retrieved 2026-09-03. Epoch `T=0` is JD `2451545.0 TDB`; JPL equates its ephemeris time variable with JDTDB. The table states validity for 1800 AD – 2050 AD with its rates, not for Helios's frozen ellipse. The original coefficients were rechecked 2026-09-07. Table-1 T=0 values: `a=30.06992276 AU`, `e=0.00859048`, `i=1.77004347°`, `L=304.87997031°` (printed as `−55.12002969°`), longitude of perihelion `ϖ=44.96476227°`, `Ω=131.78422574°`. Derived `ω = ϖ − Ω = 273.18053653°`; derived `M = L − ϖ = 259.91520804°`. | One coherent Table 1 snapshot stored in the Neptune catalog row (`a`, `e`, `i`, `Ω`, `ω`, `M`). Helios still uses the inherited `60,189 d` period and frozen two-body Kepler ellipse; later dates are not a JPL ephemeris and do not apply Table 1 rates or perturbations. Radius, spin, pole, texture, Triton, and display compression stay on their existing owners. |
+| Moon properties and mean elements | [JPL satellite physical parameters](https://ssd.jpl.nasa.gov/sats/phys_par/) and [mean elements](https://ssd.jpl.nasa.gov/sats/elem/) (`DE405/LE405`, `MAR099`, `JUP365`, `SAT441`, `NEP097`) and NASA's [tidal-locking explanation](https://science.nasa.gov/moon/tidal-locking/) | One J2000 snapshot. JPL describes the elements as a fitted precessing ellipse useful for general shape and orientation, not ephemeris computation. Helios uses `orbitDays` as the mean-anomaly clock in its frozen Kepler ellipse. For the nine cataloged synchronous moons, `rotationHours` supplies a signed display-longitude rate; the difference between those clocks advances periapsis uniformly to prevent secular longitudinal drift. This is a display correction, not propagation of the published apsidal or nodal periods. The Moon and Triton have source-registered poles and prime meridians. The other moon maps retain unverified phases and simple parent-frame axes, so they are not registered near-side models. Laplace-plane rows are transformed once into the parent-equatorial display basis. |
 | Body poles and prime meridians | [NAIF generic PCK `pck00011.tpc`](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc) | The Sun, planets, Ceres, Pluto, the Moon, and Triton use PCK poles evaluated at J2000; this also puts Saturn's rings and each declared parent-equatorial moon frame on the source pole. Earth uses the PCK's low-accuracy `W = 190.147°`. The Moon uses the `IAU_MOON` Mean Earth/Polar Axis pole and prime meridian with all periodic terms evaluated at J2000: `RA = 266.85773344495135°`, `Dec = 65.64110274784535°`, `W = 41.1952639807452°`. Triton likewise uses its complete periodic model at J2000: `RA = 298.4509834088894°`, `Dec = 20.302361260483217°`, `W = 297.01780353391297°`. Their W values intentionally differ from the polynomial constants. Those three verified maps use W; the other inherited maps lack a retained longitude-registration record, so Helios derives the closest phase to their previous display roll and makes no scientific prime-meridian claim for them. Poles then stay fixed and spin advances linearly from the catalog period and PCK direction; this is not the complete time-dependent PCK model. Other moon axes retain their simple catalog obliquity. |
 | Bright stars | Astronomy Nexus [HYG Database](https://github.com/astronexus/HYG-Database) archived v3 CSVs, compiling Hipparcos ESA I/239 with Yale BSC. The tracked subset is the `mag <= 6` plus constellation-line selection from **HYG v3.1, v3.2, v3.3, and v3.4**, using the first HIP row for `ra`, `dec`, `mag`, and `ci`, and the first non-empty `proper` among that HIP's rows. Those four gzip artifacts are indistinguishable on every retained Helios field (`hip`, `ra`, `dec`, `mag`, `ci`, `proper`). v3.0 is excluded: its `proper` names match only 112 of 334 Helios labels (IAU WGSN names such as Guniibuu and Copernicus are absent). v3.5 and later are excluded: they delete HIP 55203 (Alula Australis / ξ UMa), which Helios still stores as a named Ursa Major line star. The older `hygfull.csv` / `hygxyz.csv` dumps disagree on coordinates; v4.x also lack HIP 55203. License for the archived v3 series is [CC BY-SA 2.5](http://creativecommons.org/licenses/by-sa/2.5/), stored beside those CSVs as [`hyg/v3/LICENSE.html`](https://github.com/astronexus/HYG-Database/blob/main/hyg/v3/LICENSE.html); this is not inferred from the current Astronexus homepage. Canonical gzip SHA-256: v3.1 `600ce39342ee1452da5fdd9d9b7b8f51a1e1b5f7892abeace61f7c56f4382fce`; v3.2 `b39c1d6dbab932bb624965241b6a13995886370781b9a398d0f1fb36d098b325`; v3.3 `193dee77cbfef7179bf1eb6188cfdede9fd0d622760e4bc658ab775c1965c375`; v3.4 `01736aeafecb7f5082c9d2bbed1c6bb36bb9ea6bc4c9ebb3429ed2e8a3a0a4e1`. Canonical paths: `hyg/v3/hyg_v31.csv.gz` … `hyg_v34.csv.gz` on the archived GitHub repo. The original download date was not retained; `js/sky-catalog.js` entered the repository on 2026-08-20 in commit `330a92eedaba6863827efaebf15556e0f58ad7b3`. The exact one of v3.1–v3.4 is not recoverable from retained fields. Replacing this frozen subset with a later HYG release would drop HIP 55203 and needs a separate source-controlled issue; that migration is not approved here. | Equatorial J2000 RA degrees, Dec degrees, Johnson V, and B-V in `js/sky-catalog.js` (`STARS` / `STAR_NAMES`). Pipeline: walk the HYG CSV in order; keep the first row of each HIP for `ra`, `dec`, `mag`, and `ci`; if that row has an empty `proper`, take the first later duplicate's name. HIP 7751 is the only duplicate HIP in v3.1–v3.4: the first row is unnamed (`ra` 1.663169 h, `dec` -56.1964, `mag` 5.76, `ci` 0.88 → Helios `[7751, 24.94753, -56.1964, 5.76, 0.88]`); the later row is named p Eridani with different numbers and is not used for coordinates. Keep rows with `mag <= 6` or a HIP used by the IAU/MacRobert constellation paths (one extra: Mira HIP 10826 at mag 6.47); sort by HIP. The retained `ra`, `dec`, `mag`, and non-empty `ci` fields reproduce with Python binary-float rounding: `round(float(ra) * 15, 5)`, `round(float(dec), 5)`, `round(float(mag), 2)`, and `round(float(ci), 2)`. HYG decimal text is converted to an IEEE-754 binary64 value before nearest/ties-to-even rounding, so this is not exact-decimal half-even rounding. Empty `ci` for HIP 26220 and HIP 32609 is stored as `0.3`. Proper names are those merged HYG `proper` values (334 names). 5043 unique HIP rows. Tracked catalog SHA-256: `e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34`. The `STARS` / `STAR_NAMES` subset is an adaptation of HYG and remains CC BY-SA 2.5; constellation paths stay IAU CC BY 4.0; first-party code stays MIT. |
 | Constellation figures | [IAU / Alan MacRobert constellation charts](https://www.iau.org/public/themes/constellations/), CC BY 4.0 | HIP-number line paths in `js/sky-catalog.js`; these are conventional stick figures, not constellation boundaries. Major mode preserves the ten existing names. All mode makes all 88 names eligible for deterministic viewport/collision filtering. Mensa and Microscopium have no drawn paths in the tracked figure data, so their label anchors use the existing Hipparcos positions of HIP 29271 (Alpha Mensae) and HIP 102831 (Alpha Microscopii); no star coordinate is added or changed. |
@@ -52,6 +52,64 @@ planetary emission or calibrated photometric brightness. The Sun still supplies
 the terminator; no scientific data, scene lights, other globes, or Saturn ring
 materials are changed by this fill.
 
+## Orbital row ledger
+
+The test-only [orbital provenance fixture](tests/fixtures/orbital-provenance.json)
+owns the exact record for every `BODIES` row: source URI/table/version, epoch
+and time scale, center, frame, element type, units, conversions, validity and
+explicit gaps. `reference` retains published source columns; `catalog` freezes
+all current scientific fields, including radii, spin and pole/frame metadata.
+The latter is a preservation lock, not a new upstream attribution for physical
+properties. Their existing owners remain in the scientific table above. The
+fixture is never imported by the runtime.
+
+| Catalog rows | Orbital source and verification |
+| --- | --- |
+| Sun | First-party fixed-origin convention; zero orbit fields are sentinels, not a solar barycentric solution. |
+| Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Pluto | Exact literals from the [initial catalog](https://github.com/XenoVoyage/Helios/blob/d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0/js/bodies.js), unchanged through this audit. Upstream tables, versions, epoch/time scales, centers, frames, element types, rounding and validity remain unverified; recovery belongs to [#119](https://github.com/XenoVoyage/Helios/issues/119). |
+| Ceres | Retained JPL#48 / DE441 geometric osculating snapshot from [#52](https://github.com/XenoVoyage/Helios/issues/52); exact query parameters and original `A`, `EC`, `IN`, `OM`, `W`, `MA`, `PR` are in the fixture. A future Horizons query must be checked for solution identity before comparing numbers. |
+| Neptune | Table 1's original six coefficients, checked 2026-09-07, reproduce the corrected [#53](https://github.com/XenoVoyage/Helios/issues/53) row. JPL describes these as a best fit, **not mean elements**; “mean” in the frame name describes the ecliptic/equinox. The inherited 60,189-day period is separate and has the same unresolved lineage as the legacy rows. |
+| Moon | JPL mean-elements row 301, DE405/LE405; Earth center, ecliptic plane. The table does not separately declare an ecliptic equinox or supply a source bibliography for this row. |
+| Phobos, Deimos | JPL rows 401, 402, MAR099; Mars center, individual local Laplace planes. |
+| Io, Europa, Ganymede, Callisto | JPL rows 501–504, JUP365; Jupiter center, individual local Laplace planes. |
+| Titan | JPL row 606, SAT441; Saturn center, local Laplace plane. |
+| Triton | JPL row 801, NEP097; Neptune center, local Laplace plane. |
+
+The nine [JPL moon rows](https://ssd.jpl.nasa.gov/sats/elem/) were checked
+2026-09-07. Their source epoch is **2000-01-01.5 TDB (JD 2451545.0)**.
+The fixture preserves the printed decimal strings: `a` maps to `orbitKm`, `e`
+to `eccentricity`, `i` to `inclinationDeg`, node to `nodeDeg`, ω to `periDeg`,
+M to `meanAnomalyDeg`, and P to `orbitDays`. Angles are degrees, distance is km,
+eccentricity is dimensionless and P is days. No derived angles or extra rounding
+are applied; trailing zeros disappear only when parsed as numbers. Published
+zero eccentricities are rounded source entries, not claims of exact physical
+circularity. Triton's P remains positive; its inclination carries retrograde
+geometry. JPL labels P **sidereal period**, whereas Helios uses it as the
+mean-anomaly clock described above.
+
+Laplace-pole RA/Dec are ICRF degrees; node zero is the reference plane's node
+on the ICRF equator. The existing runtime converts each Laplace basis once to
+its fixed parent-equatorial basis. Those parent poles come from
+`pck00011.tpc` at J2000 TDB, including periodic terms, rounded to ten decimal
+places where necessary. The Moon instead attaches directly to Helios's
+ecliptic scene. Source plane tilt is not the body's `tiltDeg` and is not imported
+as obliquity. Source nodal and apsidal periods are not propagated.
+
+The satellite table gives no fit interval or error guarantee for these frozen
+ellipses. Linked ephemeris-file coverage is not their validity interval.
+Likewise, Neptune's Table 1 1800–2050 interval applies to its coefficients
+**with rates**, not to Helios's frozen ellipse and inherited period. Runtime
+elapsed days and UTC-based calendar labels are schematic; they do not perform
+a precision TDB/UTC conversion.
+
+For the eight legacy rows, J2000 and the heliocentric ecliptic basis describe
+Helios's interpretation, not recovered upstream metadata. A partial match to a
+different published table does not establish provenance or prove a numerical
+defect. Their full values and gaps are explicit in the fixture; any justified
+data correction needs a separate issue. Tests compare all scientific fields to
+the preservation record and independently reproduce the verified source
+columns, including Neptune's longitude-to-argument/anomaly conversions.
+
 ## Image assets
 
 | Files | Origin, terms, projection, and transformations | Local SHA-256 |
@@ -81,8 +139,9 @@ dependency used only by the browser/WebGL smoke test. It is not deployed.
 ## Provenance contributions to adoption status
 
 `AGENTS.md` is the sole owner of Helios's Repository Standard status. The
-provenance blockers contributing to its `adopting` state are the inherited image
-transformation records that were not retained. The HYG bright-star subset is
+provenance blockers contributing to its `adopting` state include the inherited image
+transformation records and the unresolved legacy orbital sources recorded in
+[#119](https://github.com/XenoVoyage/Helios/issues/119). The HYG bright-star subset is
 identified above as the v3.1–v3.4 equivalence class under CC BY-SA 2.5; the
 former unidentified-HYG blocker is closed. Unknown provenance is stated here
 rather than guessed; non-provenance blockers stay with their canonical owners.

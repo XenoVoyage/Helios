@@ -1,0 +1,836 @@
+{
+  "checkedAt": "2026-09-07",
+  "catalogSnapshot": "https://github.com/XenoVoyage/Helios/blob/146e3aae5da53a0e099d16c9e29852acddbc4060/js/bodies.js",
+  "scope": "Orbital source records and a preservation lock for every scientific catalog field. The catalog snapshot is first-party evidence, not proof of an upstream attribution. Physical and spin provenance remains in PROVENANCE.md.",
+  "units": {
+    "orbitAu": "AU",
+    "orbitKm": "km",
+    "eccentricity": "dimensionless",
+    "inclinationDeg": "degrees",
+    "nodeDeg": "degrees",
+    "periDeg": "degrees",
+    "meanAnomalyDeg": "degrees",
+    "orbitDays": "days of 86400 seconds",
+    "radiusKm": "km",
+    "rotationHours": "hours; signed catalog period, with spin-model interpretation in PROVENANCE.md",
+    "tiltDeg": "degrees",
+    "ringInnerKm": "km",
+    "ringOuterKm": "km",
+    "orbitFrame": "pole RA/Dec in ICRF degrees",
+    "orientationJ2000": "pole RA/Dec and prime meridian in degrees; signed spin direction"
+  },
+  "model": "Frozen Kepler ellipses with display compression. Runtime day zero represents J2000; UTC-based date labels are schematic and do not implement a precision TDB/UTC conversion. Moon synchronous periapsis compensation is a display correction, not the source nodal/apsidal propagation. No source validity interval is an accuracy claim for this runtime.",
+  "sources": {
+    "fixed-sun": {
+      "uri": "https://github.com/XenoVoyage/Helios/blob/d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0/js/bodies.js",
+      "table": "BODIES, Sun row",
+      "version": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "epoch": "not applicable",
+      "timeScale": "not applicable",
+      "center": "Sun; fixed scene origin",
+      "frame": "not applicable to a zero orbit",
+      "elementType": "first-party zero-orbit sentinel; neither mean nor osculating",
+      "units": "zero AU/km, dimensionless eccentricity, degree angles and day period",
+      "derivation": "No orbital solution or derived angles; all zero fields mark a stationary center.",
+      "validity": "Scene convention only; does not model solar barycentric motion."
+    },
+    "legacy-heliocentric": {
+      "uri": "https://github.com/XenoVoyage/Helios/blob/d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0/js/bodies.js",
+      "table": "BODIES, named inherited row",
+      "version": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "upstreamUri": null,
+      "upstreamTable": null,
+      "upstreamVersion": null,
+      "epoch": "J2000 intended by the original catalog comment; upstream epoch unverified",
+      "timeScale": "unknown upstream time scale",
+      "center": "Sun in Helios; original source center unverified",
+      "frame": "ecliptic J2000 in Helios; original source plane/equinox unverified",
+      "elementType": "unknown; a generic mean-element claim is not verified",
+      "units": "AU, dimensionless eccentricity, degrees, days",
+      "derivation": "Original omega/M derivations and rounding were not retained; freeze the existing literals without reconstructing a source by inference.",
+      "validity": "Unknown source validity and error bounds. No complete row is attributed to current JPL Table 1.",
+      "gap": "https://github.com/XenoVoyage/Helios/issues/119"
+    },
+    "ceres-horizons": {
+      "uri": "https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+      "table": "Horizons ELEMENTS, target 1; at JD 2451545.0",
+      "version": "JPL#48 / DE441; retrieved 2026-08-27",
+      "retainedRecord": "https://github.com/XenoVoyage/Helios/issues/52",
+      "epoch": "JD 2451545.0",
+      "timeScale": "TDB",
+      "center": "500@10 (Sun / DE441)",
+      "frame": "Ecliptic of J2000.0; ICRF reference system",
+      "elementType": "geometric osculating",
+      "units": "A in AU, EC dimensionless, IN/OM/W/MA in degrees, PR in days",
+      "derivation": "Direct A, EC, IN, OM, W, MA, PR fields; omega and M are already arguments/anomalies, not longitudes.",
+      "validity": "One retained state at the epoch. Future Horizons solutions may differ; verify solution identity. The frozen runtime ellipse has no ephemeris accuracy interval.",
+      "query": {
+        "endpoint": "https://ssd.jpl.nasa.gov/api/horizons.api",
+        "format": "text",
+        "COMMAND": "1;",
+        "CENTER": "500@10",
+        "MAKE_EPHEM": "YES",
+        "EPHEM_TYPE": "ELEMENTS",
+        "TLIST": "2451545.0",
+        "TLIST_TYPE": "JD",
+        "TIME_TYPE": "TDB",
+        "REF_SYSTEM": "ICRF",
+        "REF_PLANE": "ECLIPTIC",
+        "OUT_UNITS": "AU-D"
+      }
+    },
+    "neptune-table-1": {
+      "uri": "https://ssd.jpl.nasa.gov/planets/approx_pos.html",
+      "table": "Table 1, Neptune, T=0 coefficient row",
+      "version": "Unversioned Table 1; retrieved 2026-09-03, coefficients checked 2026-09-07",
+      "epoch": "JD 2451545.0 (T=0)",
+      "timeScale": "TDB (JPL calls Teph equivalent to JDTDB)",
+      "center": "Sun",
+      "frame": "mean ecliptic and equinox of J2000",
+      "elementType": "best-fit Keplerian coefficients; JPL explicitly says these are not mean elements",
+      "units": "a in AU, e dimensionless, I/L/long.peri./long.node. in degrees",
+      "derivation": "omega = (long.peri. - long.node.) mod 360; M = (L - long.peri.) mod 360. No rates used at T=0.",
+      "validity": "The source elements plus rates are fit for 1800 AD - 2050 AD. Helios does not apply rates; its inherited 60189-day period is separately unverified and this source interval is not a runtime accuracy claim."
+    },
+    "satellite-de405-le405": {
+      "uri": "https://ssd.jpl.nasa.gov/sats/elem/",
+      "table": "Planetary Satellite Mean Elements, named satellite row",
+      "version": "DE405/LE405; table checked 2026-09-07",
+      "epoch": "2000-01-01.5 (JD 2451545.0)",
+      "timeScale": "TDB",
+      "center": "Earth (planet center)",
+      "frame": "ecliptic; table does not separately identify its equinox",
+      "elementType": "mean elements of a fitted precessing ellipse, not an instantaneous geometric Horizons snapshot; JPL's epoch caption says osculating mean elements",
+      "units": "a in km, e dimensionless, w/M/i/node in degrees, P in days, Laplace pole RA/Dec in ICRF degrees",
+      "derivation": "Direct source a/e/w/M/i/node/P columns; w is argument of periapsis. Helios attaches this row directly to its ecliptic J2000 scene.",
+      "validity": "JPL does not specify a validity interval on this table and warns against ephemeris computation. P is labeled sidereal period by JPL; Helios uses that literal as its mean-anomaly clock and does not propagate source nodal/apsidal rates."
+    },
+    "satellite-mar099": {
+      "uri": "https://ssd.jpl.nasa.gov/sats/elem/",
+      "table": "Planetary Satellite Mean Elements, named satellite row",
+      "version": "MAR099; table checked 2026-09-07",
+      "epoch": "2000-01-01.5 (JD 2451545.0)",
+      "timeScale": "TDB",
+      "center": "Mars (planet center)",
+      "frame": "local Laplace plane; pole RA/Dec in ICRF, node from the reference-plane node on the ICRF equator",
+      "elementType": "mean elements of a fitted precessing ellipse, not an instantaneous geometric Horizons snapshot; JPL's epoch caption says osculating mean elements",
+      "units": "a in km, e dimensionless, w/M/i/node in degrees, P in days, Laplace pole RA/Dec in ICRF degrees",
+      "derivation": "Direct source a/e/w/M/i/node/P columns; w is argument of periapsis, not longitude. Laplace planes are converted once using the printed ICRF pole and the fixed PCK parent pole.",
+      "validity": "JPL does not specify a validity interval on this table and warns against ephemeris computation. P is labeled sidereal period by JPL; Helios uses that literal as its mean-anomaly clock and does not propagate source nodal/apsidal rates."
+    },
+    "satellite-jup365": {
+      "uri": "https://ssd.jpl.nasa.gov/sats/elem/",
+      "table": "Planetary Satellite Mean Elements, named satellite row",
+      "version": "JUP365; table checked 2026-09-07",
+      "epoch": "2000-01-01.5 (JD 2451545.0)",
+      "timeScale": "TDB",
+      "center": "Jupiter (planet center)",
+      "frame": "local Laplace plane; pole RA/Dec in ICRF, node from the reference-plane node on the ICRF equator",
+      "elementType": "mean elements of a fitted precessing ellipse, not an instantaneous geometric Horizons snapshot; JPL's epoch caption says osculating mean elements",
+      "units": "a in km, e dimensionless, w/M/i/node in degrees, P in days, Laplace pole RA/Dec in ICRF degrees",
+      "derivation": "Direct source a/e/w/M/i/node/P columns; w is argument of periapsis, not longitude. Laplace planes are converted once using the printed ICRF pole and the fixed PCK parent pole.",
+      "validity": "JPL does not specify a validity interval on this table and warns against ephemeris computation. P is labeled sidereal period by JPL; Helios uses that literal as its mean-anomaly clock and does not propagate source nodal/apsidal rates."
+    },
+    "satellite-sat441": {
+      "uri": "https://ssd.jpl.nasa.gov/sats/elem/",
+      "table": "Planetary Satellite Mean Elements, named satellite row",
+      "version": "SAT441; table checked 2026-09-07",
+      "epoch": "2000-01-01.5 (JD 2451545.0)",
+      "timeScale": "TDB",
+      "center": "Saturn (planet center)",
+      "frame": "local Laplace plane; pole RA/Dec in ICRF, node from the reference-plane node on the ICRF equator",
+      "elementType": "mean elements of a fitted precessing ellipse, not an instantaneous geometric Horizons snapshot; JPL's epoch caption says osculating mean elements",
+      "units": "a in km, e dimensionless, w/M/i/node in degrees, P in days, Laplace pole RA/Dec in ICRF degrees",
+      "derivation": "Direct source a/e/w/M/i/node/P columns; w is argument of periapsis, not longitude. Laplace planes are converted once using the printed ICRF pole and the fixed PCK parent pole.",
+      "validity": "JPL does not specify a validity interval on this table and warns against ephemeris computation. P is labeled sidereal period by JPL; Helios uses that literal as its mean-anomaly clock and does not propagate source nodal/apsidal rates."
+    },
+    "satellite-nep097": {
+      "uri": "https://ssd.jpl.nasa.gov/sats/elem/",
+      "table": "Planetary Satellite Mean Elements, named satellite row",
+      "version": "NEP097; table checked 2026-09-07",
+      "epoch": "2000-01-01.5 (JD 2451545.0)",
+      "timeScale": "TDB",
+      "center": "Neptune (planet center)",
+      "frame": "local Laplace plane; pole RA/Dec in ICRF, node from the reference-plane node on the ICRF equator",
+      "elementType": "mean elements of a fitted precessing ellipse, not an instantaneous geometric Horizons snapshot; JPL's epoch caption says osculating mean elements",
+      "units": "a in km, e dimensionless, w/M/i/node in degrees, P in days, Laplace pole RA/Dec in ICRF degrees",
+      "derivation": "Direct source a/e/w/M/i/node/P columns; w is argument of periapsis, not longitude. Laplace planes are converted once using the printed ICRF pole and the fixed PCK parent pole.",
+      "validity": "JPL does not specify a validity interval on this table and warns against ephemeris computation. P is labeled sidereal period by JPL; Helios uses that literal as its mean-anomaly clock and does not propagate source nodal/apsidal rates."
+    }
+  },
+  "rows": [
+    {
+      "id": "sun",
+      "source": "fixed-sun",
+      "record": "Sun",
+      "catalog": {
+        "parent": null,
+        "radiusKm": 695700,
+        "orbitAu": 0,
+        "orbitKm": 0,
+        "eccentricity": 0,
+        "inclinationDeg": 0,
+        "nodeDeg": 0,
+        "periDeg": 0,
+        "meanAnomalyDeg": 0,
+        "orbitDays": 0,
+        "rotationHours": 609.12,
+        "tiltDeg": 7.25,
+        "orientationJ2000": {
+          "poleRaDeg": 286.13,
+          "poleDecDeg": 63.87,
+          "primeMeridianDeg": null,
+          "spinDirection": 1
+        }
+      }
+    },
+    {
+      "id": "mercury",
+      "source": "legacy-heliocentric",
+      "record": "Mercury",
+      "catalog": {
+        "parent": "sun",
+        "radiusKm": 2439.7,
+        "orbitAu": 0.387098,
+        "eccentricity": 0.20563,
+        "inclinationDeg": 7.005,
+        "nodeDeg": 48.331,
+        "periDeg": 29.124,
+        "meanAnomalyDeg": 174.796,
+        "orbitDays": 87.969,
+        "rotationHours": 1407.6,
+        "tiltDeg": 0.034,
+        "orientationJ2000": {
+          "poleRaDeg": 281.0103,
+          "poleDecDeg": 61.4155,
+          "primeMeridianDeg": null,
+          "spinDirection": 1
+        }
+      }
+    },
+    {
+      "id": "venus",
+      "source": "legacy-heliocentric",
+      "record": "Venus",
+      "catalog": {
+        "parent": "sun",
+        "radiusKm": 6051.8,
+        "orbitAu": 0.723332,
+        "eccentricity": 0.006772,
+        "inclinationDeg": 3.39471,
+        "nodeDeg": 76.68,
+        "periDeg": 54.884,
+        "meanAnomalyDeg": 50.115,
+        "orbitDays": 224.701,
+        "rotationHours": -5832.6,
+        "tiltDeg": 177.36,
+        "orientationJ2000": {
+          "poleRaDeg": 272.76,
+          "poleDecDeg": 67.16,
+          "primeMeridianDeg": null,
+          "spinDirection": -1
+        }
+      }
+    },
+    {
+      "id": "earth",
+      "source": "legacy-heliocentric",
+      "record": "Earth",
+      "catalog": {
+        "parent": "sun",
+        "radiusKm": 6371,
+        "orbitAu": 1,
+        "eccentricity": 0.0167086,
+        "inclinationDeg": 0.00005,
+        "nodeDeg": -11.261,
+        "periDeg": 114.208,
+        "meanAnomalyDeg": 357.517,
+        "orbitDays": 365.256,
+        "rotationHours": 23.9345,
+        "tiltDeg": 23.44,
+        "orientationJ2000": {
+          "poleRaDeg": 0,
+          "poleDecDeg": 90,
+          "primeMeridianDeg": 190.147,
+          "spinDirection": 1
+        }
+      }
+    },
+    {
+      "id": "moon",
+      "source": "satellite-de405-le405",
+      "record": "Moon",
+      "catalog": {
+        "parent": "earth",
+        "radiusKm": 1737.4,
+        "orbitKm": 384400,
+        "eccentricity": 0.0554,
+        "inclinationDeg": 5.16,
+        "nodeDeg": 125.08,
+        "periDeg": 318.15,
+        "meanAnomalyDeg": 135.27,
+        "orbitDays": 27.322,
+        "orbitFrame": {
+          "kind": "ecliptic"
+        },
+        "rotationHours": 655.728,
+        "tiltDeg": 6.68,
+        "synchronous": true,
+        "orientationJ2000": {
+          "poleRaDeg": 266.85773344495135,
+          "poleDecDeg": 65.64110274784535,
+          "primeMeridianDeg": 41.1952639807452,
+          "spinDirection": 1
+        }
+      },
+      "reference": {
+        "a": "384400.",
+        "e": "0.0554",
+        "w": "318.15",
+        "M": "135.27",
+        "i": "5.16",
+        "node": "125.08",
+        "P": "27.322",
+        "poleRA": null,
+        "poleDec": null
+      },
+      "notes": [
+        "Primary row JPL satellite code 301; reference n/a; independently checked 2026-09-07.",
+        "Moon source names DE405/LE405 but supplies no ephemeris-detail link or bibliography reference. Ecliptic plane is documented; a separate ecliptic equinox is not declared by this table. No Laplace pole applies."
+      ]
+    },
+    {
+      "id": "mars",
+      "source": "legacy-heliocentric",
+      "record": "Mars",
+      "catalog": {
+        "parent": "sun",
+        "radiusKm": 3389.5,
+        "orbitAu": 1.523679,
+        "eccentricity": 0.0934,
+        "inclinationDeg": 1.85,
+        "nodeDeg": 49.558,
+        "periDeg": 286.502,
+        "meanAnomalyDeg": 19.373,
+        "orbitDays": 686.98,
+        "rotationHours": 24.6229,
+        "tiltDeg": 25.19,
+        "orientationJ2000": {
+          "poleRaDeg": 317.6808544073,
+          "poleDecDeg": 52.8864392751,
+          "primeMeridianDeg": null,
+          "spinDirection": 1
+        }
+      }
+    },
+    {
+      "id": "phobos",
+      "source": "satellite-mar099",
+      "record": "Phobos",
+      "catalog": {
+        "parent": "mars",
+        "radiusKm": 11.08,
+        "orbitKm": 9375,
+        "eccentricity": 0.015,
+        "inclinationDeg": 1.1,
+        "nodeDeg": 169.2,
+        "periDeg": 216.3,
+        "meanAnomalyDeg": 189.7,
+        "orbitDays": 0.3187,
+        "orbitFrame": {
+          "kind": "laplace",
+          "poleRaDeg": 317.7,
+          "poleDecDeg": 52.9,
+          "parentPole": {
+            "raDeg": 317.6808544073,
+            "decDeg": 52.8864392751
+          }
+        },
+        "rotationHours": 7.6538,
+        "tiltDeg": 0,
+        "synchronous": true
+      },
+      "reference": {
+        "a": "9375.",
+        "e": "0.015",
+        "w": "216.3",
+        "M": "189.7",
+        "i": "1.1",
+        "node": "169.2",
+        "P": "0.3187",
+        "poleRA": "317.7",
+        "poleDec": "52.9"
+      },
+      "notes": [
+        "Primary row JPL satellite code 401; reference 7; independently checked 2026-09-07."
+      ]
+    },
+    {
+      "id": "deimos",
+      "source": "satellite-mar099",
+      "record": "Deimos",
+      "catalog": {
+        "parent": "mars",
+        "radiusKm": 6.2,
+        "orbitKm": 23457,
+        "eccentricity": 0,
+        "inclinationDeg": 1.8,
+        "nodeDeg": 54.3,
+        "periDeg": 0,
+        "meanAnomalyDeg": 205,
+        "orbitDays": 1.2625,
+        "orbitFrame": {
+          "kind": "laplace",
+          "poleRaDeg": 316.6,
+          "poleDecDeg": 53.5,
+          "parentPole": {
+            "raDeg": 317.6808544073,
+            "decDeg": 52.8864392751
+          }
+        },
+        "rotationHours": 30.2986,
+        "tiltDeg": 0.9,
+        "synchronous": true
+      },
+      "reference": {
+        "a": "23457.",
+        "e": "0.000",
+        "w": "0.0",
+        "M": "205.0",
+        "i": "1.8",
+        "node": "54.3",
+        "P": "1.2625",
+        "poleRA": "316.6",
+        "poleDec": "53.5"
+      },
+      "notes": [
+        "Primary row JPL satellite code 402; reference 7; independently checked 2026-09-07.",
+        "Zero eccentricity and zero periapsis are the published rounded values, not an assertion of an exactly circular physical orbit."
+      ]
+    },
+    {
+      "id": "ceres",
+      "source": "ceres-horizons",
+      "record": "Ceres",
+      "catalog": {
+        "parent": "sun",
+        "radiusKm": 469.7,
+        "orbitAu": 2.766496019994375,
+        "eccentricity": 0.0783756264716304,
+        "inclinationDeg": 10.58336045805628,
+        "nodeDeg": 80.49435747295276,
+        "periDeg": 73.92286274285223,
+        "meanAnomalyDeg": 6.176654513180486,
+        "orbitDays": 1680.712776442072,
+        "rotationHours": 9.074,
+        "tiltDeg": 4,
+        "orientationJ2000": {
+          "poleRaDeg": 291.418,
+          "poleDecDeg": 66.764,
+          "primeMeridianDeg": null,
+          "spinDirection": 1
+        }
+      },
+      "reference": {
+        "A": 2.766496019994375,
+        "EC": 0.0783756264716304,
+        "IN": 10.58336045805628,
+        "OM": 80.49435747295276,
+        "W": 73.92286274285223,
+        "MA": 6.176654513180486,
+        "PR": 1680.712776442072
+      }
+    },
+    {
+      "id": "jupiter",
+      "source": "legacy-heliocentric",
+      "record": "Jupiter",
+      "catalog": {
+        "parent": "sun",
+        "radiusKm": 69911,
+        "orbitAu": 5.203363,
+        "eccentricity": 0.0489,
+        "inclinationDeg": 1.303,
+        "nodeDeg": 100.464,
+        "periDeg": 273.867,
+        "meanAnomalyDeg": 20.02,
+        "orbitDays": 4332.589,
+        "rotationHours": 9.925,
+        "tiltDeg": 3.13,
+        "orientationJ2000": {
+          "poleRaDeg": 268.0572040427,
+          "poleDecDeg": 64.4958099534,
+          "primeMeridianDeg": null,
+          "spinDirection": 1
+        }
+      }
+    },
+    {
+      "id": "io",
+      "source": "satellite-jup365",
+      "record": "Io",
+      "catalog": {
+        "parent": "jupiter",
+        "radiusKm": 1821.6,
+        "orbitKm": 421800,
+        "eccentricity": 0.004,
+        "inclinationDeg": 0,
+        "nodeDeg": 0,
+        "periDeg": 49.1,
+        "meanAnomalyDeg": 330.9,
+        "orbitDays": 1.762732,
+        "orbitFrame": {
+          "kind": "laplace",
+          "poleRaDeg": 268.1,
+          "poleDecDeg": 64.5,
+          "parentPole": {
+            "raDeg": 268.0572040427,
+            "decDeg": 64.4958099534
+          }
+        },
+        "rotationHours": 42.456,
+        "tiltDeg": 0,
+        "synchronous": true
+      },
+      "reference": {
+        "a": "421800.",
+        "e": "0.004",
+        "w": "49.1",
+        "M": "330.9",
+        "i": "0.0",
+        "node": "0.0",
+        "P": "1.762732",
+        "poleRA": "268.1",
+        "poleDec": "64.5"
+      },
+      "notes": [
+        "Primary row JPL satellite code 501; reference 29; independently checked 2026-09-07."
+      ]
+    },
+    {
+      "id": "europa",
+      "source": "satellite-jup365",
+      "record": "Europa",
+      "catalog": {
+        "parent": "jupiter",
+        "radiusKm": 1560.8,
+        "orbitKm": 671100,
+        "eccentricity": 0.009,
+        "inclinationDeg": 0.5,
+        "nodeDeg": 184,
+        "periDeg": 45,
+        "meanAnomalyDeg": 345.4,
+        "orbitDays": 3.525463,
+        "orbitFrame": {
+          "kind": "laplace",
+          "poleRaDeg": 268.1,
+          "poleDecDeg": 64.5,
+          "parentPole": {
+            "raDeg": 268.0572040427,
+            "decDeg": 64.4958099534
+          }
+        },
+        "rotationHours": 85.224,
+        "tiltDeg": 0.1,
+        "synchronous": true
+      },
+      "reference": {
+        "a": "671100.",
+        "e": "0.009",
+        "w": "45.0",
+        "M": "345.4",
+        "i": "0.5",
+        "node": "184.0",
+        "P": "3.525463",
+        "poleRA": "268.1",
+        "poleDec": "64.5"
+      },
+      "notes": [
+        "Primary row JPL satellite code 502; reference 29; independently checked 2026-09-07."
+      ]
+    },
+    {
+      "id": "ganymede",
+      "source": "satellite-jup365",
+      "record": "Ganymede",
+      "catalog": {
+        "parent": "jupiter",
+        "radiusKm": 2631.2,
+        "orbitKm": 1070400,
+        "eccentricity": 0.001,
+        "inclinationDeg": 0.2,
+        "nodeDeg": 58.5,
+        "periDeg": 198.3,
+        "meanAnomalyDeg": 324.8,
+        "orbitDays": 7.155588,
+        "orbitFrame": {
+          "kind": "laplace",
+          "poleRaDeg": 268.2,
+          "poleDecDeg": 64.6,
+          "parentPole": {
+            "raDeg": 268.0572040427,
+            "decDeg": 64.4958099534
+          }
+        },
+        "rotationHours": 171.709,
+        "tiltDeg": 0.33,
+        "synchronous": true
+      },
+      "reference": {
+        "a": "1070400.",
+        "e": "0.001",
+        "w": "198.3",
+        "M": "324.8",
+        "i": "0.2",
+        "node": "58.5",
+        "P": "7.155588",
+        "poleRA": "268.2",
+        "poleDec": "64.6"
+      },
+      "notes": [
+        "Primary row JPL satellite code 503; reference 29; independently checked 2026-09-07."
+      ]
+    },
+    {
+      "id": "callisto",
+      "source": "satellite-jup365",
+      "record": "Callisto",
+      "catalog": {
+        "parent": "jupiter",
+        "radiusKm": 2410.3,
+        "orbitKm": 1882700,
+        "eccentricity": 0.007,
+        "inclinationDeg": 0.3,
+        "nodeDeg": 309.1,
+        "periDeg": 43.8,
+        "meanAnomalyDeg": 87.4,
+        "orbitDays": 16.69044,
+        "orbitFrame": {
+          "kind": "laplace",
+          "poleRaDeg": 268.7,
+          "poleDecDeg": 64.8,
+          "parentPole": {
+            "raDeg": 268.0572040427,
+            "decDeg": 64.4958099534
+          }
+        },
+        "rotationHours": 400.536,
+        "tiltDeg": 0,
+        "synchronous": true
+      },
+      "reference": {
+        "a": "1882700.",
+        "e": "0.007",
+        "w": "43.8",
+        "M": "87.4",
+        "i": "0.3",
+        "node": "309.1",
+        "P": "16.690440",
+        "poleRA": "268.7",
+        "poleDec": "64.8"
+      },
+      "notes": [
+        "Primary row JPL satellite code 504; reference 29; independently checked 2026-09-07."
+      ]
+    },
+    {
+      "id": "saturn",
+      "source": "legacy-heliocentric",
+      "record": "Saturn",
+      "catalog": {
+        "parent": "sun",
+        "radiusKm": 58232,
+        "orbitAu": 9.53707,
+        "eccentricity": 0.0542,
+        "inclinationDeg": 2.485,
+        "nodeDeg": 113.665,
+        "periDeg": 339.391,
+        "meanAnomalyDeg": 317.02,
+        "orbitDays": 10759.22,
+        "rotationHours": 10.656,
+        "tiltDeg": 26.73,
+        "orientationJ2000": {
+          "poleRaDeg": 40.589,
+          "poleDecDeg": 83.537,
+          "primeMeridianDeg": null,
+          "spinDirection": 1
+        },
+        "ringInnerKm": 66900,
+        "ringOuterKm": 136775
+      }
+    },
+    {
+      "id": "titan",
+      "source": "satellite-sat441",
+      "record": "Titan",
+      "catalog": {
+        "parent": "saturn",
+        "radiusKm": 2574.7,
+        "orbitKm": 1221900,
+        "eccentricity": 0.029,
+        "inclinationDeg": 0.3,
+        "nodeDeg": 78.6,
+        "periDeg": 78.3,
+        "meanAnomalyDeg": 11.7,
+        "orbitDays": 15.945448,
+        "orbitFrame": {
+          "kind": "laplace",
+          "poleRaDeg": 36.4,
+          "poleDecDeg": 84,
+          "parentPole": {
+            "raDeg": 40.589,
+            "decDeg": 83.537
+          }
+        },
+        "rotationHours": 382.68,
+        "tiltDeg": 0,
+        "synchronous": true
+      },
+      "reference": {
+        "a": "1221900.",
+        "e": "0.029",
+        "w": "78.3",
+        "M": "11.7",
+        "i": "0.3",
+        "node": "78.6",
+        "P": "15.945448",
+        "poleRA": "36.4",
+        "poleDec": "84.0"
+      },
+      "notes": [
+        "Primary row JPL satellite code 606; reference 36; independently checked 2026-09-07."
+      ]
+    },
+    {
+      "id": "uranus",
+      "source": "legacy-heliocentric",
+      "record": "Uranus",
+      "catalog": {
+        "parent": "sun",
+        "radiusKm": 25362,
+        "orbitAu": 19.191264,
+        "eccentricity": 0.0472,
+        "inclinationDeg": 0.773,
+        "nodeDeg": 74.006,
+        "periDeg": 96.999,
+        "meanAnomalyDeg": 142.239,
+        "orbitDays": 30685.4,
+        "rotationHours": -17.24,
+        "tiltDeg": 97.77,
+        "orientationJ2000": {
+          "poleRaDeg": 257.311,
+          "poleDecDeg": -15.175,
+          "primeMeridianDeg": null,
+          "spinDirection": -1
+        }
+      }
+    },
+    {
+      "id": "neptune",
+      "source": "neptune-table-1",
+      "record": "Neptune",
+      "catalog": {
+        "parent": "sun",
+        "radiusKm": 24622,
+        "orbitAu": 30.06992276,
+        "eccentricity": 0.00859048,
+        "inclinationDeg": 1.77004347,
+        "nodeDeg": 131.78422574,
+        "periDeg": 273.18053653,
+        "meanAnomalyDeg": 259.91520804,
+        "orbitDays": 60189,
+        "rotationHours": 16.11,
+        "tiltDeg": 28.32,
+        "orientationJ2000": {
+          "poleRaDeg": 299.3337389588,
+          "poleDecDeg": 42.9503590218,
+          "primeMeridianDeg": null,
+          "spinDirection": 1
+        }
+      },
+      "reference": {
+        "a": 30.06992276,
+        "e": 0.00859048,
+        "I": 1.77004347,
+        "L": -55.12002969,
+        "longPeri": 44.96476227,
+        "longNode": 131.78422574
+      },
+      "periodSource": "legacy-heliocentric"
+    },
+    {
+      "id": "triton",
+      "source": "satellite-nep097",
+      "record": "Triton",
+      "catalog": {
+        "parent": "neptune",
+        "radiusKm": 1353.4,
+        "orbitKm": 354800,
+        "eccentricity": 0,
+        "inclinationDeg": 157.3,
+        "nodeDeg": 178.1,
+        "periDeg": 0,
+        "meanAnomalyDeg": 63,
+        "orbitDays": 5.876994,
+        "orbitFrame": {
+          "kind": "laplace",
+          "poleRaDeg": 299.8,
+          "poleDecDeg": 43.1,
+          "parentPole": {
+            "raDeg": 299.3337389588,
+            "decDeg": 42.9503590218
+          }
+        },
+        "rotationHours": -141.048,
+        "tiltDeg": 0.54,
+        "synchronous": true,
+        "orientationJ2000": {
+          "poleRaDeg": 298.4509834088894,
+          "poleDecDeg": 20.302361260483217,
+          "primeMeridianDeg": 297.01780353391297,
+          "spinDirection": -1
+        }
+      },
+      "reference": {
+        "a": "354800.",
+        "e": "0.000",
+        "w": "0.0",
+        "M": "63.0",
+        "i": "157.3",
+        "node": "178.1",
+        "P": "5.876994",
+        "poleRA": "299.8",
+        "poleDec": "43.1"
+      },
+      "notes": [
+        "Primary row JPL satellite code 801; reference 24; independently checked 2026-09-07.",
+        "Zero eccentricity and zero periapsis are the published rounded values, not an assertion of an exactly circular physical orbit.",
+        "P remains positive; retrograde geometry is represented by i=157.3 degrees. Do not negate P in the source record."
+      ]
+    },
+    {
+      "id": "pluto",
+      "source": "legacy-heliocentric",
+      "record": "Pluto",
+      "catalog": {
+        "parent": "sun",
+        "radiusKm": 1188.3,
+        "orbitAu": 39.482,
+        "eccentricity": 0.2488,
+        "inclinationDeg": 17.16,
+        "nodeDeg": 110.299,
+        "periDeg": 113.834,
+        "meanAnomalyDeg": 14.796,
+        "orbitDays": 90560,
+        "rotationHours": -153.29,
+        "tiltDeg": 119.6,
+        "orientationJ2000": {
+          "poleRaDeg": 132.993,
+          "poleDecDeg": -6.163,
+          "primeMeridianDeg": null,
+          "spinDirection": 1
+        }
+      }
+    }
+  ]
+}
