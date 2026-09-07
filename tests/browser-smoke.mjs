@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -143,6 +143,34 @@ async function openReady(page, suffix = "") {
     null,
     { timeout: 20_000 },
   );
+}
+
+async function auditCredits(context) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  const downloads = [];
+  page.on("download", (download) => downloads.push(download.suggestedFilename()));
+  try {
+    await openReady(page);
+    const [response] = await Promise.all([
+      page.waitForResponse(base + "PROVENANCE.md"),
+      page.locator("#version-label").click(),
+    ]);
+    assert.equal(response.status(), 200);
+    assert.equal(response.headers()["content-type"], "text/plain; charset=utf-8");
+    await page.waitForURL(base + "PROVENANCE.md");
+    await page.waitForLoadState("domcontentloaded");
+    assert.equal(await page.evaluate(() => document.contentType), "text/plain");
+    assert.equal(
+      (await page.locator("body").innerText()).trim(),
+      (await readFile(path.join(root, "PROVENANCE.md"), "utf8")).trim(),
+      "Credits displays the published provenance inline in the same tab",
+    );
+    assert.deepEqual(downloads, [], "Credits does not download the Markdown file");
+    assert.deepEqual(errors, [], "Credits navigation has no browser errors");
+  } finally {
+    await page.close();
+  }
 }
 
 async function beginViewportBusyAudit(page) {
@@ -2410,6 +2438,7 @@ try {
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
   });
+  await auditCredits(desktop);
   await assertViewportBusyLifecycle(desktop, "desktop");
   // Check the issue's new pixel gate before the longer unchanged scale and
   // moon sweeps, so a calibration failure reports its actual surface promptly.
