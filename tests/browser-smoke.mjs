@@ -18,6 +18,7 @@ import { CONFIG, minimumFocusDistance, wheelZoomMultiplier } from "../js/config.
 import { cmbSkyOpacity, sceneHierarchyId } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
 import { auditCameraNavigation } from "./camera-navigation.mjs";
+import { runFocusTracking } from "./focus-tracking.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.BROWSER_SMOKE_PORT || 4175);
@@ -2432,6 +2433,17 @@ try {
   assert.match(String(line), /Helios local server/);
 
   browser = await launchBrowser();
+  await runFocusTracking(browser, base, {
+    onReport: async (report) => {
+      if (screenshotDir) {
+        await mkdir(screenshotDir, { recursive: true });
+        await writeFile(
+          path.join(screenshotDir, `focus-tracking-${report.scenario.id}.json`),
+          JSON.stringify(report, null, 2) + "\n",
+        );
+      }
+    },
+  });
   await auditCameraNavigation(browser, base, screenshotDir);
 
   const desktop = await browser.newContext({

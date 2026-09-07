@@ -2,10 +2,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
+import { focusTrackingOffsets, focusTrackingScenarios, runFocusTracking } from "./focus-tracking.mjs";
 
 const options = new Map();
 for (let index = 2; index < process.argv.length; index += 1) {
@@ -18,16 +19,18 @@ const inventoryOnly = options.has("--inventory-only");
 for (const name of ["--source-root", "--source-label", ...(inventoryOnly ? [] : ["--output"])]) assert.ok(options.has(name), `${name} is required`);
 for (const name of options.keys()) assert.ok(["--source-root", "--output", "--source-label", "--inventory-only", "--group"].includes(name), `unknown argument ${name}`);
 const group = options.get("--group") || "all";
-assert.ok(["all", "bodies", "desktop-moons", "touch-moons", "other"].includes(group), "group must be all, bodies, desktop-moons, touch-moons or other");
+assert.ok(["all", "bodies", "desktop-moons", "touch-moons", "other", "focus"].includes(group), "group must be all, bodies, desktop-moons, touch-moons, other or focus");
 const sourceRoot = path.resolve(options.get("--source-root"));
 const output = options.has("--output") ? path.resolve(options.get("--output")) : null;
 const sourceLabel = options.get("--source-label");
-assert.ok(["main", "develop", "candidate"].includes(sourceLabel));
+assert.ok(["main", "develop", "candidate", "historical"].includes(sourceLabel));
 assert.ok(output === null || (output !== sourceRoot && !output.startsWith(sourceRoot + path.sep)), "evidence must be outside the immutable source checkout");
 const harnessRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const git = (root, ...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const harnessClean = git(harnessRoot, "status", "--porcelain", "--untracked-files=all") === "";
+const trackingHarnessBytes = await readFile(new URL("./focus-tracking.mjs", import.meta.url));
+const trackingHarness = { file: "tests/focus-tracking.mjs", sha256: sha256(trackingHarnessBytes), bytes: trackingHarnessBytes.length };
 if (!inventoryOnly) assert.equal(harnessClean, true, "capture harness starts clean");
 assert.equal(git(sourceRoot, "status", "--porcelain", "--untracked-files=all"), "", "renderer source starts clean");
 const sourceIdentity = {
@@ -35,6 +38,11 @@ const sourceIdentity = {
   commit: git(sourceRoot, "rev-parse", "HEAD"),
   tree: git(sourceRoot, "rev-parse", "HEAD^{tree}"),
 };
+if (sourceLabel === "historical") {
+  assert.equal(group, "focus", "historical evidence is limited to focus tracking");
+  assert.equal(sourceIdentity.commit, "c1f76d63c06853f8012569d2c19df6f499788a3c", "exact issue #59 historical commit");
+  assert.equal(sourceIdentity.tree, "08d8889e3a6b766ebcb55a009b027c5adc21cc03", "exact issue #59 historical tree");
+}
 const bodyMath = await import(pathToFileURL(path.join(sourceRoot, "js/bodies.js")));
 const configMath = await import(pathToFileURL(path.join(sourceRoot, "js/config.js")));
 const { equatorialVectorToScene } = await import(pathToFileURL(path.join(sourceRoot, "js/sky.js")));
@@ -79,14 +87,29 @@ for (const body of BODIES) {
 const responsiveSizes = [[320, 568], [568, 320], [390, 844], [844, 390], [768, 1024], [1024, 768]];
 for (const [width, height] of responsiveSizes) expect(`supplement-responsive-${width}x${height}`);
 assert.equal(expected.size, 204);
+const trackingNames = new Map();
+for (const scenario of focusTrackingScenarios) {
+  for (const offset of focusTrackingOffsets) {
+    const name = `focus-tracking-${scenario.id}-${offset}ms`;
+    expect(name);
+    trackingNames.set(name, scenario);
+  }
+}
+assert.equal(expected.size, 234);
 const completeMatrix = [...expected];
 const groupFor = (name) => {
+  const tracking = trackingNames.get(name);
+  if (tracking) return tracking.touch ? "other" : tracking.bodyId === "io" ? "desktop-moons" : "bodies";
   if (name.includes("-moon-parent-")) return name.startsWith("desktop-") ? "desktop-moons" : "touch-moons";
   if (name.startsWith("desktop-minimum-zoom-") || (name.startsWith("supplement-desktop-") && !name.includes("-busy-"))) return "bodies";
   return "other";
 };
-for (const name of expected) if (group !== "all" && groupFor(name) !== group) expected.delete(name);
-assert.equal(expected.size, { all: 204, bodies: 69, "desktop-moons": 56, "touch-moons": 26, other: 53 }[group]);
+for (const name of expected) {
+  if (group === "focus" ? !trackingNames.has(name) : group !== "all" && groupFor(name) !== group) expected.delete(name);
+}
+assert.equal(expected.size, { all: 234, bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 63, focus: 30 }[group]);
+const activeTrackingScenarios = focusTrackingScenarios.filter((item) =>
+  expected.has(`focus-tracking-${item.id}-${focusTrackingOffsets[0]}ms`));
 
 if (inventoryOnly) {
   console.log(JSON.stringify({
@@ -95,12 +118,12 @@ if (inventoryOnly) {
     completeMatrixCount: completeMatrix.length,
     fullExpected: completeMatrix,
     source: sourceIdentity,
-    harness: { commit: git(harnessRoot, "rev-parse", "HEAD"), tree: git(harnessRoot, "rev-parse", "HEAD^{tree}"), clean: harnessClean, sha256: sha256(await readFile(fileURLToPath(import.meta.url))) },
+    harness: { commit: git(harnessRoot, "rev-parse", "HEAD"), tree: git(harnessRoot, "rev-parse", "HEAD^{tree}"), clean: harnessClean, sha256: sha256(await readFile(fileURLToPath(import.meta.url))), focusTracking: trackingHarness },
     expected: [...expected].map((name) => {
       const compact = name.match(/responsive-(\d+)x(\d+)$/);
       return {
         name,
-        viewport: compact ? [Number(compact[1]), Number(compact[2])] : name.includes("touch-portrait") ? [390, 844] : [1440, 900],
+        viewport: compact ? [Number(compact[1]), Number(compact[2])] : (name.includes("touch-portrait") || trackingNames.get(name)?.touch) ? [390, 844] : [1440, 900],
         scenario: name.replace(/^supplement-/, "").replaceAll("-", " "),
       };
     }),
@@ -121,6 +144,7 @@ const manifest = {
     tree: git(harnessRoot, "rev-parse", "HEAD^{tree}"),
     clean: harnessClean,
     sha256: sha256(await readFile(fileURLToPath(import.meta.url))),
+    focusTracking: trackingHarness,
   },
   node: process.version,
   playwright: JSON.parse(await readFile(path.join(harnessRoot, "node_modules/playwright/package.json"), "utf8")).version,
@@ -135,6 +159,9 @@ const manifest = {
   ],
   expected: [...expected],
   captures: [],
+  focusTrackingExpectedReports: activeTrackingScenarios.map((item) => item.id),
+  focusTrackingReports: [],
+  focusTrackingDiagnostics: [],
   failures: [],
   browserErrors: [],
   timings: [],
@@ -403,6 +430,65 @@ async function capture(page, name, details = {}, moving = false) {
   }
   await flush();
   console.log(`Captured ${sourceLabel}/${group} ${manifest.captures.length}/${expected.size} ${name}${settled?.stable === false ? " (UNSETTLED)" : ""}`);
+}
+
+async function captureFocusTracking() {
+  for (const trackingScenario of activeTrackingScenarios) await scenario(`focus tracking ${trackingScenario.id}`, async () => {
+    const reportFile = `focus-tracking-${trackingScenario.id}.json`;
+    await runFocusTracking(browser, base, {
+      scenarios: [trackingScenario], assertTracking: false, lifecycle: false,
+      onStill: async ({ name, page, scenario: current, offset, report }) => {
+        assert.equal(current.id, trackingScenario.id);
+        assert.ok(expected.has(name), `unexpected tracking filename ${name}`);
+        assert.ok(!manifest.captures.some((entry) => entry.name === name), `duplicate capture ${name}`);
+        assert.equal(name, `focus-tracking-${current.id}-${offset}ms`);
+        const started = performance.now();
+        // Preserve the playing frame: neither stable-frame waits nor recentering belongs here.
+        const png = await page.screenshot({ timeout: 60_000 });
+        assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", "tracking original is a PNG");
+        assert.deepEqual({ width: png.readUInt32BE(16), height: png.readUInt32BE(20) }, page.viewportSize(), "tracking PNG retains the full viewport at deviceScaleFactor 1");
+        await writeFile(path.join(output, `${name}.png`), png);
+        manifest.captures.push({
+          name, file: `${name}.png`, sha256: sha256(png), bytes: png.length,
+          viewport: page.viewportSize(), touchEmulation: current.touch,
+          initial: report.initial,
+          observable: {
+            ...await observe(page), pausedAtReady: report.initial.pausedAtReady,
+            firstApplicationTick: report.initial.firstApplicationTick,
+          },
+          inputs: report.inputs,
+          settled: null, moving: offset > 0,
+          tracking: {
+            scenario: current, requestedOffsetMilliseconds: offset, reportFile,
+            requestedRate: report.requestedRate, effectiveRate: report.effectiveRate,
+            sliderValue: report.sliderValue, anchor: report.anchor,
+            observerFrameCount: report.frames.length, observerFrame: report.frames.at(-1) ?? null,
+            capturePolicy: "direct full-viewport screenshot at the sequence offset; no stable-frame wait or recentering",
+          },
+          acquisitionWallMilliseconds: Math.round(performance.now() - started),
+        });
+        await flush();
+        console.log(`Captured ${sourceLabel}/${group} ${manifest.captures.length}/${expected.size} ${name}`);
+      },
+      onReport: async (report) => {
+        assert.equal(report.scenario.id, trackingScenario.id);
+        assert.ok(!manifest.focusTrackingReports.some((entry) => entry.scenario === trackingScenario.id), `duplicate tracking report ${trackingScenario.id}`);
+        const bytes = Buffer.from(JSON.stringify(report, null, 2) + "\n");
+        await writeFile(path.join(output, reportFile), bytes);
+        manifest.focusTrackingReports.push({
+          scenario: trackingScenario.id, file: reportFile, sha256: sha256(bytes), bytes: bytes.length,
+          frames: report.frames.length, completed: report.completed,
+          diagnosticFailures: report.failures.length, infrastructureError: report.infrastructureError,
+        });
+        manifest.browserErrors.push(...report.browserErrors.map((message) => ({ scenario: trackingScenario.id, message })));
+        // Old references retain their measured defect; npm's actual regression asserts tracking.
+        manifest.focusTrackingDiagnostics.push(...report.failures.map((failure) => ({ scenario: trackingScenario.id, ...failure })));
+        if (report.infrastructureError) manifest.failures.push({ scenario: trackingScenario.id, reason: report.infrastructureError });
+        if (!report.completed) manifest.failures.push({ scenario: trackingScenario.id, reason: "tracking scenario did not complete; available dense report retained" });
+        await flush();
+      },
+    });
+  });
 }
 
 async function scenario(label, work) {
@@ -675,16 +761,43 @@ try {
     await scenario("Controlled regular Triton, overview and Milky Way references", controlledLegacyViews);
     await responsive();
   }
+  await captureFocusTracking();
 } catch (error) {
   manifest.failures.push({ scenario: "capture infrastructure", reason: String(error.stack || error) });
 } finally {
   if (browser) await browser.close();
   server.kill("SIGTERM");
   manifest.missing = [...expected].filter((name) => !manifest.captures.some((entry) => entry.name === name));
+  manifest.missingTrackingReports = manifest.focusTrackingExpectedReports.filter((id) =>
+    !manifest.focusTrackingReports.some((entry) => entry.scenario === id));
   manifest.sourceCleanAfter = git(sourceRoot, "status", "--porcelain", "--untracked-files=all") === "";
   manifest.sourceCommitAfter = git(sourceRoot, "rev-parse", "HEAD");
   manifest.sourceTreeAfter = git(sourceRoot, "rev-parse", "HEAD^{tree}");
   manifest.harnessCleanAfter = git(harnessRoot, "status", "--porcelain", "--untracked-files=all") === "";
+  if (group === "focus") {
+    try {
+      manifest.harnessAfter = {
+        commit: git(harnessRoot, "rev-parse", "HEAD"), tree: git(harnessRoot, "rev-parse", "HEAD^{tree}"),
+        sha256: sha256(await readFile(fileURLToPath(import.meta.url))),
+        focusTrackingSha256: sha256(await readFile(new URL("./focus-tracking.mjs", import.meta.url))),
+      };
+      assert.equal(manifest.harnessAfter.commit, manifest.harness.commit, "focus harness commit remains frozen");
+      assert.equal(manifest.harnessAfter.tree, manifest.harness.tree, "focus harness tree remains frozen");
+      assert.equal(manifest.harnessAfter.sha256, manifest.harness.sha256, "focus capture harness bytes remain frozen");
+      assert.equal(manifest.harnessAfter.focusTrackingSha256, manifest.harness.focusTracking.sha256, "focus observer bytes remain frozen");
+      const files = ["capture-details.json", ...[...expected].map((name) => `${name}.png`),
+        ...activeTrackingScenarios.map((item) => `focus-tracking-${item.id}.json`)];
+      manifest.outputInventory = (await readdir(output)).sort();
+      assert.deepEqual(manifest.outputInventory, files.sort(), "focus evidence has exactly 30 PNGs, 6 dense reports and its manifest");
+      for (const entry of [...manifest.captures, ...manifest.focusTrackingReports]) {
+        const bytes = await readFile(path.join(output, entry.file));
+        assert.equal(bytes.length, entry.bytes, `${entry.file} retains its byte length`);
+        assert.equal(sha256(bytes), entry.sha256, `${entry.file} retains its recorded hash`);
+      }
+    } catch (error) {
+      manifest.failures.push({ scenario: "focus evidence inventory", reason: String(error.stack || error) });
+    }
+  }
   await flush();
 }
 assert.equal(manifest.sourceCleanAfter, true, "renderer source remains clean");
@@ -694,4 +807,5 @@ assert.equal(manifest.sourceTreeAfter, sourceIdentity.tree);
 assert.deepEqual(manifest.browserErrors, [], "no browser, console, request or HTTP errors");
 assert.deepEqual(manifest.failures, [], "every capture scenario reaches its stated bounded criterion");
 assert.deepEqual(manifest.missing, [], `all ${expected.size} requested ${group} captures exist`);
+assert.deepEqual(manifest.missingTrackingReports, [], "every tracking sequence retains its complete hashed observer report");
 console.log(`Visual capture complete: ${sourceLabel}/${group}, ${manifest.captures.length}/${expected.size} originals; ${sourceIdentity.commit} ${sourceIdentity.tree}`);
