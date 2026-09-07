@@ -15,7 +15,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.9.6b",
+  VERSION: "v2026.9.7",
   BRAND: "MarinsVoyage",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
@@ -112,6 +112,8 @@ export const CONFIG = Object.freeze({
   cameraFar: 7000000,
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
+  cameraOrbitStep: 0.12,
+  cameraZoomFactor: 1.25,
   focusLerp: 6,
   // Parent-safe moon focus flight rates; log radius is scale-independent.
   moonFocusRadialLogRatePerSecond: 2.5,

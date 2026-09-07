@@ -234,6 +234,59 @@ h2 {
   transform: translateX(-50%);
 }
 
+.camera-controls {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: calc(var(--dock-clearance) + max(24px, env(safe-area-inset-bottom)));
+  z-index: 5;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: start;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+}
+
+#camera-toggle,
+.camera-panel {
+  background: var(--chrome-backing);
+  box-shadow: 0 0 0 6px var(--chrome-backing);
+}
+
+.camera-panel {
+  width: 280px;
+  max-width: 100%;
+  max-height: calc(100dvh - var(--dock-clearance) - 96px);
+  overflow: auto;
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.camera-panel[hidden] {
+  display: none;
+}
+
+.camera-controls[hidden] {
+  display: none;
+}
+
+.camera-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.camera-buttons button {
+  min-width: 44px;
+  padding: 0 4px;
+  line-height: 1.2;
+}
+
+#camera-help {
+  margin: 10px 0 0;
+  color: var(--ink);
+  font: 13px/1.4 ui-sans-serif, system-ui, sans-serif;
+}
+
 button,
 input[type="range"],
 select {
@@ -397,6 +450,14 @@ input[type="range"] {
   }
 }
 
+@media (max-width: 720px) and (orientation: portrait) {
+  #stage:has(#camera-panel:not([hidden])) .card {
+    bottom: calc(var(--dock-clearance) + var(--camera-clearance) + 40px + env(safe-area-inset-bottom));
+    max-height: calc(100dvh - var(--dock-clearance) - var(--camera-clearance) - 112px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow: auto;
+  }
+}
+
 @media (orientation: landscape) and (max-height: 500px) {
   h1 {
     font-size: 16px;
@@ -421,6 +482,34 @@ input[type="range"] {
 }
 
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
+  .camera-controls:has(#camera-panel:not([hidden])) {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    width: 208px;
+    background: var(--chrome-backing);
+    box-shadow: 0 0 0 6px var(--chrome-backing);
+  }
+
+  #camera-panel:not([hidden]),
+  .camera-buttons {
+    display: contents;
+  }
+
+  #camera-toggle {
+    min-width: 44px;
+    padding: 0 2px;
+    font-size: 12px;
+  }
+
+  #camera-help {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
   /* Keep the date under the brand word so a longer chrome label cannot
      push the topbar into the right-side card. */
   .topbar {

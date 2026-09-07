@@ -17,7 +17,7 @@
     <a id="skip-link" class="skip-link" href="#dock">Skip to time controls</a>
 
     <main id="stage">
-      <canvas id="viewport" tabindex="0" role="img" aria-label="Helios scene" aria-describedby="scene-context"></canvas>
+      <canvas id="viewport" tabindex="0" role="img" aria-label="Helios scene" aria-describedby="scene-context camera-help" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown I O"></canvas>
       <div id="labels" class="labels" aria-label="World labels"></div>
 
       <header class="topbar">
@@ -41,6 +41,21 @@
         </div>
         <button id="card-close" type="button" aria-label="Close">×</button>
       </section>
+
+      <div id="camera-controls" class="camera-controls">
+        <button id="camera-toggle" type="button" aria-expanded="false" aria-controls="camera-panel">Camera</button>
+        <section id="camera-panel" class="camera-panel" aria-label="Camera controls" hidden>
+          <div class="camera-buttons">
+            <button id="orbit-left" type="button">Orbit left</button>
+            <button id="orbit-up" type="button">Orbit up</button>
+            <button id="orbit-right" type="button">Orbit right</button>
+            <button id="zoom-in" type="button">Zoom in</button>
+            <button id="orbit-down" type="button">Orbit down</button>
+            <button id="zoom-out" type="button">Zoom out</button>
+          </div>
+          <p id="camera-help">Focus the scene: arrow keys orbit, I zooms in, O zooms out. Or use these buttons. Camera movement stops at the view limits.</p>
+        </section>
+      </div>
 
       <footer id="dock" class="dock">
         <button id="play-button" type="button" aria-pressed="true">Pause</button>
