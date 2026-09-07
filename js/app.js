@@ -85,6 +85,7 @@ const world = new THREE.Vector3();
 const projected = new THREE.Vector3();
 const focusPoint = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
+const previousFocusTarget = new THREE.Vector3();
 const parentPoint = new THREE.Vector3();
 const transitionStartOffset = new THREE.Vector3();
 const transitionTargetOffset = new THREE.Vector3();
@@ -1177,13 +1178,30 @@ function tick(now) {
   const elapsed = elapsedSeconds(now, lastStamp);
   const cameraDt = Math.min(0.05, elapsed);
   lastStamp = now;
-  state.days = advanceSimulationDays(
+  const nextDays = advanceSimulationDays(
     state.days,
     elapsed,
     state.daysPerSecond,
     state.playing,
   );
+  const movingFocus = nextDays !== state.days
+    && !earthSkyLook
+    && state.focusedId !== "sun"
+    && scaleLayer(state.distance) === "solar"
+    ? nodes.get(state.focusedId) : null;
+  if (movingFocus) {
+    movingFocus.mesh.getWorldPosition(previousFocusTarget);
+    // Exclude the display-root handoff translation, which updateBodies resets.
+    previousFocusTarget.sub(nodes.get("sun").pivot.position);
+  }
+  state.days = nextDays;
   updateBodies();
+  if (movingFocus) {
+    movingFocus.mesh.getWorldPosition(desiredTarget);
+    desiredTarget.sub(nodes.get("sun").pivot.position);
+    // Carry orbital motion before applying the unchanged selection easing.
+    focusPoint.add(desiredTarget.sub(previousFocusTarget));
+  }
   asteroidBelt.rotation.y = state.days * (Math.PI * 2) / 1682;
   kuiperBelt.rotation.y = state.days * (Math.PI * 2) / 90560;
   paintScaleLayer();

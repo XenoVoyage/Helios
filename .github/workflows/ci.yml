@@ -131,3 +131,57 @@ jobs:
           path: visual-stills/
           if-no-files-found: warn
           retention-days: 7
+
+  focus-history:
+    name: focus-history
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.base_ref == 'develop' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out focus capture harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: harness
+          persist-credentials: false
+
+      - name: Check out issue 59 historical baseline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: c1f76d63c06853f8012569d2c19df6f499788a3c
+          path: historical
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install capture dependencies
+        working-directory: harness
+        run: npm ci
+
+      - name: Install browser
+        working-directory: harness
+        run: npx playwright install --with-deps chromium
+
+      - name: Capture historical focus sequences
+        working-directory: harness
+        run: >-
+          node tests/visual-capture.mjs
+          --source-root ../historical
+          --output ../focus-history
+          --source-label historical
+          --group focus
+
+      - name: Upload historical focus evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: helios-focus-history
+          path: focus-history/
+          if-no-files-found: warn
+          retention-days: 7
