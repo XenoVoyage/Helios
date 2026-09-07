@@ -169,15 +169,31 @@ async function auditLayout(page, label) {
     assert.equal(item.hit, true, `${label}: control is reachable ${JSON.stringify(item)}`);
   }
   if (await page.locator("#body-card").isVisible()) {
+    if (!expanded) {
+      const layout = await page.locator("#body-card").evaluate((card) => {
+        const box = card.getBoundingClientRect();
+        return {
+          clientHeight: card.clientHeight,
+          scrollHeight: card.scrollHeight,
+          helpersInside: [...card.querySelectorAll(".helper-toggles button")].every((button) => {
+            const helper = button.getBoundingClientRect();
+            return helper.top >= box.top && helper.bottom <= box.bottom
+              && helper.left >= box.left && helper.right <= box.right;
+          }),
+        };
+      });
+      assert.ok(layout.scrollHeight <= layout.clientHeight + 1, `${label}: closed Camera preserves unclipped card content ${JSON.stringify(layout)}`);
+      assert.equal(layout.helpersInside, true, `${label}: closed Camera keeps every helper inside the card before scrolling`);
+    }
     for (const id of ["helper-orbit", "helper-axis", "helper-spin"]) {
       const button = page.locator(`#${id}`);
-      await button.scrollIntoViewIfNeeded();
+      if (expanded) await button.scrollIntoViewIfNeeded();
       const reachable = await button.evaluate((element) => {
         const box = element.getBoundingClientRect();
         const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
         return hit === element || element.contains(hit);
       });
-      assert.equal(reachable, true, `${label}: selected ${id} remains reachable by scrolling the card`);
+      assert.equal(reachable, true, `${label}: selected ${id} remains reachable ${expanded ? "after scrolling" : "without scrolling"} the card`);
     }
     await page.locator("#body-card").evaluate((card) => { card.scrollTop = 0; });
   }

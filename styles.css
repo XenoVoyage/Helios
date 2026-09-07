@@ -453,13 +453,22 @@ input[type="range"] {
 @media (max-width: 720px) and (orientation: portrait) {
   #stage:has(#camera-controls:not([hidden])) .card {
     --camera-card-gap: 24px;
+    --camera-card-top: 52px;
     bottom: calc(max(168px, var(--dock-clearance) + var(--camera-clearance) + var(--camera-card-gap)) + env(safe-area-inset-bottom));
-    max-height: calc(100dvh - max(168px, var(--dock-clearance) + var(--camera-clearance) + var(--camera-card-gap)) - 72px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    max-height: calc(100dvh - max(168px, var(--dock-clearance) + var(--camera-clearance) + var(--camera-card-gap)) - var(--camera-card-top) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     overflow: auto;
   }
 
   #stage:has(#camera-panel:not([hidden])) .card {
     --camera-card-gap: 40px;
+    --camera-card-top: 72px;
+  }
+}
+
+@media (orientation: portrait) and (max-height: 680px) and (max-width: 360px) {
+  #stage:has(#camera-controls:not([hidden])):has(#camera-panel[hidden]) .card {
+    padding-top: 10px;
+    padding-bottom: 10px;
   }
 }
 

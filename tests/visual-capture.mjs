@@ -68,6 +68,8 @@ for (const [prefix, ids] of [["desktop", moonIds], ["touch-portrait", touchMoons
 }
 for (const seat of ["front", "back"]) expect(`desktop-saturn-rings-${seat}`);
 for (const action of ["button", "escape"]) expect(`desktop-sky-${action}`);
+for (const seat of ["a", "b"]) expect(`supplement-triton-rotation-${seat}`);
+for (const scene of ["overview-reset", "milkyway"]) expect(`supplement-${scene}-settled`);
 for (const body of BODIES) {
   for (const seat of ["framed", "intermediate", "zoom-back-out"]) {
     if (["uranus", "neptune"].includes(body.id) && seat === "framed") continue;
@@ -76,7 +78,7 @@ for (const body of BODIES) {
 }
 const responsiveSizes = [[320, 568], [568, 320], [390, 844], [844, 390], [768, 1024], [1024, 768]];
 for (const [width, height] of responsiveSizes) expect(`supplement-responsive-${width}x${height}`);
-assert.equal(expected.size, 200);
+assert.equal(expected.size, 204);
 const completeMatrix = [...expected];
 const groupFor = (name) => {
   if (name.includes("-moon-parent-")) return name.startsWith("desktop-") ? "desktop-moons" : "touch-moons";
@@ -84,7 +86,7 @@ const groupFor = (name) => {
   return "other";
 };
 for (const name of expected) if (group !== "all" && groupFor(name) !== group) expected.delete(name);
-assert.equal(expected.size, { all: 200, bodies: 69, "desktop-moons": 56, "touch-moons": 26, other: 49 }[group]);
+assert.equal(expected.size, { all: 204, bodies: 69, "desktop-moons": 56, "touch-moons": 26, other: 53 }[group]);
 
 if (inventoryOnly) {
   console.log(JSON.stringify({
@@ -573,6 +575,67 @@ async function ringsAndSky() {
   }
 }
 
+async function controlledLegacyViews() {
+  const page = await newPage();
+  try {
+    await select(page, "triton");
+    await advance(page, 1500);
+    await click(page, "#card-close");
+    const referenceDragPixels = page.viewportSize().width * 0.44;
+    await orbit(page, referenceDragPixels);
+    await wheel(page, -1200);
+    const framing = { referenceDragPixels, referenceWheelDelta: -1200, initialSimulation: "J2000; paused before the first application tick" };
+    await capture(page, "supplement-triton-rotation-a", framing);
+    // Match the regular Triton still's public slider input, recording any
+    // range-input step rounding instead of asserting an exact half rotation.
+    const speed = await page.locator("#speed-slider").evaluate((slider, { minimum, maximum, target }) => {
+      slider.value = String((Math.log(target) - Math.log(minimum)) / (Math.log(maximum) - Math.log(minimum)));
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+      return {
+        requestedDaysPerSecond: target,
+        sliderValue: Number(slider.value),
+        effectiveDaysPerSecond: Math.exp(Math.log(minimum) + (Math.log(maximum) - Math.log(minimum)) * Number(slider.value)),
+        accessibleValue: slider.getAttribute("aria-valuetext"),
+      };
+    }, { minimum: CONFIG.minDaysPerSecond, maximum: CONFIG.maxDaysPerSecond, target: 5.876994 });
+    states.get(page).inputs.push({ at: states.get(page).elapsed, kind: "public speed slider input", ...speed });
+    // Start after an application frame so different page-load durations cannot
+    // add or remove one playing frame from the paired 500ms interval.
+    await page.evaluate(() => {
+      globalThis.__heliosVisualTimedPlayback = { scheduledAt: performance.now() };
+      requestAnimationFrame(() => {
+        const play = document.querySelector("#play-button");
+        play.click();
+        Object.assign(globalThis.__heliosVisualTimedPlayback, { startedAt: performance.now(), startedPlaying: play.getAttribute("aria-pressed") });
+        setTimeout(() => {
+          play.click();
+          Object.assign(globalThis.__heliosVisualTimedPlayback, { endedAt: performance.now(), endedPlaying: play.getAttribute("aria-pressed") });
+        }, 500);
+      });
+    });
+    await advance(page, 516);
+    const playback = await page.evaluate(() => globalThis.__heliosVisualTimedPlayback);
+    assert.equal(playback.startedPlaying, "true");
+    assert.equal(playback.endedPlaying, "false");
+    assert.equal(playback.endedAt - playback.startedAt, 500, "Triton runs for exactly 500 controlled browser milliseconds");
+    states.get(page).inputs.push({ at: states.get(page).elapsed - 516, kind: "frame-aligned public Play/Pause clicks", ...playback });
+    await capture(page, "supplement-triton-rotation-b", { ...framing, speed, playback, controlledPlayingMilliseconds: 500 });
+  } finally { await closePage(page); }
+  for (const look of ["overview-reset", "milkyway"]) {
+    const scene = await newPage(false, [1440, 900], look === "milkyway" ? "?look=milkyway" : "");
+    try {
+      if (look === "overview-reset") {
+        await select(scene, "earth");
+        await settle(scene);
+        await click(scene, "#reset-button");
+      } else {
+        assert.equal(await scene.getAttribute("html", "data-galaxy-ready"), "1");
+      }
+      await capture(scene, `supplement-${look}-settled`, { requestedLook: look, initialSimulation: "J2000; paused before the first application tick" });
+    } finally { await closePage(scene); }
+  }
+}
+
 async function responsive() {
   for (const size of responsiveSizes) await scenario(`responsive ${size.join("x")}`, async () => {
     const page = await newPage(true, size);
@@ -609,6 +672,7 @@ try {
   }
   if (["all", "other"].includes(group)) {
     await scenario("Saturn and Earth sky", ringsAndSky);
+    await scenario("Controlled regular Triton, overview and Milky Way references", controlledLegacyViews);
     await responsive();
   }
 } catch (error) {
