@@ -119,7 +119,7 @@ assert.match(provenance, /p Eridani/);
 assert.match(provenance, /first non-empty `proper`/);
 assert.match(
   provenance,
-  /^The latest source evidence recorded in this ledger is dated 2026-09-03;\nsource-specific retrieval and check dates are recorded per entry when known\./m,
+  /^The latest source evidence recorded in this ledger is dated 2026-09-07;\nsource-specific retrieval and check dates are recorded per entry when known\./m,
 );
 assert.match(provenance, /`round\(float\(ra\) \* 15, 5\)`/);
 assert.match(provenance, /`round\(float\(dec\), 5\)`/);
