@@ -1,9 +1,10 @@
 import { createServer } from "node:http";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isPublishedPath } from "../scripts/stage-site.mjs";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = await realpath(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."));
 const basePath = "/Helios/";
 const hostname = "127.0.0.1";
 const port = Number(process.env.PORT || 4173);
@@ -13,6 +14,7 @@ const mimeTypes = new Map([
   [".js", "text/javascript; charset=utf-8"],
   [".json", "application/json; charset=utf-8"],
   [".mjs", "text/javascript; charset=utf-8"],
+  [".md", "text/plain; charset=utf-8"],
   [".jpg", "image/jpeg"],
   [".jpeg", "image/jpeg"],
   [".png", "image/png"],
@@ -60,9 +62,21 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (!isPublishedPath(path.relative(root, target))) {
+    send(response, 404, "Not found");
+    return;
+  }
+
   try {
     const details = await stat(target);
     if (details.isDirectory()) target = path.join(target, "index.html");
+    // Staging rejects links too, including links through a parent directory.
+    if (await realpath(target) !== target
+      || !isPublishedPath(path.relative(root, target))
+      || !(await stat(target)).isFile()) {
+      send(response, 404, "Not found");
+      return;
+    }
     const body = request.method === "HEAD" ? "" : await readFile(target);
     const contentType = mimeTypes.get(path.extname(target).toLowerCase()) ?? "application/octet-stream";
     send(response, 200, body, { "Content-Type": contentType });

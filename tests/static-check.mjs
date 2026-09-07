@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BODIES } from "../js/bodies.js";
 import { CONFIG } from "../js/config.js";
+import { publishPaths } from "../scripts/stage-site.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const remote = /cdn\.|jsdelivr|unpkg|googleapis|cloudflare|fastly|analytics|gtag|telemetry/i;
@@ -238,8 +239,11 @@ assert.match(pullRequestTemplate, /issue branch → develop/);
 assert.match(pullRequestTemplate, /develop → main release/);
 assert.match(pullRequestTemplate, /hotfix\/\* → main/);
 assert.match(pullRequestTemplate, /Candidate commit and tree/);
-assert.match(pagesWorkflow, /cp index\.html styles\.css \.nojekyll LICENSE PROVENANCE\.md _site\//);
-assert.match(pagesWorkflow, /cp -R assets js vendor _site\//);
+assert.deepEqual(publishPaths, [
+  "index.html", "styles.css", ".nojekyll", "LICENSE", "PROVENANCE.md",
+  "assets/", "js/", "vendor/",
+]);
+assert.match(pagesWorkflow, /run: node scripts\/stage-site\.mjs/);
 assert.match(pagesWorkflow, /path: _site/);
 assert.match(pagesWorkflow, /actions\/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9/);
 assert.match(pagesWorkflow, /include-hidden-files: true/);
