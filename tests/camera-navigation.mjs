@@ -17,27 +17,68 @@ const controls = [
   ["zoom-out", "Zoom out", "o"],
 ];
 
+const hierarchyText = {
+  solar: /^Solar system\./,
+  transition: /^Leaving the solar system/,
+  milkyway: /^Milky Way\./,
+  neighborhood: /^Nearby galaxies\./,
+  localgroup: /^Local Group\./,
+  virgo: /^Virgo Cluster\./,
+  virgoSupercluster: /^Local \(Virgo\) Supercluster\./,
+  laniakea: /^Laniakea Supercluster\./,
+  web: /^2MRS galaxy distribution\./,
+  cmb: /^Cosmic microwave background\./,
+  universe: /^Schematic observable universe\./,
+};
+
+function cmbViewDistance() {
+  const seats = Array.from({ length: 101 }, (_, index) => CONFIG.webViewDistance
+    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * index / 100)
+    .filter((distance) => sceneHierarchyId(distance) === "cmb");
+  assert.ok(seats.length, "the CMB transition has a supported camera interval");
+  return (seats[0] + seats.at(-1)) / 2;
+}
+
 async function settled(page) {
-  await page.waitForFunction(() => document.querySelector("#viewport")?.getAttribute("aria-busy") === "false");
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  // Step real application frames only when observing a result. Otherwise idle
+  // software WebGL frames dominate the regression suite's running time.
+  for (let frame = 0; frame < 120; frame += 1) {
+    await page.clock.fastForward(50);
+    if (await page.locator("#viewport").getAttribute("aria-busy") === "false") return;
+  }
+  throw new Error("camera focus transition did not settle");
 }
 
 async function activate(page, id, touch) {
   await page.locator(`#${id}`)[touch ? "tap" : "click"]();
-  await settled(page);
+}
+
+async function openReady(page, url, touch = false) {
+  await page.clock.resume();
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.waitForFunction(() => document.documentElement.dataset.heliosReady === "1");
+  if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") await activate(page, "play-button", touch);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
 }
 
 async function canvasSample(page) {
   // Read only rendered pixels in an animation frame; no application state hooks.
-  await settled(page);
-  return page.locator("#viewport").evaluate((canvas) => new Promise((resolve) => requestAnimationFrame(() => {
-    const sample = document.createElement("canvas");
-    sample.width = 128;
-    sample.height = 96;
-    const context = sample.getContext("2d", { willReadFrequently: true });
-    context.drawImage(canvas, 0, 0, sample.width, sample.height);
-    resolve([...context.getImageData(0, 0, sample.width, sample.height).data]);
-  })));
+  const pending = await page.locator("#viewport").evaluateHandle((canvas) => ({
+    sample: new Promise((resolve) => requestAnimationFrame(() => {
+      const sample = document.createElement("canvas");
+      sample.width = 128;
+      sample.height = 96;
+      const context = sample.getContext("2d", { willReadFrequently: true });
+      context.drawImage(canvas, 0, 0, sample.width, sample.height);
+      resolve([...context.getImageData(0, 0, sample.width, sample.height).data]);
+    })),
+  }));
+  try {
+    await page.clock.fastForward(50);
+    return await pending.evaluate(({ sample }) => sample);
+  } finally {
+    await pending.dispose();
+  }
 }
 
 function pixelDifference(before, after) {
@@ -49,14 +90,30 @@ function pixelDifference(before, after) {
 }
 
 async function stableSample(page) {
+  await settled(page);
   let before = await canvasSample(page);
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    await page.waitForTimeout(100);
     const after = await canvasSample(page);
     if (pixelDifference(before, after) <= 0.03) return after;
     before = after;
   }
   throw new Error("camera rendering did not settle before comparison");
+}
+
+async function projection(page) {
+  await settled(page);
+  // These are the user's visible projected body labels, not internal camera
+  // state. Their positions distinguish all six orbit/zoom directions.
+  return page.locator("[data-body-id]:visible").evaluateAll((labels) => labels.map((label) => {
+    const box = label.getBoundingClientRect();
+    return { id: label.dataset.bodyId, x: box.x, y: box.y };
+  }));
+}
+
+function projectionDifference(before, after) {
+  if (before.length !== after.length || before.some((item, index) => item.id !== after[index].id)) return Infinity;
+  assert.ok(before.length >= 2, "camera comparison has multiple visible body anchors");
+  return Math.max(...before.map((item, index) => Math.hypot(item.x - after[index].x, item.y - after[index].y)));
 }
 
 async function auditLayout(page, label) {
@@ -70,7 +127,8 @@ async function auditLayout(page, label) {
       }).map((element) => element.id || element.className);
   });
   assert.deepEqual(overlaps, [], `${label}: camera controls clear card, header, dock, and credits`);
-  const audit = await page.locator("#camera-toggle, #camera-panel button").evaluateAll((buttons) => buttons.map((button) => {
+  const expanded = await page.locator("#camera-toggle").getAttribute("aria-expanded") === "true";
+  const audit = await page.locator("#camera-toggle, #camera-panel:not([hidden]) button").evaluateAll((buttons) => buttons.map((button) => {
     const box = button.getBoundingClientRect();
     const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
     return {
@@ -81,11 +139,24 @@ async function auditLayout(page, label) {
       hit: hit === button || button.contains(hit),
     };
   }));
-  assert.equal(audit.length, 7);
+  assert.equal(audit.length, expanded ? 7 : 1);
   for (const item of audit) {
     assert.ok(item.width >= 44 && item.height >= 44, `${label}: 44px control ${JSON.stringify(item)}`);
     assert.equal(item.inside, true, `${label}: control stays in viewport ${JSON.stringify(item)}`);
     assert.equal(item.hit, true, `${label}: control is reachable ${JSON.stringify(item)}`);
+  }
+  if (await page.locator("#body-card").isVisible()) {
+    for (const id of ["helper-orbit", "helper-axis", "helper-spin"]) {
+      const button = page.locator(`#${id}`);
+      await button.scrollIntoViewIfNeeded();
+      const reachable = await button.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return hit === element || element.contains(hit);
+      });
+      assert.equal(reachable, true, `${label}: selected ${id} remains reachable by scrolling the card`);
+    }
+    await page.locator("#body-card").evaluate((card) => { card.scrollTop = 0; });
   }
   return audit;
 }
@@ -125,22 +196,25 @@ async function wheel(page, deltaY) {
   assert.ok(point, "wheel reference has an unobstructed canvas point");
   await page.mouse.move(point.x, point.y);
   await page.mouse.wheel(0, deltaY);
-  await page.waitForTimeout(50);
 }
 
 async function auditDirections(page, touch, label) {
   const canvas = page.locator("#viewport");
+  const full = label === "desktop";
   for (const [id, name, key, dx, dy] of controls) {
     await activate(page, "reset-button", touch);
-    const before = await stableSample(page);
+    const before = await projection(page);
+    const pixels = full ? await canvasSample(page) : null;
     await activate(page, id, touch);
-    const byButton = await stableSample(page);
-    assert.ok(pixelDifference(before, byButton) > 0.05, `${label}: ${name} changes the view`);
+    const byButton = await projection(page);
+    assert.ok(projectionDifference(before, byButton) > 0.1, `${label}: ${name} changes the view`);
+    if (full) assert.ok(pixelDifference(pixels, await canvasSample(page)) > 0.05, `${label}: ${name} changes rendered pixels`);
     await activate(page, "reset-button", touch);
     await canvas.focus();
     await page.keyboard.press(key);
-    const byKey = await stableSample(page);
-    assert.ok(pixelDifference(byButton, byKey) < 0.1, `${label}: ${name} key and button agree`);
+    const byKey = await projection(page);
+    assert.ok(projectionDifference(byButton, byKey) < 0.1, `${label}: ${name} key and button agree`);
+    if (!full) continue;
     await activate(page, "reset-button", touch);
     if (dx !== undefined) {
       await pointerOrbit(page, dx * CONFIG.cameraOrbitStep / 0.12, dy * CONFIG.cameraOrbitStep / 0.12);
@@ -148,11 +222,14 @@ async function auditDirections(page, touch, label) {
       const multiplier = id === "zoom-in" ? 1 / CONFIG.cameraZoomFactor : CONFIG.cameraZoomFactor;
       await wheel(page, Math.log(multiplier) / 0.0016);
     }
-    const byPointer = await stableSample(page);
-    assert.ok(pixelDifference(byButton, byPointer) < 0.1, `${label}: ${name} preserves existing pointer direction and step`);
+    const byPointer = await projection(page);
+    assert.ok(projectionDifference(byButton, byPointer) < 0.1, `${label}: ${name} preserves existing pointer direction and step`);
   }
+  // Modifier, Caps Lock, repeat and clamp behavior does not depend on layout.
+  // The four viewport passes above still exercise every button/tap and key.
+  if (!full) return;
   await activate(page, "reset-button", touch);
-  const initial = await stableSample(page);
+  const initial = await projection(page);
   await canvas.focus();
   const ignored = await canvas.evaluate((element, keys) => {
     const observations = [];
@@ -166,7 +243,7 @@ async function auditDirections(page, touch, label) {
     return observations;
   }, controls.map(([, , key]) => key));
   assert.ok(ignored.every((event) => !event.prevented), `${label}: modified/composing events retain browser defaults: ${JSON.stringify(ignored)}`);
-  assert.ok(pixelDifference(initial, await stableSample(page)) < 0.1, `${label}: modified camera keys are ignored`);
+  assert.ok(projectionDifference(initial, await projection(page)) < 0.1, `${label}: modified camera keys are ignored`);
   for (const [upper, lower] of [["I", "i"], ["O", "o"]]) {
     await activate(page, "reset-button", touch);
     await canvas.focus();
@@ -176,39 +253,39 @@ async function auditDirections(page, touch, label) {
       return event.defaultPrevented;
     }, upper);
     assert.equal(prevented, true, `${label}: unmodified Caps Lock ${upper} is handled`);
-    const capsLock = await stableSample(page);
+    const capsLock = await projection(page);
     await activate(page, "reset-button", touch);
     await canvas.focus();
     await page.keyboard.press(lower);
-    assert.ok(pixelDifference(capsLock, await stableSample(page)) < 0.1, `${label}: Caps Lock ${upper} agrees with ${lower}`);
+    assert.ok(projectionDifference(capsLock, await projection(page)) < 0.1, `${label}: Caps Lock ${upper} agrees with ${lower}`);
   }
   await activate(page, "reset-button", touch);
   await canvas.focus();
   await page.keyboard.down("ArrowLeft");
-  const first = await stableSample(page);
+  const first = await projection(page);
   await page.keyboard.down("ArrowLeft");
   await page.keyboard.up("ArrowLeft");
-  assert.ok(pixelDifference(first, await stableSample(page)) > 0.05, `${label}: held-key repeat continues orbiting`);
+  assert.ok(projectionDifference(first, await projection(page)) > 0.1, `${label}: held-key repeat continues orbiting`);
   for (const [key, reverse] of [["ArrowUp", "ArrowDown"], ["ArrowDown", "ArrowUp"]]) {
     for (let index = 0; index < 25; index += 1) await page.keyboard.press(key);
-    const limit = await stableSample(page);
+    const limit = await projection(page);
     await page.keyboard.press(key);
-    assert.ok(pixelDifference(limit, await stableSample(page)) < 0.1, `${label}: elevation clamps at ${key} boundary`);
+    assert.ok(projectionDifference(limit, await projection(page)) < 0.1, `${label}: elevation clamps at ${key} boundary`);
     await page.keyboard.press(reverse);
-    assert.ok(pixelDifference(limit, await stableSample(page)) > 0.05, `${label}: orbit can leave ${key} boundary`);
+    assert.ok(projectionDifference(limit, await projection(page)) > 0.1, `${label}: orbit can leave ${key} boundary`);
   }
 }
 
 async function auditShortcutIsolation(page, touch, label) {
   await activate(page, "reset-button", touch);
-  const before = await stableSample(page);
+  const before = await projection(page);
   const mode = await page.locator("#sky-mode").inputValue();
   for (const selector of ["#speed-slider", "#sky-mode", "#camera-toggle", "#orbit-left", "#reset-button", "#version-label"]) {
     await page.locator(selector).focus();
     for (const [, , key] of controls) await page.keyboard.press(key);
     await page.locator("#sky-mode").selectOption(mode);
   }
-  assert.ok(pixelDifference(before, await stableSample(page)) < 0.1, `${label}: controls and links keep their native keys`);
+  assert.ok(projectionDifference(before, await projection(page)) < 0.1, `${label}: controls and links keep their native keys`);
   const slider = page.locator("#speed-slider");
   await slider.focus();
   const speed = await slider.inputValue();
@@ -228,18 +305,37 @@ async function auditShortcutIsolation(page, touch, label) {
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("Escape");
   assert.match(await page.locator("#status-live").textContent(), /Returned to the overview/);
-  assert.ok(pixelDifference(before, await stableSample(page)) < 0.1, `${label}: Escape still resets the camera`);
+  assert.ok(projectionDifference(before, await projection(page)) < 0.1, `${label}: Escape still resets the camera`);
+}
+
+async function traverseRange(page, touch, label, direction) {
+  let distance = direction === 1 ? CONFIG.cameraDistance : CONFIG.maxDistance;
+  const limit = direction === 1 ? CONFIG.maxDistance : CONFIG.minDistance;
+  const steps = Math.ceil(Math.abs(Math.log(limit / distance)) / Math.log(CONFIG.cameraZoomFactor)) + 2;
+  const observed = [];
+  let previous;
+  for (let index = 0; index < steps; index += 1) {
+    if (direction === 1) await activate(page, "zoom-out", touch);
+    else await page.keyboard.press("i");
+    distance = Math.max(CONFIG.minDistance, Math.min(CONFIG.maxDistance, distance * CONFIG.cameraZoomFactor ** direction));
+    const hierarchy = sceneHierarchyId(distance);
+    // Preserve every native input. Observe the first step across each hierarchy
+    // boundary and the final clamp; identical-stage intermediate frames add no
+    // distinct scale-transition coverage.
+    if (hierarchy !== previous || index === steps - 1) {
+      await settled(page);
+      const description = await page.locator("#scene-context").textContent();
+      assert.match(description, hierarchyText[hierarchy], `${label}: zoom ${direction} step ${index + 1} enters ${hierarchy}`);
+      observed.push(description);
+    }
+    previous = hierarchy;
+  }
+  return observed;
 }
 
 async function auditRange(page, touch, label, save) {
   await activate(page, "reset-button", touch);
-  const outward = [];
-  const inward = [];
-  const zoomSteps = Math.ceil(Math.log(CONFIG.maxDistance / CONFIG.cameraDistance) / Math.log(CONFIG.cameraZoomFactor)) + 2;
-  for (let index = 0; index < zoomSteps; index += 1) {
-    await activate(page, "zoom-out", touch);
-    outward.push(await page.locator("#scene-context").textContent());
-  }
+  const outward = await traverseRange(page, touch, label, 1);
   for (const layer of ["Milky Way", "Nearby galaxies", "Local Group", "Local (Virgo) Supercluster", "Laniakea", "2MRS", "observable universe"]) {
     assert.ok(outward.some((text) => text.includes(layer)), `${label}: single-pointer zoom crosses ${layer}`);
   }
@@ -251,13 +347,21 @@ async function auditRange(page, touch, label, save) {
   await wheel(page, 100_000);
   assert.ok(pixelDifference(maximum, await stableSample(page)) < 0.1, `${label}: button maximum agrees with existing wheel limit`);
   await save("maximum");
+  // The fixed 1.25x steps from the maximum skip the narrow CMB interval. Seat
+  // there through the public wheel, then cross both of its edges in both
+  // directions with keyboard input at every viewport size.
+  await wheel(page, Math.log(cmbViewDistance() / CONFIG.maxDistance) / 0.0016);
+  await settled(page);
+  assert.match(await page.locator("#scene-context").textContent(), hierarchyText.cmb);
+  await save("cmb");
   await page.locator("#viewport").focus();
-  const inwardSteps = Math.ceil(Math.log(CONFIG.maxDistance / CONFIG.minDistance) / Math.log(CONFIG.cameraZoomFactor)) + 2;
-  for (let index = 0; index < inwardSteps; index += 1) {
-    await page.keyboard.press("i");
+  for (const [key, hierarchy] of [["i", "web"], ["o", "cmb"], ["o", "universe"], ["i", "cmb"]]) {
+    await page.keyboard.press(key);
     await settled(page);
-    inward.push(await page.locator("#scene-context").textContent());
+    assert.match(await page.locator("#scene-context").textContent(), hierarchyText[hierarchy], `${label}: ${key} crosses CMB boundary into ${hierarchy}`);
   }
+  await wheel(page, 100_000);
+  const inward = await traverseRange(page, touch, label, -1);
   assert.match(inward.at(-1), /Solar system.*Focused on the Sun/);
   for (const layer of ["2MRS", "Laniakea", "Local (Virgo) Supercluster", "Local Group", "Nearby galaxies", "Milky Way"]) {
     assert.ok(inward.some((text) => text.includes(layer)), `${label}: keyboard zoom returns through ${layer}`);
@@ -315,26 +419,28 @@ async function auditSelectedLayouts(page, label, touch, save) {
     assert.equal(await page.locator("#body-card").isVisible(), true);
     assert.equal(await page.locator("#card-name").textContent(), "Earth");
     const name = `selected-earth-${viewport.width}x${viewport.height}`;
-    evidence.push({ ...viewport, controls: await auditLayout(page, `${label} ${name}`) });
-    await save(name);
+    for (const expanded of [true, false]) {
+      if ((await page.locator("#camera-toggle").getAttribute("aria-expanded") === "true") !== expanded) {
+        await activate(page, "camera-toggle", touch);
+        await settled(page);
+      }
+      const panel = expanded ? "open" : "closed";
+      evidence.push({ ...viewport, panel, controls: await auditLayout(page, `${label} ${name} ${panel}`) });
+      await save(`${name}-${panel}`);
+    }
   }
   await page.setViewportSize(original);
   await activate(page, "reset-button", touch);
+  await activate(page, "camera-toggle", touch);
   return evidence;
 }
 
 async function auditFarControls(page, base, save) {
-  const cmbSeats = Array.from({ length: 101 }, (_, index) => CONFIG.webViewDistance
-    + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * index / 100)
-    .filter((distance) => sceneHierarchyId(distance) === "cmb");
-  assert.ok(cmbSeats.length, "the CMB transition has a supported camera interval");
-  const cmbDistance = (cmbSeats[0] + cmbSeats.at(-1)) / 2;
   for (const look of ["virgo", "cmb"]) {
-    await page.goto(`${base}?look=${look === "cmb" ? "web" : look}`, { waitUntil: "networkidle" });
-    await page.waitForFunction(() => document.documentElement.dataset.heliosReady === "1");
-    if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") await activate(page, "play-button", false);
-    if (look === "cmb") await wheel(page, Math.log(cmbDistance / CONFIG.webViewDistance) / 0.0016);
+    await openReady(page, `${base}?look=${look === "cmb" ? "web" : look}`);
+    if (look === "cmb") await wheel(page, Math.log(cmbViewDistance() / CONFIG.webViewDistance) / 0.0016);
     await activate(page, "camera-toggle", false);
+    await settled(page);
     assert.match(await page.locator("#scene-context").textContent(), look === "cmb" ? /Cosmic microwave background/ : /Virgo Cluster/);
     const initial = await stableSample(page);
     for (const [id, reverse] of [["orbit-left", "ArrowRight"], ["orbit-right", "ArrowLeft"], ["orbit-up", "ArrowDown"], ["orbit-down", "ArrowUp"]]) {
@@ -364,6 +470,8 @@ export async function auditCameraNavigation(browser, base, screenshotDir) {
   ]) {
     const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1, hasTouch: touch, isMobile: touch });
     const page = await context.newPage();
+    await page.clock.install();
+    const started = performance.now();
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
@@ -372,9 +480,7 @@ export async function auditCameraNavigation(browser, base, screenshotDir) {
       if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, `camera-${label}-${name}.png`) });
     };
     try {
-      await page.goto(base, { waitUntil: "networkidle" });
-      await page.waitForFunction(() => document.documentElement.dataset.heliosReady === "1");
-      await activate(page, "play-button", touch);
+      await openReady(page, base, touch);
       const toggle = page.locator("#camera-toggle");
       const panel = page.locator("#camera-panel");
       assert.equal(await toggle.getAttribute("aria-expanded"), "false");
@@ -419,14 +525,13 @@ export async function auditCameraNavigation(browser, base, screenshotDir) {
       assert.equal(await toggle.getAttribute("aria-expanded"), "false", `${label}: native Space closes exactly once`);
       await activate(page, "camera-toggle", touch);
       await auditDirections(page, touch, label);
-      await auditShortcutIsolation(page, touch, label);
+      if (label === "desktop") await auditShortcutIsolation(page, touch, label);
       const selectedLayouts = touch ? await auditSelectedLayouts(page, label, touch, save) : [];
       const range = await auditRange(page, touch, label, save);
       if (label === "desktop") {
         await auditBodyMinimums(page, save);
         await auditFarControls(page, base, save);
-        await page.goto(`${base}?look=sky`, { waitUntil: "networkidle" });
-        await page.waitForFunction(() => document.documentElement.dataset.heliosReady === "1");
+        await openReady(page, `${base}?look=sky`);
         assert.equal(await page.locator("#camera-controls").isHidden(), true);
         assert.equal(await page.locator("#viewport").getAttribute("aria-describedby"), "scene-context");
         assert.equal(await page.locator("#viewport").getAttribute("aria-keyshortcuts"), null);
@@ -437,7 +542,7 @@ export async function auditCameraNavigation(browser, base, screenshotDir) {
       }
       assert.deepEqual(errors, [], `${label}: camera navigation has no runtime, console, or network errors`);
       if (screenshotDir) await writeFile(path.join(screenshotDir, `camera-${label}-accessibility.json`), JSON.stringify({ label, width, height, touchEmulation: touch, closed, opened, layout, selectedLayouts, range }, null, 2) + "\n");
-      console.log(`camera navigation ${label} ${width}x${height} ok`);
+      console.log(`camera navigation ${label} ${width}x${height} ok (${((performance.now() - started) / 1000).toFixed(1)}s)`);
     } finally {
       await context.close();
     }

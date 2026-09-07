@@ -451,9 +451,9 @@ input[type="range"] {
 }
 
 @media (max-width: 720px) and (orientation: portrait) {
-  #stage:has(#camera-panel:not([hidden])) .card {
-    bottom: calc(var(--dock-clearance) + var(--camera-clearance) + 40px + env(safe-area-inset-bottom));
-    max-height: calc(100dvh - var(--dock-clearance) - var(--camera-clearance) - 112px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  #stage:has(#camera-controls:not([hidden])) .card {
+    bottom: calc(max(168px, var(--dock-clearance) + var(--camera-clearance) + 40px) + env(safe-area-inset-bottom));
+    max-height: calc(100dvh - max(168px, var(--dock-clearance) + var(--camera-clearance) + 40px) - 72px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     overflow: auto;
   }
 }
@@ -481,7 +481,8 @@ input[type="range"] {
   }
 }
 
-@media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 720px),
+  (orientation: portrait) and (max-height: 680px) and (max-width: 360px) {
   .camera-controls:has(#camera-panel:not([hidden])) {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -509,7 +510,9 @@ input[type="range"] {
     overflow: hidden;
     clip: rect(0 0 0 0);
   }
+}
 
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
   /* Keep the date under the brand word so a longer chrome label cannot
      push the topbar into the right-side card. */
   .topbar {
