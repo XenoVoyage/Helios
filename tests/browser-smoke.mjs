@@ -768,6 +768,217 @@ async function dispatchWheelZoom(page, from, to) {
   }, deltaY);
 }
 
+async function auditWheelDeltaModes(context, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  let observer, cdp;
+  const relativeGap = (a, b) => Math.max(...a.map((value, index) =>
+    Math.abs(value - b[index]) / Math.max(1, Math.abs(value), Math.abs(b[index]))));
+  const equal = (a, b, label) => {
+    const gap = relativeGap(a.geometry, b.geometry);
+    assert.ok(gap <= 1e-6,
+      `${label}: rendered camera gap ${gap} stays within 1e-6 relative/absolute tolerance`);
+    assert.deepEqual(a.ui, b.ui, `${label}: scene, focus, card and labels agree`);
+  };
+  try {
+    await openReady(page);
+    if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
+      await page.locator("#play-button").click();
+    }
+    await assertRenderedCanvas(page);
+    observer = await page.evaluateHandle(async () => {
+      // Observe matrices used by the real render; never read or change app state.
+      const THREE = await import(new URL("vendor/three.module.min.js", location.href).href);
+      const prototype = THREE.Scene.prototype;
+      const own = Object.getOwnPropertyDescriptor(prototype, "onAfterRender");
+      const original = prototype.onAfterRender;
+      const canvas = document.querySelector("#viewport");
+      const touchIds = new Set();
+      const recordTouch = (event) => { if (event.pointerType === "touch") touchIds.add(event.pointerId); };
+      canvas.addEventListener("pointerdown", recordTouch);
+      let serial = 0, latest = null;
+      prototype.onAfterRender = function (renderer, scene, camera) {
+        original.call(this, renderer, scene, camera);
+        latest = {
+          serial: ++serial,
+          geometry: [...camera.matrixWorld.elements, ...camera.projectionMatrix.elements],
+          ui: {
+            scene: document.querySelector("#scene-context").textContent,
+            cardHidden: document.querySelector("#body-card").hidden,
+            cardName: document.querySelector("#card-name").textContent,
+            active: [...document.querySelectorAll("[data-body-id].is-active")].map((node) => node.dataset.bodyId),
+            playing: document.querySelector("#play-button").getAttribute("aria-pressed"),
+          },
+          busy: canvas.getAttribute("aria-busy"),
+        };
+      };
+      return {
+        snapshot: () => latest,
+        touchCount: () => touchIds.size,
+        restore() {
+          if (own) Object.defineProperty(prototype, "onAfterRender", own);
+          else delete prototype.onAfterRender;
+          canvas.removeEventListener("pointerdown", recordTouch);
+        },
+      };
+    });
+    const settled = async () => {
+      let previous;
+      for (let attempt = 0; attempt < 180; attempt += 1) {
+        await waitForTwoAnimationFrames(page);
+        const current = await observer.evaluate((item) => item.snapshot());
+        assert.ok(current && current.geometry.every(Number.isFinite), "wheel retains a finite rendered camera");
+        assert.equal(current.ui.playing, "false", "wheel comparison remains paused");
+        if (previous && current.serial > previous.serial && current.busy === "false"
+          && relativeGap(previous.geometry, current.geometry) <= 1e-9) return current;
+        previous = current;
+      }
+      throw new Error("wheel camera did not settle");
+    };
+    const dispatch = async (deltaY, deltaMode = 0, ctrlKey = false) => {
+      const delivered = await page.locator("#viewport").evaluate((canvas, input) => {
+        const event = new WheelEvent("wheel", {
+          deltaY: Number.isFinite(input.deltaY) ? input.deltaY : 0,
+          deltaMode: input.deltaMode, ctrlKey: input.ctrlKey,
+          bubbles: true, cancelable: true,
+        });
+        // WebIDL may reject nonfinite constructor doubles. These robustness
+        // cases explicitly deliver an own property to the real handler.
+        if (!Number.isFinite(input.deltaY)) Object.defineProperty(event, "deltaY", { value: input.deltaY });
+        const accepted = canvas.dispatchEvent(event);
+        return { deltaY: event.deltaY, deltaMode: event.deltaMode,
+          prevented: event.defaultPrevented, accepted };
+      }, { deltaY, deltaMode, ctrlKey });
+      assert.ok(Object.is(delivered.deltaY, deltaY), "the intended wheel delta reached the browser handler");
+      assert.equal(delivered.deltaMode, deltaMode);
+      assert.equal(delivered.prevented, true, "wheel still prevents default, including ignored inputs");
+      assert.equal(delivered.accepted, false);
+    };
+    const reset = async () => {
+      await page.locator("#reset-button").click();
+      return settled();
+    };
+    const height = await page.locator("#viewport").evaluate((canvas) => canvas.clientHeight);
+    assert.ok(height > 0);
+    // Independent equivalents from the documented contract: a line is 16 CSS
+    // pixels; a page is the current canvas clientHeight. Do not call the helper
+    // being tested to generate expected values.
+    const equivalent = (pixels, mode) => pixels / [1, 16, height][mode];
+    const pixelSeat = async (from, to) => {
+      await dispatch(Math.log(to / from) / 0.0016);
+      return settled();
+    };
+    if (touch) {
+      await reset();
+      cdp = await context.newCDPSession(page);
+      const center = await unobstructedCanvasPoint(page,
+        [[0.5, 0.38], [0.5, 0.52], [0.5, 0.28]], 80);
+      assert.ok(center, "native two-touch wheel-suppression corridor is clear");
+      const points = (gap) => [0, 1].map((id) => ({ id,
+        x: center.x + (id ? 1 : -1) * gap / 2, y: center.y,
+        radiusX: 4, radiusY: 4, force: 1 }));
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: points(80) });
+      assert.equal(await observer.evaluate((item) => item.touchCount()), 2,
+        "two native touch pointers reached the canvas");
+      const before = await settled();
+      for (const mode of [0, 1, 2]) {
+        await dispatch(equivalent(48, mode), mode);
+        equal(before, await settled(), `mode ${mode}: wheel ignored during active pinch`);
+      }
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: points(160) });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      const pinched = await settled();
+      assert.ok(relativeGap(before.geometry, pinched.geometry) > 1e-5, "native pinch changes rendered zoom");
+      await reset();
+      await dispatch(Math.log(0.5) / 0.0016);
+      equal(pinched, await settled(), "80-to-160 pinch retains the existing half-distance result");
+      await dispatch(48);
+      assert.ok(relativeGap(pinched.geometry, (await settled()).geometry) > 1e-5,
+        "wheel responds again after touch release");
+    } else {
+      const focusFloor = async (id) => {
+        await reset();
+        await page.locator(`[data-body-id="${id}"]`).evaluate((label) => label.click());
+        await dispatch(-10000);
+        return settled();
+      };
+      const cases = [
+        { name: "solar outward", prepare: reset, pixels: 48, solar: /the Sun/ },
+        { name: "solar inward", prepare: reset, pixels: -48, solar: /the Sun/ },
+        { name: "Jupiter floor", prepare: () => focusFloor("jupiter"), pixels: -48, same: true, solar: /Jupiter/ },
+        { name: "leave Jupiter floor", prepare: () => focusFloor("jupiter"), pixels: 48, solar: /Jupiter/ },
+        { name: "selected Earth crosses Solar boundary", prepare: async () => {
+          await focusFloor("earth");
+          return pixelSeat(minimumFocusDistance(visualBodyRadius(findBody("earth"))),
+            CONFIG.solarMaxDistance / Math.exp(24 * 0.0016));
+        }, pixels: 48, extra: true },
+        { name: "return across Solar boundary", prepare: async () => {
+          await reset();
+          return pixelSeat(CONFIG.cameraDistance, CONFIG.solarMaxDistance * Math.exp(24 * 0.0016));
+        }, pixels: -48, solar: /the Sun/ },
+        { name: "maximum clamp", prepare: async () => {
+          await reset(); await dispatch(10000); return settled();
+        }, pixels: 48, same: true, maximum: true },
+        { name: "leave maximum", prepare: async () => {
+          await reset(); await dispatch(10000); return settled();
+        }, pixels: -48, maximum: true },
+      ];
+      for (const test of cases) {
+        let reference;
+        for (const mode of [0, 1, 2]) {
+          const before = await test.prepare();
+          await dispatch(equivalent(test.pixels, mode), mode);
+          const after = await settled();
+          if (test.same) equal(before, after, `${test.name}: finite limit holds`);
+          else assert.ok(relativeGap(before.geometry, after.geometry) > 1e-5, `${test.name}: input actually moves camera`);
+          if (test.solar) {
+            assert.match(after.ui.scene, /^Solar system\./);
+            assert.match(after.ui.scene, test.solar);
+          }
+          if (test.extra) {
+            assert.match(after.ui.scene, /^Leaving the solar system/);
+            assert.equal(after.ui.cardHidden, true, "outbound boundary clears the selected Earth card");
+          }
+          if (test.maximum) assert.match(after.ui.scene, /^Schematic observable universe\./);
+          if (reference) equal(reference, after, `${test.name}: pixel and mode ${mode} agree`);
+          else reference = after;
+        }
+      }
+      await reset();
+      const neutral = await settled();
+      for (const mode of [0, 1, 2]) {
+        for (const value of [0, NaN, Infinity, -Infinity]) {
+          await dispatch(value, mode);
+          equal(neutral, await settled(), `mode ${mode}: ${value} is a safe no-op`);
+        }
+      }
+      for (const direction of [-1, 1]) {
+        await reset(); await dispatch(direction * 10000);
+        const limit = await settled();
+        for (const mode of [0, 1, 2]) {
+          await reset(); await dispatch(direction * Number.MAX_VALUE, mode);
+          equal(limit, await settled(), `mode ${mode}: extreme input retains the finite ${direction} limit`);
+        }
+      }
+      await reset(); await dispatch(48); const ordinary = await settled();
+      await reset(); await dispatch(48, 0, true);
+      equal(ordinary, await settled(), "browser ctrl-wheel pinch retains the pixel curve");
+    }
+    assert.deepEqual(errors, [], `wheel delta modes ${touch ? "touch" : "desktop"} has no browser errors`);
+    console.log(`wheel delta modes ${touch ? "touch" : "desktop"} ok`);
+  } finally {
+    if (cdp) {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }).catch(() => {});
+      await cdp.detach().catch(() => {});
+    }
+    if (observer) {
+      await observer.evaluate((item) => item.restore()).catch(() => {});
+      await observer.dispose().catch(() => {});
+    }
+    await page.close();
+  }
+}
+
 async function waitForTwoAnimationFrames(page) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
     requestAnimationFrame(resolve);
@@ -2450,6 +2661,7 @@ try {
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
   });
+  await auditWheelDeltaModes(desktop);
   await auditCredits(desktop);
   await assertViewportBusyLifecycle(desktop, "desktop");
   // Check the issue's new pixel gate before the longer unchanged scale and
@@ -2575,6 +2787,7 @@ try {
     hasTouch: true,
     isMobile: true,
   });
+  await auditWheelDeltaModes(touch, true);
   await assertViewportBusyLifecycle(touch, "touch-portrait emulation");
   await assertOuterPlanetNightSides(touch, "touch-portrait", true);
   const touchControlPage = await touch.newPage();

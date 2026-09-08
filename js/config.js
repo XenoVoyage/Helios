@@ -15,7 +15,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.9.7c",
+  VERSION: "v2026.9.8",
   BRAND: "MarinsVoyage",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
@@ -114,6 +114,10 @@ export const CONFIG = Object.freeze({
   tapMovePx: 12,
   cameraOrbitStep: 0.12,
   cameraZoomFactor: 1.25,
+  // Canvas wheel convention: one text line is 16 CSS pixels; a page uses its height.
+  wheelLinePixels: 16,
+  // Beyond this delta every legal camera distance already reaches a zoom limit.
+  wheelMaxDeltaPixels: 10_000,
   focusLerp: 6,
   // Parent-safe moon focus flight rates; log radius is scale-independent.
   moonFocusRadialLogRatePerSecond: 2.5,
@@ -131,8 +135,17 @@ export function pinchZoomDistance(startDistance, startGap, gap) {
 }
 
 /** Mouse wheel and browser pinch both follow the platform's delivered direction. */
-export function wheelZoomMultiplier(deltaY) {
-  return Math.exp(deltaY * 0.0016);
+export function wheelZoomMultiplier(deltaY, deltaMode = 0, pageHeight = 0) {
+  if (!Number.isFinite(deltaY)) return 1;
+  const unit = deltaMode === 0 ? 1
+    : deltaMode === 1 ? CONFIG.wheelLinePixels
+      : deltaMode === 2 && Number.isFinite(pageHeight) && pageHeight > 0 ? pageHeight : 0;
+  if (!unit) return 1;
+  const pixels = Math.max(
+    -CONFIG.wheelMaxDeltaPixels,
+    Math.min(CONFIG.wheelMaxDeltaPixels, deltaY * unit),
+  );
+  return Math.exp(pixels * 0.0016);
 }
 
 /** Camera floor for the currently focused rendered globe. */
