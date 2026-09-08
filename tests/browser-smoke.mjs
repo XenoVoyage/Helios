@@ -768,7 +768,15 @@ async function dispatchWheelZoom(page, from, to) {
   }, deltaY);
 }
 
-async function auditWheelDeltaModes(context, touch = false) {
+async function auditWheelDeltaModes(browser, touch = false) {
+  // Desktop matrix/input checks keep CSS coordinates with a quarter-size buffer.
+  // This isolated audit produces no baseline screenshots.
+  const context = await browser.newContext({
+    viewport: touch ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+    deviceScaleFactor: touch ? 1 : 0.5,
+    hasTouch: touch,
+    isMobile: touch,
+  });
   const page = await context.newPage();
   const errors = captureErrors(page);
   let observer, cdp;
@@ -975,7 +983,7 @@ async function auditWheelDeltaModes(context, touch = false) {
       await observer.evaluate((item) => item.restore()).catch(() => {});
       await observer.dispose().catch(() => {});
     }
-    await page.close();
+    await context.close();
   }
 }
 
@@ -2661,7 +2669,7 @@ try {
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
   });
-  await auditWheelDeltaModes(desktop);
+  await auditWheelDeltaModes(browser);
   await auditCredits(desktop);
   await assertViewportBusyLifecycle(desktop, "desktop");
   // Check the issue's new pixel gate before the longer unchanged scale and
@@ -2787,7 +2795,7 @@ try {
     hasTouch: true,
     isMobile: true,
   });
-  await auditWheelDeltaModes(touch, true);
+  await auditWheelDeltaModes(browser, true);
   await assertViewportBusyLifecycle(touch, "touch-portrait emulation");
   await assertOuterPlanetNightSides(touch, "touch-portrait", true);
   const touchControlPage = await touch.newPage();
