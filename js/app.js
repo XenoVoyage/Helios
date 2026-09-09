@@ -751,7 +751,12 @@ function onPointerUp(event) {
 function onWheel(event) {
   event.preventDefault();
   if (state.pinching) return;
-  zoomTo(state.distance * wheelZoomMultiplier(event.deltaY));
+  const deltaMode = event.deltaMode;
+  zoomTo(state.distance * wheelZoomMultiplier(
+    event.deltaY,
+    deltaMode,
+    deltaMode === 2 ? ui.viewport.clientHeight : 0,
+  ));
 }
 
 function onKey(event) {

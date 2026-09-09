@@ -3057,6 +3057,72 @@ test("moon camera continuity ignores axial jitter and releases without a snap", 
   assert.deepEqual(continuity, { key: null, active: false });
 });
 
+test("wheel normalization preserves recorded pixel-mode zoom values exactly", () => {
+  // Recorded from the develop-base curve, including tiny trackpad and audit deltas.
+  const pixels = [
+    [-10_000, 1.1253517471925912e-7],
+    [-1000, 0.20189651799465538],
+    [-800, 0.27803730045319414],
+    [-120, 0.8253068684916824],
+    [-48, 0.9260750500962484],
+    [-3, 0.9952115015900972],
+    [-0.125, 0.9998000199986667],
+    [0, 1],
+    [0.125, 1.0002000200013335],
+    [3, 1.0048115384541396],
+    [48, 1.0798260895767233],
+    [120, 1.2116705169649005],
+    [800, 3.5966397255692817],
+    [1000, 4.953032424395115],
+    [10_000, 8886110.520507872],
+  ];
+  for (const [delta, expected] of pixels) {
+    assert.equal(wheelZoomMultiplier(delta), expected, `legacy pixel delta ${delta}`);
+    assert.equal(wheelZoomMultiplier(delta, 0, Number.NaN), expected);
+  }
+  assert.equal(wheelZoomMultiplier(-0), 1);
+});
+
+test("wheel line and page units produce equivalent pixel zoom", () => {
+  // Application convention: 16 CSS pixels per line; one page is the canvas height.
+  assert.equal(wheelZoomMultiplier(3, 1), 1.0798260895767233);
+  assert.equal(wheelZoomMultiplier(-3, 1), 0.9260750500962484);
+  for (const height of [320, 568, 768, 844, 900]) {
+    for (const pixels of [-900, -48, -0.125, 0, 0.125, 48, 900]) {
+      const expected = wheelZoomMultiplier(pixels);
+      for (const actual of [
+        wheelZoomMultiplier(pixels / 16, 1, Number.NaN),
+        wheelZoomMultiplier(pixels / height, 2, height),
+      ]) assert.ok(Math.abs(actual / expected - 1) <= 1e-12);
+    }
+    assert.equal(wheelZoomMultiplier(1, 2, height), wheelZoomMultiplier(height));
+  }
+});
+
+test("wheel extremes stay finite and invalid input has no zoom effect", () => {
+  const outward = wheelZoomMultiplier(10_000);
+  const inward = wheelZoomMultiplier(-10_000);
+  // Saturation cannot change any reachable unsaturated pixel-mode camera target.
+  assert.ok(CONFIG.minDistance * outward > CONFIG.maxDistance);
+  assert.ok(CONFIG.maxDistance * inward < CONFIG.minDistance);
+  for (const mode of [0, 1, 2]) {
+    for (const delta of [Number.NaN, Infinity, -Infinity]) {
+      assert.equal(wheelZoomMultiplier(delta, mode, 900), 1);
+    }
+    assert.equal(wheelZoomMultiplier(0, mode, 900), 1);
+    assert.equal(wheelZoomMultiplier(Number.MAX_VALUE, mode, 900), outward);
+    assert.equal(wheelZoomMultiplier(-Number.MAX_VALUE, mode, 900), inward);
+  }
+  assert.equal(wheelZoomMultiplier(2, 2, Number.MAX_VALUE), outward);
+  assert.equal(wheelZoomMultiplier(-2, 2, Number.MAX_VALUE), inward);
+  for (const height of [0, -1, Number.NaN, Infinity, -Infinity]) {
+    assert.equal(wheelZoomMultiplier(1, 2, height), 1);
+  }
+  for (const mode of [-1, 3, Number.NaN, Infinity]) {
+    assert.equal(wheelZoomMultiplier(48, mode, 900), 1);
+  }
+});
+
 test("pinch direction, wheel direction, and shortcut targets follow native behavior", () => {
   assert.ok(pinchZoomDistance(1000, 40, 80) < 1000, "pinch-out decreases camera distance");
   assert.ok(pinchZoomDistance(1000, 40, 20) > 1000, "pinch-in increases camera distance");
