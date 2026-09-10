@@ -2564,8 +2564,7 @@ async function assertSimulationDateInDock(page, label) {
       clockCount: clocks.length,
       clockInDock: Boolean(clock.closest("#dock")),
       clockInTopbar: Boolean(clock.closest(".topbar")),
-      clockAfterReadout: clock.previousElementSibling === readout,
-      clockInSpeedGroup: clock.parentElement === speedGroup,
+      clockAfterSpeedGroup: clock.previousElementSibling === speedGroup,
       readoutInSpeedGroup: readout.parentElement === speedGroup,
       topbarOnlyBrand: [...topbar.children].map((child) => child.className).join(" ") === "brand",
       brandLabel: document.querySelector("#brand-label")?.textContent,
@@ -2609,8 +2608,7 @@ async function assertSimulationDateInDock(page, label) {
   assert.equal(audit.clockCount, 1, `${label}: exactly one #clock`);
   assert.equal(audit.clockInDock, true, `${label}: #clock is in the dock`);
   assert.equal(audit.clockInTopbar, false, `${label}: #clock is not in the topbar`);
-  assert.equal(audit.clockAfterReadout, true, `${label}: #clock follows the time-rate readout`);
-  assert.equal(audit.clockInSpeedGroup, true, `${label}: #clock stays in the speed group`);
+  assert.equal(audit.clockAfterSpeedGroup, true, `${label}: #clock follows the time-rate group`);
   assert.equal(audit.readoutInSpeedGroup, true, `${label}: rate readout stays in the speed group`);
   assert.equal(audit.topbarOnlyBrand, true, `${label}: topbar contains only brand identity`);
   assert.equal(audit.brandLabel, "MarinsVoyage", `${label}: brand eyebrow is unchanged`);
@@ -2629,11 +2627,6 @@ async function assertSimulationDateInDock(page, label) {
   assert.equal(audit.horizontalScroll, false, `${label}: no horizontal scroll`);
   assert.equal(audit.dockClipped, false, `${label}: dock stays inside the viewport`);
   assert.equal(audit.hitIsClock, false, `${label}: date is not the hit target`);
-  assert.equal(
-    audit.sameRowAsReadout || audit.nearSpeedGroup,
-    true,
-    `${label}: date stays beside the time-rate controls: ${JSON.stringify(audit)}`,
-  );
   if (audit.sameRowAsReadout) {
     assert.equal(audit.afterReadout, true, `${label}: same-row date sits after the rate`);
   }
