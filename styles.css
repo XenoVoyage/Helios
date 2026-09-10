@@ -341,7 +341,7 @@ select:focus-visible,
   position: relative;
   z-index: 1;
   display: flex;
-  flex: 1 1 220px;
+  flex: 1 1 280px;
   gap: 8px;
   align-items: center;
   min-width: 0;

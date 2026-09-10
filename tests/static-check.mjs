@@ -330,8 +330,8 @@ assert.equal((html.match(/id="clock"/g) || []).length, 1, "exactly one #clock no
 }
 assert.match(
   html,
-  /id="speed-readout">1 h \/ sec<\/span>\s*<\/div>\s*<p id="clock" class="clock">2000-01-01<\/p>/,
-  "the single clock sits in the dock immediately after the rate readout group",
+  /id="speed-readout">1 h \/ sec<\/span>\s*<p id="clock" class="clock">2000-01-01<\/p>\s*<\/div>/,
+  "the single clock sits in the dock immediately after the rate readout",
 );
 assert.match(
   html,
@@ -349,6 +349,11 @@ assert.match(
   "simulation date does not intercept pointer or touch",
 );
 assert.doesNotMatch(css, /\.speed-group\s*\{[^}]*overflow:\s*hidden/);
+assert.match(
+  css,
+  /\.speed-group\s*\{[^}]*flex:\s*1 1 280px/,
+  "speed group basis keeps the date with the rate by wrapping as one unit",
+);
 assert.doesNotMatch(css, /:hover\s*\{[^}]*display:\s*block/);
 assert.doesNotMatch(css, /--gold|#e8c872/i);
 assert.match(css, /--cyan:\s*#66f7ff/);
