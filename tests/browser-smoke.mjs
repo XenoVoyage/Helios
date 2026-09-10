@@ -1853,11 +1853,11 @@ async function assertPersistentChromeContrast(page, label) {
     const textPairs = [
       [".topbar .eyebrow", ".topbar"],
       [".topbar h1", ".topbar"],
-      [".topbar .clock", ".topbar"],
       ["#play-button", "#dock"],
       ["#slower-button", "#dock"],
       ["#faster-button", "#dock"],
       ["#speed-readout", "#dock"],
+      ["#clock", "#dock"],
       ["#sky-mode", "#dock"],
       ["#reset-button", "#dock"],
       ["#version-label", "#version-label"],
@@ -2529,6 +2529,154 @@ async function captureEarthSolstice(context, name, targetDate, southPole = false
   await page.close();
 }
 
+async function assertSimulationDateInDock(page, label) {
+  const audit = await page.evaluate(() => {
+    const clocks = [...document.querySelectorAll("#clock")];
+    const clock = clocks[0];
+    const readout = document.querySelector("#speed-readout");
+    const topbar = document.querySelector(".topbar");
+    const dock = document.querySelector("#dock");
+    const speedGroup = document.querySelector(".speed-group");
+    const overlaps = (first, second) => (
+      first.left < second.right
+      && first.right > second.left
+      && first.top < second.bottom
+      && first.bottom > second.top
+    );
+    const clockBox = clock.getBoundingClientRect();
+    const readoutBox = readout.getBoundingClientRect();
+    const groupBox = speedGroup.getBoundingClientRect();
+    const dockBox = dock.getBoundingClientRect();
+    const topbarBox = topbar.getBoundingClientRect();
+    const clockStyle = getComputedStyle(clock);
+    const readoutStyle = getComputedStyle(readout);
+    const controls = [...document.querySelectorAll("#dock button, #sky-mode, #speed-slider")]
+      .filter((element) => element.getClientRects().length > 0)
+      .map((element) => {
+        const box = element.getBoundingClientRect();
+        return { id: element.id, width: box.width, height: box.height };
+      });
+    const hit = document.elementFromPoint(
+      clockBox.left + clockBox.width / 2,
+      clockBox.top + clockBox.height / 2,
+    );
+    return {
+      clockCount: clocks.length,
+      clockInDock: Boolean(clock.closest("#dock")),
+      clockInTopbar: Boolean(clock.closest(".topbar")),
+      clockAfterReadout: clock.previousElementSibling === readout,
+      clockInSpeedGroup: clock.parentElement === speedGroup,
+      readoutInSpeedGroup: readout.parentElement === speedGroup,
+      topbarOnlyBrand: [...topbar.children].map((child) => child.className).join(" ") === "brand",
+      brandLabel: document.querySelector("#brand-label")?.textContent,
+      heading: topbar.querySelector("h1")?.textContent,
+      clockText: clock.textContent,
+      readoutText: readout.textContent,
+      clockVisible: clockStyle.visibility !== "hidden"
+        && clockStyle.display !== "none"
+        && clockBox.width > 0
+        && clockBox.height > 0,
+      clockPointerEvents: clockStyle.pointerEvents,
+      clockTabIndex: clock.tabIndex,
+      clockTag: clock.tagName,
+      distinctFromReadout: clockStyle.color !== readoutStyle.color
+        || clockStyle.letterSpacing !== readoutStyle.letterSpacing
+        || clockStyle.textTransform !== readoutStyle.textTransform,
+      clockRects: clock.getClientRects().length,
+      clockInsideDock: clockBox.left >= dockBox.left - 0.5
+        && clockBox.right <= dockBox.right + 0.5
+        && clockBox.top >= dockBox.top - 0.5
+        && clockBox.bottom <= dockBox.bottom + 0.5,
+      sameRowAsReadout: Math.abs((clockBox.top + clockBox.bottom) / 2 - (readoutBox.top + readoutBox.bottom) / 2)
+        <= Math.max(clockBox.height, readoutBox.height) / 2 + 1,
+      afterReadout: clockBox.left + 0.5 >= readoutBox.right,
+      nearSpeedGroup: overlaps(clockBox, {
+        left: groupBox.left - 16,
+        right: groupBox.right + 16,
+        top: groupBox.top - 16,
+        bottom: groupBox.bottom + 16,
+      }),
+      clockReadoutOverlap: overlaps(clockBox, readoutBox),
+      clockTopbarOverlap: overlaps(clockBox, topbarBox),
+      horizontalScroll: document.documentElement.scrollWidth > window.innerWidth + 1
+        || document.body.scrollWidth > window.innerWidth + 1,
+      dockClipped: dockBox.left < -0.5 || dockBox.right > window.innerWidth + 0.5,
+      controls,
+      hitIsClock: hit === clock,
+      hitInteractive: Boolean(hit?.closest("button, input, select, a, [tabindex]")),
+    };
+  });
+  assert.equal(audit.clockCount, 1, `${label}: exactly one #clock`);
+  assert.equal(audit.clockInDock, true, `${label}: #clock is in the dock`);
+  assert.equal(audit.clockInTopbar, false, `${label}: #clock is not in the topbar`);
+  assert.equal(audit.clockAfterReadout, true, `${label}: #clock follows the time-rate readout`);
+  assert.equal(audit.clockInSpeedGroup, true, `${label}: #clock stays in the speed group`);
+  assert.equal(audit.readoutInSpeedGroup, true, `${label}: rate readout stays in the speed group`);
+  assert.equal(audit.topbarOnlyBrand, true, `${label}: topbar contains only brand identity`);
+  assert.equal(audit.brandLabel, "MarinsVoyage", `${label}: brand eyebrow is unchanged`);
+  assert.equal(audit.heading, "Helios", `${label}: product title is unchanged`);
+  assert.match(audit.clockText, /^[+-]?\d{4,}-\d{2}-\d{2}$/, `${label}: clock remains an ISO date`);
+  assert.ok(audit.readoutText.includes("/ sec"), `${label}: rate readout stays a rate`);
+  assert.equal(audit.clockVisible, true, `${label}: date is visible`);
+  assert.equal(audit.clockPointerEvents, "none", `${label}: date does not intercept pointer or touch`);
+  assert.equal(audit.clockTabIndex, -1, `${label}: date is not in the tab order`);
+  assert.equal(audit.clockTag, "P", `${label}: the existing paragraph clock node is reused`);
+  assert.equal(audit.distinctFromReadout, true, `${label}: date and rate remain visually distinct`);
+  assert.equal(audit.clockRects, 1, `${label}: date does not wrap`);
+  assert.equal(audit.clockInsideDock, true, `${label}: date stays inside the dock`);
+  assert.equal(audit.clockReadoutOverlap, false, `${label}: date does not cover the rate`);
+  assert.equal(audit.clockTopbarOverlap, false, `${label}: date does not sit in the brand area`);
+  assert.equal(audit.horizontalScroll, false, `${label}: no horizontal scroll`);
+  assert.equal(audit.dockClipped, false, `${label}: dock stays inside the viewport`);
+  assert.equal(audit.hitIsClock, false, `${label}: date is not the hit target`);
+  assert.equal(audit.sameRowAsReadout, true, `${label}: date stays on the same row as the rate`);
+  assert.equal(audit.afterReadout, true, `${label}: date sits after the rate`);
+  for (const control of audit.controls) {
+    assert.ok(
+      control.height >= 43.5,
+      `${label}: ${control.id} keeps a 44px-tall target (${control.height})`,
+    );
+    if (control.id !== "speed-slider") {
+      assert.ok(
+        control.width >= 43.5,
+        `${label}: ${control.id} keeps a 44px-wide target (${control.width})`,
+      );
+    }
+  }
+}
+
+async function assertSimulationDatePlayPause(page, label) {
+  const play = page.locator("#play-button");
+  const slider = page.locator("#speed-slider");
+  const previousSpeed = await slider.inputValue();
+  const wasPlaying = await play.getAttribute("aria-pressed") === "true";
+  if (wasPlaying) await play.click();
+  const pausedDate = await page.locator("#clock").textContent();
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator("#clock").textContent(), pausedDate, `${label}: paused date stays stable`);
+  await slider.evaluate((element) => {
+    element.value = "1";
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await play.click();
+  await page.waitForFunction(
+    (start) => document.querySelector("#clock").textContent !== start,
+    pausedDate,
+    { timeout: 8_000 },
+  );
+  const playingDate = await page.locator("#clock").textContent();
+  assert.notEqual(playingDate, pausedDate, `${label}: playing date advances`);
+  await play.click();
+  const stoppedDate = await page.locator("#clock").textContent();
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator("#clock").textContent(), stoppedDate, `${label}: date remains stable after pause`);
+  await slider.evaluate((element, value) => {
+    element.value = value;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  }, previousSpeed);
+  if (wasPlaying) await play.click();
+}
+
 async function assertCardClearsDock(page, viewport) {
   await page.setViewportSize(viewport);
   await page.locator("#reset-button").click();
@@ -2587,7 +2735,7 @@ async function assertCardClearsDock(page, viewport) {
   assert.equal(
     layout.topbarOverlap,
     false,
-    `${viewport.width}x${viewport.height} card clears the title and date`,
+    `${viewport.width}x${viewport.height} card clears the title`,
   );
   assert.equal(
     layout.helpersInside,
@@ -2606,6 +2754,13 @@ async function assertCardClearsDock(page, viewport) {
   assert.ok(layout.card.top >= 0 && layout.card.bottom <= viewport.height + 1);
   assert.ok(Math.abs(layout.clearance - Math.ceil(layout.dockHeight)) <= 1);
   assert.equal(layout.speedOverflow, "visible");
+  if (viewport.width <= 721 && viewport.height === 500) {
+    assert.ok(
+      layout.dockHeight <= 56,
+      `${viewport.width}x${viewport.height} compact landscape dock stays one control row (${layout.dockHeight})`,
+    );
+  }
+  await assertSimulationDateInDock(page, `${viewport.width}x${viewport.height} card-open date`);
   await assertVisibleBodyLabelsClearChrome(
     page,
     `${viewport.width}x${viewport.height} responsive body labels`,
@@ -2687,6 +2842,20 @@ try {
     "desktop-boot",
   );
   await assertVisibleBodyLabelsClearChrome(desktopPage, "desktop-boot");
+  await assertSimulationDateInDock(desktopPage, "desktop-1440x900");
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 720, height: 900 },
+    { width: 721, height: 900 },
+    { width: 720, height: 500 },
+    { width: 721, height: 500 },
+  ]) {
+    await desktopPage.setViewportSize(viewport);
+    await assertSimulationDateInDock(desktopPage, `desktop-${viewport.width}x${viewport.height}`);
+    await assertCardClearsDock(desktopPage, viewport);
+  }
+  await desktopPage.setViewportSize({ width: 1440, height: 900 });
+  await desktopPage.locator("#reset-button").click();
 
   await desktopPage.locator("#play-button").click();
   const canvas = desktopPage.locator("#viewport");
@@ -2739,6 +2908,7 @@ try {
   );
   await saveScreenshot(desktopPage, "desktop-overview");
   await captureTriton(desktopPage);
+  await assertSimulationDatePlayPause(desktopPage, "desktop-date-play-pause");
   assert.deepEqual(desktopErrors, []);
   await desktopPage.close();
 

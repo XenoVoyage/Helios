@@ -341,7 +341,7 @@ select:focus-visible,
   position: relative;
   z-index: 1;
   display: flex;
-  flex: 1 1 220px;
+  flex: 1 1 280px;
   gap: 8px;
   align-items: center;
   min-width: 0;
@@ -369,6 +369,17 @@ input[type="range"] {
 #speed-readout {
   min-width: 5.5rem;
   text-align: right;
+}
+
+#clock {
+  pointer-events: none;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-left: 4px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 
 .unsupported {
@@ -481,6 +492,19 @@ input[type="range"] {
     width: min(920px, calc(100vw - 16px));
   }
 
+  .speed-group {
+    flex: 1 1 220px;
+  }
+
+  #speed-readout {
+    min-width: 4.5rem;
+  }
+
+  #clock {
+    margin-left: 0;
+    letter-spacing: 0;
+  }
+
   .card {
     top: max(12px, env(safe-area-inset-top));
     right: max(12px, env(safe-area-inset-right));
@@ -527,35 +551,6 @@ input[type="range"] {
 }
 
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
-  /* Keep the date under the brand word so a longer chrome label cannot
-     push the topbar into the right-side card. */
-  .topbar {
-    display: grid;
-    grid-template-columns: auto auto;
-    grid-template-areas:
-      "eyebrow eyebrow"
-      "title clock";
-    column-gap: 10px;
-    row-gap: 0;
-    align-items: baseline;
-  }
-
-  .topbar .brand {
-    display: contents;
-  }
-
-  .topbar .eyebrow {
-    grid-area: eyebrow;
-  }
-
-  .topbar h1 {
-    grid-area: title;
-  }
-
-  .topbar .clock {
-    grid-area: clock;
-  }
-
   .card {
     width: min(324px, calc(100vw - 24px));
     max-height: calc(
