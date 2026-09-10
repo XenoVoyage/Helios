@@ -2754,6 +2754,12 @@ async function assertCardClearsDock(page, viewport) {
   assert.ok(layout.card.top >= 0 && layout.card.bottom <= viewport.height + 1);
   assert.ok(Math.abs(layout.clearance - Math.ceil(layout.dockHeight)) <= 1);
   assert.equal(layout.speedOverflow, "visible");
+  if (viewport.width <= 721 && viewport.height === 500) {
+    assert.ok(
+      layout.dockHeight <= 56,
+      `${viewport.width}x${viewport.height} compact landscape dock stays one control row (${layout.dockHeight})`,
+    );
+  }
   await assertSimulationDateInDock(page, `${viewport.width}x${viewport.height} card-open date`);
   await assertVisibleBodyLabelsClearChrome(
     page,

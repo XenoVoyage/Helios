@@ -354,6 +354,11 @@ assert.match(
   /\.speed-group\s*\{[^}]*flex:\s*1 1 280px/,
   "speed group basis keeps the date with the rate by wrapping as one unit",
 );
+assert.match(
+  css,
+  /@media \(orientation: landscape\) and \(max-height: 500px\)[\s\S]*\.speed-group\s*\{[^}]*flex:\s*1 1 220px/,
+  "compact landscape keeps a one-row dock so body labels stay hit-testable",
+);
 assert.doesNotMatch(css, /:hover\s*\{[^}]*display:\s*block/);
 assert.doesNotMatch(css, /--gold|#e8c872/i);
 assert.match(css, /--cyan:\s*#66f7ff/);
