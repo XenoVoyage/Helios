@@ -2564,7 +2564,8 @@ async function assertSimulationDateInDock(page, label) {
       clockCount: clocks.length,
       clockInDock: Boolean(clock.closest("#dock")),
       clockInTopbar: Boolean(clock.closest(".topbar")),
-      clockAfterSpeedGroup: clock.previousElementSibling === speedGroup,
+      clockAfterReadout: clock.previousElementSibling === readout,
+      clockInSpeedGroup: clock.parentElement === speedGroup,
       readoutInSpeedGroup: readout.parentElement === speedGroup,
       topbarOnlyBrand: [...topbar.children].map((child) => child.className).join(" ") === "brand",
       brandLabel: document.querySelector("#brand-label")?.textContent,
@@ -2608,7 +2609,8 @@ async function assertSimulationDateInDock(page, label) {
   assert.equal(audit.clockCount, 1, `${label}: exactly one #clock`);
   assert.equal(audit.clockInDock, true, `${label}: #clock is in the dock`);
   assert.equal(audit.clockInTopbar, false, `${label}: #clock is not in the topbar`);
-  assert.equal(audit.clockAfterSpeedGroup, true, `${label}: #clock follows the time-rate group`);
+  assert.equal(audit.clockAfterReadout, true, `${label}: #clock follows the time-rate readout`);
+  assert.equal(audit.clockInSpeedGroup, true, `${label}: #clock stays in the speed group`);
   assert.equal(audit.readoutInSpeedGroup, true, `${label}: rate readout stays in the speed group`);
   assert.equal(audit.topbarOnlyBrand, true, `${label}: topbar contains only brand identity`);
   assert.equal(audit.brandLabel, "MarinsVoyage", `${label}: brand eyebrow is unchanged`);

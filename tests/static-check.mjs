@@ -330,8 +330,8 @@ assert.equal((html.match(/id="clock"/g) || []).length, 1, "exactly one #clock no
 }
 assert.match(
   html,
-  /id="speed-readout">1 h \/ sec<\/span>\s*<\/div>\s*<p id="clock" class="clock">2000-01-01<\/p>/,
-  "the single clock sits in the dock immediately after the rate readout group",
+  /id="speed-readout">1 h \/ sec<\/span>\s*<p id="clock" class="clock">2000-01-01<\/p>\s*<\/div>/,
+  "the single clock sits in the dock immediately after the rate readout",
 );
 assert.match(
   html,

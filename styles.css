@@ -342,6 +342,7 @@ select:focus-visible,
   z-index: 1;
   display: flex;
   flex: 1 1 220px;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   min-width: 0;
@@ -375,6 +376,7 @@ input[type="range"] {
   pointer-events: none;
   flex-shrink: 0;
   white-space: nowrap;
+  margin-left: 4px;
   letter-spacing: 0.04em;
   text-transform: none;
   font-variant-numeric: tabular-nums;
