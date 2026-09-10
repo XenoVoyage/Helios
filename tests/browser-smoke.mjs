@@ -328,6 +328,22 @@ async function assertBodyLabelsHidden(page) {
 
 async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = true) {
   const audit = await page.evaluate(() => {
+    const describeHit = (element) => element ? {
+      tag: element.tagName,
+      id: element.id,
+      bodyId: element.dataset.bodyId ?? null,
+      className: element.getAttribute("class"),
+      rectangle: element.getBoundingClientRect().toJSON(),
+    } : null;
+    const sample = {
+      at: performance.now(),
+      viewport: { width: innerWidth, height: innerHeight },
+      playing: document.querySelector("#play-button")?.getAttribute("aria-pressed"),
+      cardName: document.querySelector("#card-name")?.textContent,
+      cardHidden: document.querySelector("#body-card")?.hidden,
+      activeBody: document.querySelector(".sky-label.is-active")?.dataset.bodyId ?? null,
+      camera: describeHit(document.querySelector("#camera-controls")),
+    };
     // Runtime reserves 8px; tolerate subpixel DOMRect rounding at the boundary.
     const clearance = 7.5;
     const obstacles = [
@@ -372,6 +388,11 @@ async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = 
           && box.bottom <= window.innerHeight - clearance,
         blocker: blocker?.name ?? null,
         hit: center?.closest?.(".sky-label") === element,
+        hitElement: describeHit(center),
+        hitStack: document.elementsFromPoint(
+          box.left + box.width / 2, box.top + box.height / 2,
+        ).slice(0, 8).map(describeHit),
+        sample,
       };
     });
   });
@@ -382,7 +403,23 @@ async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = 
     assert.ok(item.width >= 43.5 && item.height >= 43.5, `${label}: ${item.name} keeps a 44px target`);
     assert.equal(item.insideViewport, true, `${label}: ${item.name} stays inside the viewport: ${JSON.stringify(item)}`);
     assert.equal(item.blocker, null, `${label}: ${item.name} clears persistent chrome: ${JSON.stringify(item)}`);
-    assert.equal(item.hit, true, `${label}: ${item.name} remains hit-testable`);
+    try {
+      assert.equal(item.hit, true, `${label}: ${item.name} remains hit-testable: ${JSON.stringify(item)}`);
+    } catch (error) {
+      // Retain the failing sample before any later screenshot can advance a frame.
+      console.error(JSON.stringify({ label, audit }));
+      if (screenshotDir) {
+        const name = `label-hit-failure-${label.replace(/[^a-z0-9-]+/gi, "-")}`;
+        try {
+          await mkdir(screenshotDir, { recursive: true });
+          await writeFile(path.join(screenshotDir, `${name}.json`), JSON.stringify({ label, audit }, null, 2) + "\n");
+          await saveScreenshot(page, name);
+        } catch (captureError) {
+          console.error(`Could not retain label-hit failure evidence: ${captureError}`);
+        }
+      }
+      throw error;
+    }
   }
 }
 
@@ -2007,6 +2044,20 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
     await page.waitForTimeout(250);
     assert.equal(await page.locator("#card-name").textContent(), findBody(bodyId).name);
     await assertRenderedCanvas(page);
+    if (touch && bodyId === "moon") {
+      assert.deepEqual(viewport, { width: 390, height: 844 }, "portrait Moon regression uses its recorded viewport");
+      const layout = await page.evaluate(() => ({
+        dockHeight: document.querySelector("#dock").getBoundingClientRect().height,
+        cardTop: document.querySelector("#body-card").getBoundingClientRect().top,
+        cameraClosed: document.querySelector("#camera-panel").hidden,
+      }));
+      assert.equal(layout.cameraClosed, true, "portrait Moon retains the closed Camera baseline");
+      // PR124's pre-change 390×844 close-Moon frame had a 100px dock and
+      // card top at 493.625px. A taller dock raised the card over the globe.
+      assert.ok(layout.dockHeight <= 100.5, `portrait Moon preserves the 100px dock: ${JSON.stringify(layout)}`);
+      assert.ok(layout.cardTop >= 493.125, `portrait Moon preserves card/globe clearance: ${JSON.stringify(layout)}`);
+      await assertSimulationDateInDock(page, "portrait-Moon-close");
+    }
     await saveScreenshot(page, `${prefix}-moon-parent-close-${bodyId}`);
 
     if (cdp) {
@@ -2583,6 +2634,10 @@ async function assertSimulationDateInDock(page, label) {
         || clockStyle.letterSpacing !== readoutStyle.letterSpacing
         || clockStyle.textTransform !== readoutStyle.textTransform,
       clockRects: clock.getClientRects().length,
+      readoutVisible: readoutStyle.visibility !== "hidden"
+        && readoutStyle.display !== "none" && readoutBox.width > 0 && readoutBox.height > 0,
+      readoutTabIndex: readout.tabIndex,
+      readoutTag: readout.tagName,
       clockInsideDock: clockBox.left >= dockBox.left - 0.5
         && clockBox.right <= dockBox.right + 0.5
         && clockBox.top >= dockBox.top - 0.5
@@ -2590,6 +2645,10 @@ async function assertSimulationDateInDock(page, label) {
       sameRowAsReadout: Math.abs((clockBox.top + clockBox.bottom) / 2 - (readoutBox.top + readoutBox.bottom) / 2)
         <= Math.max(clockBox.height, readoutBox.height) / 2 + 1,
       afterReadout: clockBox.left + 0.5 >= readoutBox.right,
+      narrowPortrait: matchMedia("(max-width: 720px) and (orientation: portrait)").matches,
+      sameReadoutColumn: Math.abs(clockBox.right - readoutBox.right) <= 0.5,
+      belowReadout: clockBox.top + 0.5 >= readoutBox.bottom,
+      verticalReadoutGap: clockBox.top - readoutBox.bottom,
       nearSpeedGroup: overlaps(clockBox, {
         left: groupBox.left - 16,
         right: groupBox.right + 16,
@@ -2623,14 +2682,23 @@ async function assertSimulationDateInDock(page, label) {
   assert.equal(audit.clockTag, "P", `${label}: the existing paragraph clock node is reused`);
   assert.equal(audit.distinctFromReadout, true, `${label}: date and rate remain visually distinct`);
   assert.equal(audit.clockRects, 1, `${label}: date does not wrap`);
+  assert.equal(audit.readoutVisible, true, `${label}: rate remains visible`);
+  assert.equal(audit.readoutTabIndex, -1, `${label}: rate is not in the tab order`);
+  assert.equal(audit.readoutTag, "SPAN", `${label}: rate remains noninteractive text`);
   assert.equal(audit.clockInsideDock, true, `${label}: date stays inside the dock`);
   assert.equal(audit.clockReadoutOverlap, false, `${label}: date does not cover the rate`);
   assert.equal(audit.clockTopbarOverlap, false, `${label}: date does not sit in the brand area`);
   assert.equal(audit.horizontalScroll, false, `${label}: no horizontal scroll`);
   assert.equal(audit.dockClipped, false, `${label}: dock stays inside the viewport`);
   assert.equal(audit.hitIsClock, false, `${label}: date is not the hit target`);
-  assert.equal(audit.sameRowAsReadout, true, `${label}: date stays on the same row as the rate`);
-  assert.equal(audit.afterReadout, true, `${label}: date sits after the rate`);
+  if (audit.narrowPortrait) {
+    assert.equal(audit.sameReadoutColumn, true, `${label}: date and rate share a portrait column`);
+    assert.equal(audit.belowReadout, true, `${label}: date sits below the rate`);
+    assert.ok(audit.verticalReadoutGap <= 12, `${label}: portrait date remains adjacent to the rate`);
+  } else {
+    assert.equal(audit.sameRowAsReadout, true, `${label}: date stays on the same row as the rate`);
+    assert.equal(audit.afterReadout, true, `${label}: date sits after the rate`);
+  }
   for (const control of audit.controls) {
     assert.ok(
       control.height >= 43.5,
