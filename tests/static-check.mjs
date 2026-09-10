@@ -320,10 +320,33 @@ assert.match(
   "author CSS must preserve native hidden semantics for 44px body-label buttons",
 );
 assert.match(css, /--dock-clearance/);
+assert.equal((html.match(/id="clock"/g) || []).length, 1, "exactly one #clock node");
+{
+  const topbarMarkup = html.match(/<header class="topbar">[\s\S]*?<\/header>/)?.[0];
+  assert.ok(topbarMarkup, "topbar markup is present");
+  assert.doesNotMatch(topbarMarkup, /id="clock"/, "simulation date is not in the top-left brand area");
+  assert.match(topbarMarkup, /id="brand-label"/);
+  assert.match(topbarMarkup, /<h1>Helios<\/h1>/);
+}
 assert.match(
+  html,
+  /id="speed-readout">1 h \/ sec<\/span>\s*<\/div>\s*<p id="clock" class="clock">2000-01-01<\/p>/,
+  "the single clock sits in the dock immediately after the rate readout group",
+);
+assert.match(
+  html,
+  /<footer id="dock"[\s\S]*id="clock"[\s\S]*<\/footer>/,
+  "the single clock is inside the time-control dock",
+);
+assert.doesNotMatch(
   css,
   /@media \(orientation: landscape\) and \(max-height: 500px\) and \(max-width: 720px\)[\s\S]*grid-template-areas:\s*"eyebrow eyebrow"\s*"title clock"/,
-  "compact landscape keeps the date under the brand word so a longer chrome label cannot overlap the card",
+  "compact landscape no longer reserves a blank topbar date cell",
+);
+assert.match(
+  css,
+  /#clock\s*\{[^}]*pointer-events:\s*none/,
+  "simulation date does not intercept pointer or touch",
 );
 assert.doesNotMatch(css, /\.speed-group\s*\{[^}]*overflow:\s*hidden/);
 assert.doesNotMatch(css, /:hover\s*\{[^}]*display:\s*block/);
