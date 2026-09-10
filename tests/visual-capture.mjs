@@ -288,7 +288,7 @@ async function newPage(touch = false, size = touch ? [390, 844] : [1440, 900], s
   assert.equal(await page.evaluate(() => globalThis.__heliosVisualPausedAtReady), true, "simulation paused at initial ready signal");
   assert.equal(await page.evaluate(() => globalThis.__heliosVisualFirstTick?.pausedBeforeCallback), true, "public Pause state is verified before the first application tick");
   assert.equal(await page.locator("#play-button").getAttribute("aria-pressed"), "false");
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.clock.pauseAt(new Date("2026-09-05T01:00:00Z"));
   await advance(page, 100);
   state.initial = await observe(page);
   return page;

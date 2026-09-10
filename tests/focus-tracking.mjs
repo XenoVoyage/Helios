@@ -138,7 +138,7 @@ async function openPaused(page, base) {
   });
   await page.goto(base, { waitUntil: "networkidle", timeout: 30_000 });
   await page.waitForFunction(() => document.documentElement.dataset.heliosReady === "1");
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.clock.pauseAt(new Date("2026-09-05T01:00:00Z"));
   await page.clock.runFor(32);
   const initial = await page.evaluate(() => ({
     pausedAtReady: globalThis.__heliosTrackingPausedAtReady,
