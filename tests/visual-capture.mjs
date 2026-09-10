@@ -6,6 +6,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
+import { delayNextClockPause } from "./clock-pause-regression.mjs";
 import { focusTrackingOffsets, focusTrackingScenarios, runFocusTracking } from "./focus-tracking.mjs";
 
 const options = new Map();
@@ -252,6 +253,7 @@ async function newPage(touch = false, size = touch ? [390, 844] : [1440, 900], s
   const page = await context.newPage();
   page.setDefaultTimeout(15_000);
   const state = { id: nextPageId++, context, touch, elapsed: 0, inputs: [], cdp: touch ? await context.newCDPSession(page) : null, errors: [] };
+  if (state.id === 1) delayNextClockPause(page);
   states.set(page, state);
   page.on("pageerror", (error) => state.errors.push(`page: ${error.message}`));
   page.on("console", (message) => { if (message.type() === "error") state.errors.push(`console: ${message.text()}`); });
