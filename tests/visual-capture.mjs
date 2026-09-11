@@ -84,9 +84,18 @@ for (const body of BODIES) {
     expect(`supplement-desktop-${body.id}-${seat}`);
   }
 }
-const responsiveSizes = [[320, 568], [568, 320], [390, 844], [844, 390], [768, 1024], [1024, 768]];
-for (const [width, height] of responsiveSizes) expect(`supplement-responsive-${width}x${height}`);
-assert.equal(expected.size, 204);
+const responsiveSizes = [
+  [320, 568], [568, 320], [390, 844], [700, 500], [718, 500],
+  [719, 500], [720, 500], [721, 500],
+  [840, 500], [841, 500], [844, 390], [768, 1024], [1024, 768],
+  [720, 900], [721, 900], [720, 720], [721, 721], [720, 501],
+  [721, 501], [1440, 900],
+];
+for (const [width, height] of responsiveSizes) {
+  expect(`supplement-responsive-${width}x${height}`);
+  expect(`supplement-responsive-closed-${width}x${height}`);
+}
+assert.equal(expected.size, 238);
 const trackingNames = new Map();
 for (const scenario of focusTrackingScenarios) {
   for (const offset of focusTrackingOffsets) {
@@ -95,7 +104,7 @@ for (const scenario of focusTrackingScenarios) {
     trackingNames.set(name, scenario);
   }
 }
-assert.equal(expected.size, 234);
+assert.equal(expected.size, 268);
 const completeMatrix = [...expected];
 const groupFor = (name) => {
   const tracking = trackingNames.get(name);
@@ -107,7 +116,7 @@ const groupFor = (name) => {
 for (const name of expected) {
   if (group === "focus" ? !trackingNames.has(name) : group !== "all" && groupFor(name) !== group) expected.delete(name);
 }
-assert.equal(expected.size, { all: 234, bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 63, focus: 30 }[group]);
+assert.equal(expected.size, { all: 268, bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 97, focus: 30 }[group]);
 const activeTrackingScenarios = focusTrackingScenarios.filter((item) =>
   expected.has(`focus-tracking-${item.id}-${focusTrackingOffsets[0]}ms`));
 
@@ -120,7 +129,7 @@ if (inventoryOnly) {
     source: sourceIdentity,
     harness: { commit: git(harnessRoot, "rev-parse", "HEAD"), tree: git(harnessRoot, "rev-parse", "HEAD^{tree}"), clean: harnessClean, sha256: sha256(await readFile(fileURLToPath(import.meta.url))), focusTracking: trackingHarness },
     expected: [...expected].map((name) => {
-      const compact = name.match(/responsive-(\d+)x(\d+)$/);
+      const compact = name.match(/responsive-(?:closed-)?(\d+)x(\d+)$/);
       return {
         name,
         viewport: compact ? [Number(compact[1]), Number(compact[2])] : (name.includes("touch-portrait") || trackingNames.get(name)?.touch) ? [390, 844] : [1440, 900],
@@ -726,6 +735,7 @@ async function responsive() {
   for (const size of responsiveSizes) await scenario(`responsive ${size.join("x")}`, async () => {
     const page = await newPage(true, size);
     try {
+      await capture(page, `supplement-responsive-closed-${size.join("x")}`, { state: "Reset overview, card closed", physicalDevice: false });
       await select(page, "earth");
       await page.locator("#helper-orbit").evaluate((element) => element.focus());
       await page.keyboard.press("Tab");

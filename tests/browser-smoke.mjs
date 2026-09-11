@@ -19,6 +19,7 @@ import { cmbSkyOpacity, sceneHierarchyId } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
 import { auditCameraNavigation } from "./camera-navigation.mjs";
 import { runFocusTracking } from "./focus-tracking.mjs";
+import { MAX_SIMULATION_DAYS, simulationDateLabel } from "../js/time.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.BROWSER_SMOKE_PORT || 4175);
@@ -2596,6 +2597,9 @@ async function assertSimulationDateInDock(page, label) {
     );
     const clockBox = clock.getBoundingClientRect();
     const readoutBox = readout.getBoundingClientRect();
+    const readoutRange = document.createRange();
+    readoutRange.selectNodeContents(readout);
+    const readoutTextBox = readoutRange.getBoundingClientRect();
     const groupBox = speedGroup.getBoundingClientRect();
     const dockBox = dock.getBoundingClientRect();
     const topbarBox = topbar.getBoundingClientRect();
@@ -2605,13 +2609,22 @@ async function assertSimulationDateInDock(page, label) {
       .filter((element) => element.getClientRects().length > 0)
       .map((element) => {
         const box = element.getBoundingClientRect();
-        return { id: element.id, width: box.width, height: box.height };
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return {
+          id: element.id,
+          ...box.toJSON(),
+          hit: hit?.closest("button, input, select") === element,
+          coversClock: overlaps(box, clockBox),
+          coversReadout: overlaps(box, readoutBox),
+        };
       });
     const hit = document.elementFromPoint(
       clockBox.left + clockBox.width / 2,
       clockBox.top + clockBox.height / 2,
     );
     return {
+      viewport: { width: innerWidth, height: innerHeight },
+      dockHeight: dockBox.height,
       clockCount: clocks.length,
       clockInDock: Boolean(clock.closest("#dock")),
       clockInTopbar: Boolean(clock.closest(".topbar")),
@@ -2636,16 +2649,27 @@ async function assertSimulationDateInDock(page, label) {
       clockRects: clock.getClientRects().length,
       readoutVisible: readoutStyle.visibility !== "hidden"
         && readoutStyle.display !== "none" && readoutBox.width > 0 && readoutBox.height > 0,
+      readoutTextFits: readoutRange.getClientRects().length === 1
+        && readoutTextBox.left >= readoutBox.left - 0.5
+        && readoutTextBox.right <= readoutBox.right + 0.5
+        && readoutTextBox.top >= readoutBox.top - 0.5
+        && readoutTextBox.bottom <= readoutBox.bottom + 0.5,
       readoutTabIndex: readout.tabIndex,
       readoutTag: readout.tagName,
       clockInsideDock: clockBox.left >= dockBox.left - 0.5
         && clockBox.right <= dockBox.right + 0.5
         && clockBox.top >= dockBox.top - 0.5
         && clockBox.bottom <= dockBox.bottom + 0.5,
+      readoutsInsideGroup: [clockBox, readoutBox].every((box) => (
+        box.left >= groupBox.left - 0.5 && box.right <= groupBox.right + 0.5
+        && box.top >= groupBox.top - 0.5 && box.bottom <= groupBox.bottom + 0.5
+      )),
       sameRowAsReadout: Math.abs((clockBox.top + clockBox.bottom) / 2 - (readoutBox.top + readoutBox.bottom) / 2)
         <= Math.max(clockBox.height, readoutBox.height) / 2 + 1,
       afterReadout: clockBox.left + 0.5 >= readoutBox.right,
-      narrowPortrait: matchMedia("(max-width: 720px) and (orientation: portrait)").matches,
+      compactReadouts: matchMedia(
+        "(max-width: 720px) and (orientation: portrait), (max-width: 840px) and (max-height: 500px) and (orientation: landscape)",
+      ).matches,
       sameReadoutColumn: Math.abs(clockBox.right - readoutBox.right) <= 0.5,
       belowReadout: clockBox.top + 0.5 >= readoutBox.bottom,
       verticalReadoutGap: clockBox.top - readoutBox.bottom,
@@ -2661,6 +2685,9 @@ async function assertSimulationDateInDock(page, label) {
         || document.body.scrollWidth > window.innerWidth + 1,
       dockClipped: dockBox.left < -0.5 || dockBox.right > window.innerWidth + 0.5,
       controls,
+      controlOverlaps: controls.flatMap((first, index) => controls.slice(index + 1)
+        .filter((second) => overlaps(first, second))
+        .map((second) => `${first.id}/${second.id}`)),
       hitIsClock: hit === clock,
       hitInteractive: Boolean(hit?.closest("button, input, select, a, [tabindex]")),
     };
@@ -2683,18 +2710,26 @@ async function assertSimulationDateInDock(page, label) {
   assert.equal(audit.distinctFromReadout, true, `${label}: date and rate remain visually distinct`);
   assert.equal(audit.clockRects, 1, `${label}: date does not wrap`);
   assert.equal(audit.readoutVisible, true, `${label}: rate remains visible`);
+  assert.equal(audit.readoutTextFits, true, `${label}: complete rate text fits on one line`);
   assert.equal(audit.readoutTabIndex, -1, `${label}: rate is not in the tab order`);
   assert.equal(audit.readoutTag, "SPAN", `${label}: rate remains noninteractive text`);
   assert.equal(audit.clockInsideDock, true, `${label}: date stays inside the dock`);
+  assert.equal(audit.readoutsInsideGroup, true, `${label}: date and rate stay inside the speed group`);
   assert.equal(audit.clockReadoutOverlap, false, `${label}: date does not cover the rate`);
   assert.equal(audit.clockTopbarOverlap, false, `${label}: date does not sit in the brand area`);
   assert.equal(audit.horizontalScroll, false, `${label}: no horizontal scroll`);
   assert.equal(audit.dockClipped, false, `${label}: dock stays inside the viewport`);
+  if (audit.viewport.width === 390 && audit.viewport.height === 844) {
+    assert.ok(audit.dockHeight <= 100.5,
+      `${label}: portrait dock retains its 100px clearance (${audit.dockHeight})`);
+  }
   assert.equal(audit.hitIsClock, false, `${label}: date is not the hit target`);
-  if (audit.narrowPortrait) {
-    assert.equal(audit.sameReadoutColumn, true, `${label}: date and rate share a portrait column`);
+  assert.equal(audit.hitInteractive, false, `${label}: date does not cover an interactive control`);
+  assert.deepEqual(audit.controlOverlaps, [], `${label}: dock controls do not overlap`);
+  if (audit.compactReadouts) {
+    assert.equal(audit.sameReadoutColumn, true, `${label}: date and rate share a compact column`);
     assert.equal(audit.belowReadout, true, `${label}: date sits below the rate`);
-    assert.ok(audit.verticalReadoutGap <= 12, `${label}: portrait date remains adjacent to the rate`);
+    assert.ok(audit.verticalReadoutGap <= 12, `${label}: compact date remains adjacent to the rate`);
   } else {
     assert.equal(audit.sameRowAsReadout, true, `${label}: date stays on the same row as the rate`);
     assert.equal(audit.afterReadout, true, `${label}: date sits after the rate`);
@@ -2704,13 +2739,158 @@ async function assertSimulationDateInDock(page, label) {
       control.height >= 43.5,
       `${label}: ${control.id} keeps a 44px-tall target (${control.height})`,
     );
-    if (control.id !== "speed-slider") {
-      assert.ok(
-        control.width >= 43.5,
-        `${label}: ${control.id} keeps a 44px-wide target (${control.width})`,
-      );
-    }
+    assert.ok(
+      control.width >= 43.5,
+      `${label}: ${control.id} keeps a 44px-wide target (${control.width})`,
+    );
+    assert.equal(control.hit, true, `${label}: ${control.id} remains hit-testable`);
+    assert.equal(control.coversClock || control.coversReadout, false,
+      `${label}: ${control.id} clears the date and rate`);
   }
+  return audit;
+}
+
+async function assertCardAuditWaitsForPaint(context) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  let check;
+  try {
+    await page.addInitScript(() => {
+      const raf = window.requestAnimationFrame.bind(window);
+      const gate = window.cardAuditFrames = { held: false, pending: [], delivered: 0 };
+      window.requestAnimationFrame = (callback) => raf((time) => {
+        if (gate.held) gate.pending.push(callback);
+        else { gate.delivered += 1; callback(time); }
+      });
+      document.addEventListener("click", (event) => {
+        if (event.target.closest?.('[data-body-id="earth"]')) {
+          gate.held = true;
+          gate.beforeHold = gate.delivered;
+        }
+      }, true);
+      gate.release = () => {
+        gate.held = false;
+        for (const callback of gate.pending.splice(0)) raf(callback);
+      };
+    });
+    await page.setViewportSize({ width: 721, height: 500 });
+    await openReady(page);
+    check = assertCardClearsDock(page, { width: 721, height: 500 });
+    check.catch(() => {}); // Observe early rejection here; propagate it below.
+    await Promise.race([
+      page.waitForFunction(() => window.cardAuditFrames.pending.length >= 2,
+        null, { polling: 10, timeout: 5_000 }),
+      check.then(() => { throw new Error("card audit completed before a render frame"); }),
+    ]);
+    await page.waitForTimeout(150);
+    const held = await page.evaluate(() => ({
+      painted: window.cardAuditFrames.delivered - window.cardAuditFrames.beforeHold,
+      card: document.querySelector("#card-name").textContent,
+      hidden: document.querySelector("#body-card").hidden,
+      active: document.querySelector('[data-body-id="earth"]').classList.contains("is-active"),
+    }));
+    assert.deepEqual(held, { painted: 0, card: "Earth", hidden: false, active: false },
+      "elapsed time alone does not refresh selected-body labels");
+    await page.evaluate(() => window.cardAuditFrames.release());
+    await check;
+    assert.deepEqual(errors, [], "held-frame card audit has no browser errors");
+    console.log("responsive card audit waits for a real frame after delayed selection", held);
+  } finally {
+    await page.close();
+    await check?.catch(() => {});
+  }
+}
+
+async function assertResponsiveDateWidths(context) {
+  const reports = [];
+  const maximumDate = simulationDateLabel(MAX_SIMULATION_DAYS);
+  for (const [width, height] of [
+    [568, 320], [700, 500], [718, 500], [719, 500], [720, 500],
+    [721, 500], [840, 500], [841, 500], [844, 390],
+    [320, 568], [390, 844], [720, 900], [721, 900], [720, 720],
+    [721, 721], [720, 501], [721, 501], [768, 1024], [1024, 768],
+    [1440, 900],
+  ]) {
+    const page = await context.newPage();
+    const errors = captureErrors(page);
+    const viewport = { width, height };
+    const label = `${width > height ? "landscape" : "responsive"}-date-${width}x${height}`;
+    try {
+      await page.setViewportSize(viewport);
+      await openReady(page);
+      await page.locator("#play-button").click();
+      const initial = await page.evaluate(() => ({
+        unit: document.querySelector("#speed-slider").value,
+        date: document.querySelector("#clock").textContent,
+        text: document.querySelector("#speed-readout").textContent,
+      }));
+      const widestRate = await page.locator("#speed-slider").evaluate((slider) => {
+        const readout = document.querySelector("#speed-readout");
+        const range = document.createRange();
+        let widest = { unit: "0", text: "", width: 0 };
+        // Measure every native slider step: the largest rate need not have the widest label.
+        for (let step = 0; step <= 100; step += 1) {
+          slider.value = String(step / 100);
+          slider.dispatchEvent(new Event("input", { bubbles: true }));
+          range.selectNodeContents(readout);
+          if (range.getClientRects().length !== 1) {
+            throw new Error(`rate label wraps at slider ${slider.value}: ${readout.textContent}`);
+          }
+          const width = range.getBoundingClientRect().width;
+          if (width > widest.width) widest = { unit: slider.value, text: readout.textContent, width };
+        }
+        return widest;
+      });
+      const rates = [];
+      for (const rate of [
+        { name: "default", unit: initial.unit, date: initial.date, expectedText: initial.text, layoutOnlyMaximumDate: false },
+        { name: "maximum-date", unit: "1", date: maximumDate, layoutOnlyMaximumDate: true },
+        { name: "widest-rate", unit: widestRate.unit, date: maximumDate, expectedText: widestRate.text, layoutOnlyMaximumDate: true },
+      ]) {
+        await page.locator("#reset-button").click();
+        await page.locator("#speed-slider").evaluate((slider, unit) => {
+          slider.value = unit;
+          slider.dispatchEvent(new Event("input", { bubbles: true }));
+        }, rate.unit);
+        if (rate.layoutOnlyMaximumDate) {
+          // Layout-only maximum-date fixture; the paused simulation time stays unchanged.
+          await page.locator("#clock").evaluate((clock, text) => { clock.textContent = text; },
+            rate.date);
+        }
+        await waitForTwoAnimationFrames(page);
+        const closed = await assertSimulationDateInDock(page, `${label} ${rate.name}, card closed`);
+        assert.equal(closed.clockText, rate.date, `${label}: ${rate.name} date remains visible`);
+        if (rate.expectedText) assert.equal(closed.readoutText, rate.expectedText);
+        await saveScreenshot(page, `${label}-${rate.name}-closed`);
+        await assertCardClearsDock(page, viewport);
+        const open = await assertSimulationDateInDock(page, `${label} ${rate.name}, card open`);
+        assert.equal(open.clockText, rate.date, `${label}: selection preserves the ${rate.name} date`);
+        assert.equal(open.readoutText, closed.readoutText, `${label}: selection preserves the rate`);
+        if (rate.name === "default" && width >= 1024) {
+          assert.ok([closed, open].every((audit) => audit.dockHeight <= 48.5),
+            `${label}: default desktop dock retains its 48px row`);
+        }
+        await saveScreenshot(page, `${label}-${rate.name}-open`);
+        rates.push({ ...rate, closed, open });
+      }
+      reports.push({ viewport, initial, maximumDate, widestRate, rates });
+      assert.deepEqual(errors, [], `${label}: no browser errors`);
+    } catch (error) {
+      const geometry = await page.evaluate(() => [...document.querySelectorAll(
+        "#dock, .speed-group, #clock, #speed-readout, #dock button, #sky-mode, #speed-slider",
+      )].map((element) => ({ id: element.id || element.className, text: element.textContent,
+        box: element.getBoundingClientRect().toJSON() })));
+      console.error(JSON.stringify({ label, geometry }));
+      try { await saveScreenshot(page, `${label}-failure`); }
+      catch (captureError) { console.error(`Could not retain responsive date failure evidence: ${captureError}`); }
+      throw error;
+    } finally { await page.close(); }
+  }
+  if (screenshotDir) {
+    await mkdir(screenshotDir, { recursive: true });
+    await writeFile(path.join(screenshotDir, "responsive-date-layout.json"), JSON.stringify(reports, null, 2) + "\n");
+  }
+  console.log(`responsive default and maximum-date layout passed at all ${reports.length} viewports`);
 }
 
 async function assertSimulationDatePlayPause(page, label) {
@@ -2750,7 +2930,8 @@ async function assertCardClearsDock(page, viewport) {
   await page.locator("#reset-button").click();
   await page.evaluate(() => document.querySelector('[data-body-id="earth"]').click());
   await page.locator("#body-card:not([hidden])").waitFor();
-  await page.waitForTimeout(100);
+  // The card updates synchronously; labels and viewport geometry update on RAF.
+  await waitForTwoAnimationFrames(page);
   const layout = await page.evaluate(() => {
     const card = document.querySelector("#body-card").getBoundingClientRect();
     const dock = document.querySelector("#dock").getBoundingClientRect();
@@ -2822,7 +3003,7 @@ async function assertCardClearsDock(page, viewport) {
   assert.ok(layout.card.top >= 0 && layout.card.bottom <= viewport.height + 1);
   assert.ok(Math.abs(layout.clearance - Math.ceil(layout.dockHeight)) <= 1);
   assert.equal(layout.speedOverflow, "visible");
-  if (viewport.width <= 721 && viewport.height === 500) {
+  if (viewport.width >= 720 && viewport.width <= 721 && viewport.height === 500) {
     assert.ok(
       layout.dockHeight <= 56,
       `${viewport.width}x${viewport.height} compact landscape dock stays one control row (${layout.dockHeight})`,
@@ -2875,6 +3056,11 @@ try {
   assert.match(String(line), /Helios local server/);
 
   browser = await launchBrowser();
+  const dateLayout = await browser.newContext({ deviceScaleFactor: 1, hasTouch: true });
+  try {
+    await assertCardAuditWaitsForPaint(dateLayout);
+    await assertResponsiveDateWidths(dateLayout);
+  } finally { await dateLayout.close(); }
   await runFocusTracking(browser, base, {
     onReport: async (report) => {
       if (screenshotDir) {
