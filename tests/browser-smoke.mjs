@@ -2597,6 +2597,9 @@ async function assertSimulationDateInDock(page, label) {
     );
     const clockBox = clock.getBoundingClientRect();
     const readoutBox = readout.getBoundingClientRect();
+    const readoutRange = document.createRange();
+    readoutRange.selectNodeContents(readout);
+    const readoutTextBox = readoutRange.getBoundingClientRect();
     const groupBox = speedGroup.getBoundingClientRect();
     const dockBox = dock.getBoundingClientRect();
     const topbarBox = topbar.getBoundingClientRect();
@@ -2644,6 +2647,11 @@ async function assertSimulationDateInDock(page, label) {
       clockRects: clock.getClientRects().length,
       readoutVisible: readoutStyle.visibility !== "hidden"
         && readoutStyle.display !== "none" && readoutBox.width > 0 && readoutBox.height > 0,
+      readoutTextFits: readoutRange.getClientRects().length === 1
+        && readoutTextBox.left >= readoutBox.left - 0.5
+        && readoutTextBox.right <= readoutBox.right + 0.5
+        && readoutTextBox.top >= readoutBox.top - 0.5
+        && readoutTextBox.bottom <= readoutBox.bottom + 0.5,
       readoutTabIndex: readout.tabIndex,
       readoutTag: readout.tagName,
       clockInsideDock: clockBox.left >= dockBox.left - 0.5
@@ -2700,6 +2708,7 @@ async function assertSimulationDateInDock(page, label) {
   assert.equal(audit.distinctFromReadout, true, `${label}: date and rate remain visually distinct`);
   assert.equal(audit.clockRects, 1, `${label}: date does not wrap`);
   assert.equal(audit.readoutVisible, true, `${label}: rate remains visible`);
+  assert.equal(audit.readoutTextFits, true, `${label}: complete rate text fits on one line`);
   assert.equal(audit.readoutTabIndex, -1, `${label}: rate is not in the tab order`);
   assert.equal(audit.readoutTag, "SPAN", `${label}: rate remains noninteractive text`);
   assert.equal(audit.clockInsideDock, true, `${label}: date stays inside the dock`);
@@ -2801,22 +2810,46 @@ async function assertLandscapeDateWidths(context) {
       await page.setViewportSize(viewport);
       await openReady(page);
       await page.locator("#play-button").click();
-      await page.locator("#speed-slider").evaluate((slider) => {
-        slider.value = "1";
-        slider.dispatchEvent(new Event("input", { bubbles: true }));
+      const widestRate = await page.locator("#speed-slider").evaluate((slider) => {
+        const readout = document.querySelector("#speed-readout");
+        const range = document.createRange();
+        let widest = { unit: "0", text: "", width: 0 };
+        // Measure every native slider step: the largest rate need not have the widest label.
+        for (let step = 0; step <= 100; step += 1) {
+          slider.value = String(step / 100);
+          slider.dispatchEvent(new Event("input", { bubbles: true }));
+          range.selectNodeContents(readout);
+          if (range.getClientRects().length !== 1) {
+            throw new Error(`rate label wraps at slider ${slider.value}: ${readout.textContent}`);
+          }
+          const width = range.getBoundingClientRect().width;
+          if (width > widest.width) widest = { unit: slider.value, text: readout.textContent, width };
+        }
+        return widest;
       });
       // Layout-only maximum-date fixture; the paused simulation time stays unchanged.
       await page.locator("#clock").evaluate((clock, text) => { clock.textContent = text; },
         maximumDate);
-      await waitForTwoAnimationFrames(page);
-      const closed = await assertSimulationDateInDock(page, `${label} maximum date, card closed`);
-      assert.equal(closed.clockText, maximumDate, `${label}: maximum-date fixture remains visible`);
-      await saveScreenshot(page, `${label}-maximum-date-closed`);
-      await assertCardClearsDock(page, viewport);
-      const open = await assertSimulationDateInDock(page, `${label} maximum date, card open`);
-      assert.equal(open.clockText, maximumDate, `${label}: selection preserves the maximum-date fixture`);
-      await saveScreenshot(page, `${label}-maximum-date-open`);
-      reports.push({ viewport, layoutOnlyMaximumDate: true, closed, open });
+      const rates = [];
+      for (const rate of [{ name: "maximum-date", unit: "1" }, { name: "widest-rate", unit: widestRate.unit }]) {
+        await page.locator("#reset-button").click();
+        await page.locator("#speed-slider").evaluate((slider, unit) => {
+          slider.value = unit;
+          slider.dispatchEvent(new Event("input", { bubbles: true }));
+        }, rate.unit);
+        await waitForTwoAnimationFrames(page);
+        const closed = await assertSimulationDateInDock(page, `${label} ${rate.name}, card closed`);
+        assert.equal(closed.clockText, maximumDate, `${label}: maximum-date fixture remains visible`);
+        if (rate.name === "widest-rate") assert.equal(closed.readoutText, widestRate.text);
+        await saveScreenshot(page, `${label}-${rate.name}-closed`);
+        await assertCardClearsDock(page, viewport);
+        const open = await assertSimulationDateInDock(page, `${label} ${rate.name}, card open`);
+        assert.equal(open.clockText, maximumDate, `${label}: selection preserves the maximum-date fixture`);
+        assert.equal(open.readoutText, closed.readoutText, `${label}: selection preserves the rate`);
+        await saveScreenshot(page, `${label}-${rate.name}-open`);
+        rates.push({ ...rate, closed, open });
+      }
+      reports.push({ viewport, layoutOnlyMaximumDate: true, widestRate, rates });
       assert.deepEqual(errors, [], `${label}: no browser errors`);
     } catch (error) {
       const geometry = await page.evaluate(() => [...document.querySelectorAll(

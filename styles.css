@@ -527,10 +527,12 @@ input[type="range"] {
 
   .speed-group {
     flex: 1 1 220px;
+    column-gap: 4px;
   }
 
   #speed-readout {
     min-width: 4.5rem;
+    letter-spacing: 0;
   }
 
   #clock {
