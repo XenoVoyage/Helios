@@ -85,14 +85,15 @@ for (const body of BODIES) {
   }
 }
 const responsiveSizes = [
-  [320, 568], [568, 320], [390, 844], [720, 500], [721, 500],
+  [320, 568], [568, 320], [390, 844], [700, 500], [718, 500],
+  [719, 500], [720, 500], [721, 500],
   [840, 500], [841, 500], [844, 390], [768, 1024], [1024, 768],
 ];
 for (const [width, height] of responsiveSizes) {
   expect(`supplement-responsive-${width}x${height}`);
   expect(`supplement-responsive-closed-${width}x${height}`);
 }
-assert.equal(expected.size, 218);
+assert.equal(expected.size, 224);
 const trackingNames = new Map();
 for (const scenario of focusTrackingScenarios) {
   for (const offset of focusTrackingOffsets) {
@@ -101,7 +102,7 @@ for (const scenario of focusTrackingScenarios) {
     trackingNames.set(name, scenario);
   }
 }
-assert.equal(expected.size, 248);
+assert.equal(expected.size, 254);
 const completeMatrix = [...expected];
 const groupFor = (name) => {
   const tracking = trackingNames.get(name);

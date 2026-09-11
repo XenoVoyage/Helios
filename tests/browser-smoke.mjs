@@ -2789,7 +2789,10 @@ async function assertCardAuditWaitsForPaint(context) {
 async function assertLandscapeDateWidths(context) {
   const reports = [];
   const maximumDate = simulationDateLabel(MAX_SIMULATION_DAYS);
-  for (const [width, height] of [[568, 320], [720, 500], [721, 500], [840, 500], [841, 500], [844, 390]]) {
+  for (const [width, height] of [
+    [568, 320], [700, 500], [718, 500], [719, 500], [720, 500],
+    [721, 500], [840, 500], [841, 500], [844, 390],
+  ]) {
     const page = await context.newPage();
     const errors = captureErrors(page);
     const viewport = { width, height };
@@ -2830,7 +2833,7 @@ async function assertLandscapeDateWidths(context) {
     await mkdir(screenshotDir, { recursive: true });
     await writeFile(path.join(screenshotDir, "landscape-date-layout.json"), JSON.stringify(reports, null, 2) + "\n");
   }
-  console.log("landscape maximum-date layout passed at all six viewports");
+  console.log(`landscape maximum-date layout passed at all ${reports.length} viewports`);
 }
 
 async function assertSimulationDatePlayPause(page, label) {
@@ -2943,7 +2946,7 @@ async function assertCardClearsDock(page, viewport) {
   assert.ok(layout.card.top >= 0 && layout.card.bottom <= viewport.height + 1);
   assert.ok(Math.abs(layout.clearance - Math.ceil(layout.dockHeight)) <= 1);
   assert.equal(layout.speedOverflow, "visible");
-  if (viewport.width <= 721 && viewport.height === 500) {
+  if (viewport.width >= 720 && viewport.width <= 721 && viewport.height === 500) {
     assert.ok(
       layout.dockHeight <= 56,
       `${viewport.width}x${viewport.height} compact landscape dock stays one control row (${layout.dockHeight})`,

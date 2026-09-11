@@ -554,8 +554,11 @@ input[type="range"] {
 
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 840px) {
   .speed-group {
+    /* Reserve the slider's 44px target plus its native side margins. */
+    grid-template-columns: 44px minmax(48px, 1fr) 44px max-content;
     grid-template-rows: repeat(2, 22px);
-    column-gap: 2px;
+    min-width: min-content;
+    column-gap: 0;
   }
 }
 
