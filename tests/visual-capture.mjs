@@ -114,7 +114,7 @@ const groupFor = (name) => {
 for (const name of expected) {
   if (group === "focus" ? !trackingNames.has(name) : group !== "all" && groupFor(name) !== group) expected.delete(name);
 }
-assert.equal(expected.size, { all: 248, bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 77, focus: 30 }[group]);
+assert.equal(expected.size, { all: 254, bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 83, focus: 30 }[group]);
 const activeTrackingScenarios = focusTrackingScenarios.filter((item) =>
   expected.has(`focus-tracking-${item.id}-${focusTrackingOffsets[0]}ms`));
 
