@@ -2623,6 +2623,8 @@ async function assertSimulationDateInDock(page, label) {
       clockBox.top + clockBox.height / 2,
     );
     return {
+      viewport: { width: innerWidth, height: innerHeight },
+      dockHeight: dockBox.height,
       clockCount: clocks.length,
       clockInDock: Boolean(clock.closest("#dock")),
       clockInTopbar: Boolean(clock.closest(".topbar")),
@@ -2717,6 +2719,10 @@ async function assertSimulationDateInDock(page, label) {
   assert.equal(audit.clockTopbarOverlap, false, `${label}: date does not sit in the brand area`);
   assert.equal(audit.horizontalScroll, false, `${label}: no horizontal scroll`);
   assert.equal(audit.dockClipped, false, `${label}: dock stays inside the viewport`);
+  if (audit.viewport.width === 390 && audit.viewport.height === 844) {
+    assert.ok(audit.dockHeight <= 100.5,
+      `${label}: portrait dock retains its 100px clearance (${audit.dockHeight})`);
+  }
   assert.equal(audit.hitIsClock, false, `${label}: date is not the hit target`);
   assert.equal(audit.hitInteractive, false, `${label}: date does not cover an interactive control`);
   assert.deepEqual(audit.controlOverlaps, [], `${label}: dock controls do not overlap`);
@@ -2795,21 +2801,29 @@ async function assertCardAuditWaitsForPaint(context) {
   }
 }
 
-async function assertLandscapeDateWidths(context) {
+async function assertResponsiveDateWidths(context) {
   const reports = [];
   const maximumDate = simulationDateLabel(MAX_SIMULATION_DAYS);
   for (const [width, height] of [
     [568, 320], [700, 500], [718, 500], [719, 500], [720, 500],
     [721, 500], [840, 500], [841, 500], [844, 390],
+    [320, 568], [390, 844], [720, 900], [721, 900], [720, 720],
+    [721, 721], [720, 501], [721, 501], [768, 1024], [1024, 768],
+    [1440, 900],
   ]) {
     const page = await context.newPage();
     const errors = captureErrors(page);
     const viewport = { width, height };
-    const label = `landscape-date-${width}x${height}`;
+    const label = `${width > height ? "landscape" : "responsive"}-date-${width}x${height}`;
     try {
       await page.setViewportSize(viewport);
       await openReady(page);
       await page.locator("#play-button").click();
+      const initial = await page.evaluate(() => ({
+        unit: document.querySelector("#speed-slider").value,
+        date: document.querySelector("#clock").textContent,
+        text: document.querySelector("#speed-readout").textContent,
+      }));
       const widestRate = await page.locator("#speed-slider").evaluate((slider) => {
         const readout = document.querySelector("#speed-readout");
         const range = document.createRange();
@@ -2827,29 +2841,39 @@ async function assertLandscapeDateWidths(context) {
         }
         return widest;
       });
-      // Layout-only maximum-date fixture; the paused simulation time stays unchanged.
-      await page.locator("#clock").evaluate((clock, text) => { clock.textContent = text; },
-        maximumDate);
       const rates = [];
-      for (const rate of [{ name: "maximum-date", unit: "1" }, { name: "widest-rate", unit: widestRate.unit }]) {
+      for (const rate of [
+        { name: "default", unit: initial.unit, date: initial.date, expectedText: initial.text, layoutOnlyMaximumDate: false },
+        { name: "maximum-date", unit: "1", date: maximumDate, layoutOnlyMaximumDate: true },
+        { name: "widest-rate", unit: widestRate.unit, date: maximumDate, expectedText: widestRate.text, layoutOnlyMaximumDate: true },
+      ]) {
         await page.locator("#reset-button").click();
         await page.locator("#speed-slider").evaluate((slider, unit) => {
           slider.value = unit;
           slider.dispatchEvent(new Event("input", { bubbles: true }));
         }, rate.unit);
+        if (rate.layoutOnlyMaximumDate) {
+          // Layout-only maximum-date fixture; the paused simulation time stays unchanged.
+          await page.locator("#clock").evaluate((clock, text) => { clock.textContent = text; },
+            rate.date);
+        }
         await waitForTwoAnimationFrames(page);
         const closed = await assertSimulationDateInDock(page, `${label} ${rate.name}, card closed`);
-        assert.equal(closed.clockText, maximumDate, `${label}: maximum-date fixture remains visible`);
-        if (rate.name === "widest-rate") assert.equal(closed.readoutText, widestRate.text);
+        assert.equal(closed.clockText, rate.date, `${label}: ${rate.name} date remains visible`);
+        if (rate.expectedText) assert.equal(closed.readoutText, rate.expectedText);
         await saveScreenshot(page, `${label}-${rate.name}-closed`);
         await assertCardClearsDock(page, viewport);
         const open = await assertSimulationDateInDock(page, `${label} ${rate.name}, card open`);
-        assert.equal(open.clockText, maximumDate, `${label}: selection preserves the maximum-date fixture`);
+        assert.equal(open.clockText, rate.date, `${label}: selection preserves the ${rate.name} date`);
         assert.equal(open.readoutText, closed.readoutText, `${label}: selection preserves the rate`);
+        if (rate.name === "default" && width >= 1024) {
+          assert.ok([closed, open].every((audit) => audit.dockHeight <= 48.5),
+            `${label}: default desktop dock retains its 48px row`);
+        }
         await saveScreenshot(page, `${label}-${rate.name}-open`);
         rates.push({ ...rate, closed, open });
       }
-      reports.push({ viewport, layoutOnlyMaximumDate: true, widestRate, rates });
+      reports.push({ viewport, initial, maximumDate, widestRate, rates });
       assert.deepEqual(errors, [], `${label}: no browser errors`);
     } catch (error) {
       const geometry = await page.evaluate(() => [...document.querySelectorAll(
@@ -2858,15 +2882,15 @@ async function assertLandscapeDateWidths(context) {
         box: element.getBoundingClientRect().toJSON() })));
       console.error(JSON.stringify({ label, geometry }));
       try { await saveScreenshot(page, `${label}-failure`); }
-      catch (captureError) { console.error(`Could not retain landscape failure evidence: ${captureError}`); }
+      catch (captureError) { console.error(`Could not retain responsive date failure evidence: ${captureError}`); }
       throw error;
     } finally { await page.close(); }
   }
   if (screenshotDir) {
     await mkdir(screenshotDir, { recursive: true });
-    await writeFile(path.join(screenshotDir, "landscape-date-layout.json"), JSON.stringify(reports, null, 2) + "\n");
+    await writeFile(path.join(screenshotDir, "responsive-date-layout.json"), JSON.stringify(reports, null, 2) + "\n");
   }
-  console.log(`landscape maximum-date layout passed at all ${reports.length} viewports`);
+  console.log(`responsive default and maximum-date layout passed at all ${reports.length} viewports`);
 }
 
 async function assertSimulationDatePlayPause(page, label) {
@@ -3035,7 +3059,7 @@ try {
   const dateLayout = await browser.newContext({ deviceScaleFactor: 1, hasTouch: true });
   try {
     await assertCardAuditWaitsForPaint(dateLayout);
-    await assertLandscapeDateWidths(dateLayout);
+    await assertResponsiveDateWidths(dateLayout);
   } finally { await dateLayout.close(); }
   await runFocusTracking(browser, base, {
     onReport: async (report) => {

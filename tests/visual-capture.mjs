@@ -88,12 +88,14 @@ const responsiveSizes = [
   [320, 568], [568, 320], [390, 844], [700, 500], [718, 500],
   [719, 500], [720, 500], [721, 500],
   [840, 500], [841, 500], [844, 390], [768, 1024], [1024, 768],
+  [720, 900], [721, 900], [720, 720], [721, 721], [720, 501],
+  [721, 501], [1440, 900],
 ];
 for (const [width, height] of responsiveSizes) {
   expect(`supplement-responsive-${width}x${height}`);
   expect(`supplement-responsive-closed-${width}x${height}`);
 }
-assert.equal(expected.size, 224);
+assert.equal(expected.size, 238);
 const trackingNames = new Map();
 for (const scenario of focusTrackingScenarios) {
   for (const offset of focusTrackingOffsets) {
@@ -102,7 +104,7 @@ for (const scenario of focusTrackingScenarios) {
     trackingNames.set(name, scenario);
   }
 }
-assert.equal(expected.size, 254);
+assert.equal(expected.size, 268);
 const completeMatrix = [...expected];
 const groupFor = (name) => {
   const tracking = trackingNames.get(name);
@@ -114,7 +116,7 @@ const groupFor = (name) => {
 for (const name of expected) {
   if (group === "focus" ? !trackingNames.has(name) : group !== "all" && groupFor(name) !== group) expected.delete(name);
 }
-assert.equal(expected.size, { all: 254, bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 83, focus: 30 }[group]);
+assert.equal(expected.size, { all: 268, bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 97, focus: 30 }[group]);
 const activeTrackingScenarios = focusTrackingScenarios.filter((item) =>
   expected.has(`focus-tracking-${item.id}-${focusTrackingOffsets[0]}ms`));
 

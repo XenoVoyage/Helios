@@ -344,7 +344,7 @@ select:focus-visible,
   flex: 1 1 280px;
   gap: 8px;
   align-items: center;
-  min-width: 0;
+  min-width: min-content;
   max-width: 100%;
 }
 
@@ -352,7 +352,8 @@ select:focus-visible,
   display: flex;
   flex: 1;
   align-items: center;
-  min-width: 0;
+  /* Reserve the slider's 44px target plus its native side margins. */
+  min-width: 48px;
 }
 
 input[type="range"] {
@@ -369,6 +370,7 @@ input[type="range"] {
 #speed-readout {
   min-width: 5.5rem;
   text-align: right;
+  white-space: nowrap;
 }
 
 #clock {
@@ -467,8 +469,9 @@ input[type="range"] {
   .speed-group {
     display: grid;
     flex-basis: 220px;
-    grid-template-columns: 44px minmax(0, 1fr) 44px max-content;
+    grid-template-columns: 44px minmax(48px, 1fr) 44px max-content;
     grid-template-rows: repeat(2, 24px);
+    column-gap: 2px;
     row-gap: 0;
   }
 
@@ -556,10 +559,7 @@ input[type="range"] {
 
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 840px) {
   .speed-group {
-    /* Reserve the slider's 44px target plus its native side margins. */
-    grid-template-columns: 44px minmax(48px, 1fr) 44px max-content;
     grid-template-rows: repeat(2, 22px);
-    min-width: min-content;
     column-gap: 0;
   }
 }
