@@ -461,7 +461,8 @@ input[type="range"] {
   }
 }
 
-@media (max-width: 720px) and (orientation: portrait) {
+@media (max-width: 720px) and (orientation: portrait),
+  (orientation: landscape) and (max-height: 500px) and (max-width: 840px) {
   /* Keep the date inside the existing control row so cards retain their clearance. */
   .speed-group {
     display: grid;
@@ -491,7 +492,9 @@ input[type="range"] {
     grid-row: 2;
     margin-left: 0;
   }
+}
 
+@media (max-width: 720px) and (orientation: portrait) {
   #stage:has(#camera-controls:not([hidden])) .card {
     --camera-card-gap: 24px;
     --camera-card-top: 52px;
@@ -546,6 +549,13 @@ input[type="range"] {
       - env(safe-area-inset-top) - env(safe-area-inset-bottom)
     );
     overflow: auto;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 840px) {
+  .speed-group {
+    grid-template-rows: repeat(2, 22px);
+    column-gap: 2px;
   }
 }
 
