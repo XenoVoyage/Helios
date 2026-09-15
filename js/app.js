@@ -12,6 +12,8 @@ import {
   pinchZoomDistance,
   resetParentGlobeContinuity,
   resolveParentGlobePoint,
+  sliderFromSpeed,
+  speedFromSlider,
   wheelZoomMultiplier,
 } from "./config.js";
 import { advanceSimulationDays, elapsedSeconds, simulationDateLabel } from "./time.js";
@@ -994,18 +996,6 @@ function scaleSpeed(factor) {
     CONFIG.maxDaysPerSecond,
   );
   paintSpeed();
-}
-
-function speedFromSlider(unit) {
-  const min = Math.log(CONFIG.minDaysPerSecond);
-  const max = Math.log(CONFIG.maxDaysPerSecond);
-  return Math.exp(min + (max - min) * unit);
-}
-
-function sliderFromSpeed(daysPerSecond) {
-  const min = Math.log(CONFIG.minDaysPerSecond);
-  const max = Math.log(CONFIG.maxDaysPerSecond);
-  return (Math.log(daysPerSecond) - min) / (max - min);
 }
 
 function paintSpeed() {

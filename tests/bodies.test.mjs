@@ -776,10 +776,11 @@ test("retrograde spin is not reversed twice by period and obliquity", () => {
   }
 });
 
-test("time floor is one simulated hour per real second", () => {
+test("time floor is real time while startup remains one hour per second", () => {
   assert.equal(CONFIG.defaultDaysPerSecond, 1 / 24);
-  assert.equal(CONFIG.minDaysPerSecond, 1 / 24);
-  assert.ok(CONFIG.maxDaysPerSecond > CONFIG.defaultDaysPerSecond);
+  assert.equal(CONFIG.minDaysPerSecond, 1 / 86400);
+  assert.equal(CONFIG.maxDaysPerSecond, 400);
+  assert.equal(formatDaysPerSecond(CONFIG.minDaysPerSecond), "1 s");
   assert.equal(formatDaysPerSecond(CONFIG.defaultDaysPerSecond), "1 h");
   assert.equal(formatDaysPerSecond(8), "8.0 d");
   assert.equal(formatDaysPerSecond(0.25), "6 h");

@@ -14,7 +14,13 @@ import {
   moonOrbitAttachment,
   visualBodyRadius,
 } from "../js/bodies.js";
-import { CONFIG, minimumFocusDistance, wheelZoomMultiplier } from "../js/config.js";
+import {
+  CONFIG,
+  describeDaysPerSecond,
+  formatDaysPerSecond,
+  minimumFocusDistance,
+  wheelZoomMultiplier,
+} from "../js/config.js";
 import { cmbSkyOpacity, sceneHierarchyId } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
 import { auditCameraNavigation } from "./camera-navigation.mjs";
@@ -2474,14 +2480,12 @@ async function captureTriton(page) {
   await page.mouse.wheel(0, -1_200);
   await waitForMoonCameraSettled(page);
   await saveTritonScreenshot(page, "triton-rotation-a");
-  await page.locator("#speed-slider").evaluate((slider) => {
-    const minimum = 1 / 24;
-    const maximum = 400;
+  await page.locator("#speed-slider").evaluate((slider, { minimum, maximum }) => {
     const target = 5.876994;
     slider.value = String((Math.log(target) - Math.log(minimum))
       / (Math.log(maximum) - Math.log(minimum)));
     slider.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  }, { minimum: CONFIG.minDaysPerSecond, maximum: CONFIG.maxDaysPerSecond });
   await page.locator("#play-button").click();
   await page.waitForTimeout(500);
   await page.locator("#play-button").click();
@@ -2543,13 +2547,11 @@ async function captureEarthSolstice(context, name, targetDate, southPole = false
   }
   await page.evaluate(() => document.querySelector('[data-body-id="earth"]').click());
   await page.locator("#body-card:not([hidden])").waitFor();
-  const setSpeed = (target) => page.locator("#speed-slider").evaluate((slider, daysPerSecond) => {
-    const minimum = 1 / 24;
-    const maximum = 400;
+  const setSpeed = (target) => page.locator("#speed-slider").evaluate((slider, { daysPerSecond, minimum, maximum }) => {
     slider.value = String((Math.log(daysPerSecond) - Math.log(minimum))
       / (Math.log(maximum) - Math.log(minimum)));
     slider.dispatchEvent(new Event("input", { bubbles: true }));
-  }, target);
+  }, { daysPerSecond: target, minimum: CONFIG.minDaysPerSecond, maximum: CONFIG.maxDaysPerSecond });
   const approachDate = new Date(
     Date.parse(`${targetDate}T00:00:00Z`) - 75 * 86_400_000,
   ).toISOString().slice(0, 10);
@@ -2824,34 +2826,15 @@ async function assertResponsiveDateWidths(context) {
         date: document.querySelector("#clock").textContent,
         text: document.querySelector("#speed-readout").textContent,
       }));
-      const widestRate = await page.locator("#speed-slider").evaluate((slider) => {
-        const readout = document.querySelector("#speed-readout");
-        const range = document.createRange();
-        let widest = { unit: "0", text: "", width: 0 };
-        // Measure every native slider step: the largest rate need not have the widest label.
-        for (let step = 0; step <= 100; step += 1) {
-          slider.value = String(step / 100);
-          slider.dispatchEvent(new Event("input", { bubbles: true }));
-          range.selectNodeContents(readout);
-          if (range.getClientRects().length !== 1) {
-            throw new Error(`rate label wraps at slider ${slider.value}: ${readout.textContent}`);
-          }
-          const width = range.getBoundingClientRect().width;
-          if (width > widest.width) widest = { unit: slider.value, text: readout.textContent, width };
-        }
-        return widest;
-      });
       const rates = [];
-      for (const rate of [
-        { name: "default", unit: initial.unit, date: initial.date, expectedText: initial.text, layoutOnlyMaximumDate: false },
-        { name: "maximum-date", unit: "1", date: maximumDate, layoutOnlyMaximumDate: true },
-        { name: "widest-rate", unit: widestRate.unit, date: maximumDate, expectedText: widestRate.text, layoutOnlyMaximumDate: true },
-      ]) {
+      const captureRate = async (rate) => {
         await page.locator("#reset-button").click();
-        await page.locator("#speed-slider").evaluate((slider, unit) => {
-          slider.value = unit;
-          slider.dispatchEvent(new Event("input", { bubbles: true }));
-        }, rate.unit);
+        if (rate.name !== "default") {
+          await page.locator("#speed-slider").evaluate((slider, unit) => {
+            slider.value = unit;
+            slider.dispatchEvent(new Event("input", { bubbles: true }));
+          }, rate.unit);
+        }
         if (rate.layoutOnlyMaximumDate) {
           // Layout-only maximum-date fixture; the paused simulation time stays unchanged.
           await page.locator("#clock").evaluate((clock, text) => { clock.textContent = text; },
@@ -2872,7 +2855,33 @@ async function assertResponsiveDateWidths(context) {
         }
         await saveScreenshot(page, `${label}-${rate.name}-open`);
         rates.push({ ...rate, closed, open });
-      }
+      };
+      // The initial 1 h/sec state is exact; replaying its rounded native thumb
+      // value would select a different rate on the expanded logarithmic range.
+      await captureRate({ name: "default", unit: initial.unit, date: initial.date,
+        expectedText: initial.text, layoutOnlyMaximumDate: false });
+      const widestRate = await page.locator("#speed-slider").evaluate((slider) => {
+        const readout = document.querySelector("#speed-readout");
+        const range = document.createRange();
+        let widest = { unit: "0", text: "", width: 0 };
+        // Measure every native slider step: the largest rate need not have the widest label.
+        for (let step = 0; step <= 100; step += 1) {
+          slider.value = String(step / 100);
+          slider.dispatchEvent(new Event("input", { bubbles: true }));
+          range.selectNodeContents(readout);
+          if (range.getClientRects().length !== 1) {
+            throw new Error(`rate label wraps at slider ${slider.value}: ${readout.textContent}`);
+          }
+          const width = range.getBoundingClientRect().width;
+          if (width > widest.width) widest = { unit: slider.value, text: readout.textContent, width };
+        }
+        return widest;
+      });
+      for (const rate of [
+        { name: "minimum", unit: "0", date: initial.date, expectedText: "1 s / sec", layoutOnlyMaximumDate: false },
+        { name: "maximum-date", unit: "1", date: maximumDate, layoutOnlyMaximumDate: true },
+        { name: "widest-rate", unit: widestRate.unit, date: maximumDate, expectedText: widestRate.text, layoutOnlyMaximumDate: true },
+      ]) await captureRate(rate);
       reports.push({ viewport, initial, maximumDate, widestRate, rates });
       assert.deepEqual(errors, [], `${label}: no browser errors`);
     } catch (error) {
@@ -2890,13 +2899,245 @@ async function assertResponsiveDateWidths(context) {
     await mkdir(screenshotDir, { recursive: true });
     await writeFile(path.join(screenshotDir, "responsive-date-layout.json"), JSON.stringify(reports, null, 2) + "\n");
   }
-  console.log(`responsive default and maximum-date layout passed at all ${reports.length} viewports`);
+  console.log(`responsive minimum, default and maximum-date layout passed at all ${reports.length} viewports`);
+}
+
+async function auditTimeSpeedControls(browser) {
+  const reports = [];
+  const minimum = CONFIG.minDaysPerSecond, maximum = CONFIG.maxDaysPerSecond;
+  const rateAtUnit = (unit) => unit <= 0 ? minimum : unit >= 1 ? maximum
+    : Math.exp(Math.log(minimum) + (Math.log(maximum) - Math.log(minimum)) * unit);
+  for (const [width, height, touch] of [[1440, 900, false], [390, 844, true], [568, 320, true]]) {
+    const viewport = { width, height };
+    const label = `time-speed-${width}x${height}`;
+    const context = await browser.newContext({ viewport, deviceScaleFactor: 1, hasTouch: touch });
+    const page = await context.newPage();
+    const errors = captureErrors(page);
+    const report = { viewport, input: touch ? "emulated touch" : "mouse", controls: [], views: [] };
+    reports.push(report);
+    let observer;
+    try {
+      await page.clock.install({ time: new Date("2026-09-15T00:00:00Z") });
+      await page.addInitScript(() => {
+        const requestFrame = window.requestAnimationFrame.bind(window);
+        window.requestAnimationFrame = (callback) => requestFrame((timestamp) => {
+          if (callback.name === "tick") {
+            if (!window.speedAuditFirstTick) {
+              const play = document.querySelector("#play-button");
+              if (play?.getAttribute("aria-pressed") === "true") play.click();
+              window.speedAuditFirstTick = { timestamp,
+                paused: play?.getAttribute("aria-pressed") === "false" };
+            }
+            window.speedAuditTickTimestamp = timestamp;
+          }
+          callback(timestamp);
+        });
+      });
+      await openReady(page);
+      assert.equal(await page.evaluate(() => window.speedAuditFirstTick?.paused), true,
+        `${label}: pause before the first application frame`);
+      const slider = page.locator("#speed-slider");
+      const activate = async (selector) => {
+        const box = await page.locator(selector).boundingBox();
+        assert.ok(box, `${label}: ${selector} has a pointer target`);
+        const x = box.x + box.width / 2, y = box.y + box.height / 2;
+        if (touch) await page.touchscreen.tap(x, y);
+        else await page.mouse.click(x, y);
+      };
+      const checkRate = async (name, expectedRate, expectedUnit) => {
+        const sample = await page.evaluate(() => ({
+          unit: Number(document.querySelector("#speed-slider").value),
+          text: document.querySelector("#speed-readout").textContent,
+          aria: document.querySelector("#speed-slider").getAttribute("aria-valuetext"),
+          playing: document.querySelector("#play-button").getAttribute("aria-pressed"),
+          date: document.querySelector("#clock").textContent,
+        }));
+        const inverse = (Math.log(expectedRate) - Math.log(minimum))
+          / (Math.log(maximum) - Math.log(minimum));
+        assert.ok(Number.isFinite(sample.unit) && sample.unit >= 0 && sample.unit <= 1,
+          `${label} ${name}: finite bounded thumb`);
+        assert.ok(Math.abs(sample.unit - inverse) <= 0.005000001,
+          `${label} ${name}: native thumb agrees with the rate within its 0.01 step`);
+        if (expectedUnit !== undefined) assert.equal(sample.unit, expectedUnit, `${label} ${name}: thumb`);
+        assert.equal(sample.text, `${formatDaysPerSecond(expectedRate)} / sec`, `${label} ${name}: visible rate`);
+        assert.equal(sample.aria, describeDaysPerSecond(expectedRate), `${label} ${name}: accessible rate`);
+        assert.equal(sample.playing, "false", `${label} ${name}: changing rate preserves pause`);
+        assert.equal(sample.date, "2000-01-01", `${label} ${name}: paused date is unchanged`);
+        report.controls.push({ name, expectedRate, ...sample });
+        return sample;
+      };
+      const nativeKey = async (key) => { await slider.focus(); await page.keyboard.press(key); };
+      const globalKey = async (key) => {
+        await page.locator("#viewport").focus();
+        await page.keyboard.press(key);
+      };
+      const captureRate = async (name) => {
+        await assertCardClearsDock(page, viewport);
+        await waitForMoonCameraSettled(page);
+        const audit = await assertSimulationDateInDock(page, `${label} ${name}`);
+        await saveScreenshot(page, `${label}-${name}`);
+        const clip = await page.locator("#dock").boundingBox();
+        assert.ok(clip);
+        await saveScreenshot(page, `${label}-${name}-dock`, { clip });
+        report.views.push({ name, audit });
+      };
+      const initial = await checkRate("default", CONFIG.defaultDaysPerSecond);
+      assert.equal(initial.text, "1 h / sec");
+      assert.equal(initial.aria, "1 hour per second");
+      await captureRate("default");
+      for (let step = 1; step <= 12; step += 1) {
+        await activate("#slower-button");
+        await checkRate(`Slower from default ${step}`,
+          Math.max(minimum, CONFIG.defaultDaysPerSecond / (2 ** step)), step === 12 ? 0 : undefined);
+      }
+
+      await nativeKey("Home");
+      const slowest = await checkRate("native Home", minimum, 0);
+      assert.equal(slowest.text, "1 s / sec");
+      assert.equal(slowest.aria, "1 second per second");
+      await captureRate("minimum");
+      await nativeKey("ArrowRight");
+      await checkRate("native ArrowRight", rateAtUnit(0.01), 0.01);
+      await nativeKey("ArrowLeft");
+      await checkRate("native ArrowLeft", minimum, 0);
+      await nativeKey("ArrowDown");
+      await checkRate("native lower clamp", minimum, 0);
+      for (let repeat = 0; repeat < 3; repeat += 1) {
+        await activate("#slower-button");
+        await checkRate(`Slower lower clamp ${repeat + 1}`, minimum, 0);
+      }
+      await activate("#faster-button");
+      await checkRate("Faster doubles the minimum", 2 * minimum);
+      await activate("#slower-button");
+      await checkRate("Slower restores the minimum", minimum, 0);
+      for (let repeat = 0; repeat < 3; repeat += 1) {
+        await globalKey("-");
+        await checkRate(`global minus lower clamp ${repeat + 1}`, minimum, 0);
+      }
+      await globalKey("+");
+      await checkRate("global plus doubles the minimum", 2 * minimum);
+      await globalKey("-");
+      await checkRate("global minus restores the minimum", minimum, 0);
+
+      await nativeKey("End");
+      const fastest = await checkRate("native End", maximum, 1);
+      assert.equal(fastest.text, "1.1 yr / sec");
+      assert.equal(fastest.aria, "1.1 years per second");
+      await captureRate("maximum");
+      await nativeKey("ArrowLeft");
+      await checkRate("native step below maximum", rateAtUnit(0.99), 0.99);
+      await nativeKey("ArrowRight");
+      await checkRate("native step to maximum", maximum, 1);
+      await nativeKey("ArrowUp");
+      await checkRate("native upper clamp", maximum, 1);
+      for (let repeat = 0; repeat < 3; repeat += 1) {
+        await activate("#faster-button");
+        await checkRate(`Faster upper clamp ${repeat + 1}`, maximum, 1);
+      }
+      await activate("#slower-button");
+      await checkRate("Slower halves the maximum", maximum / 2);
+      await activate("#faster-button");
+      await checkRate("Faster restores the maximum", maximum, 1);
+      for (let repeat = 0; repeat < 3; repeat += 1) {
+        await globalKey("+");
+        await checkRate(`global plus upper clamp ${repeat + 1}`, maximum, 1);
+      }
+      await globalKey("-");
+      await checkRate("global minus halves the maximum", maximum / 2);
+      await globalKey("+");
+      await checkRate("global plus restores the maximum", maximum, 1);
+      await activate("#speed-slider");
+      const pointerUnit = Number(await slider.inputValue());
+      assert.ok(pointerUnit > 0 && pointerUnit < 1, `${label}: pointer selects an interior slider step`);
+      await checkRate("pointer slider selection", rateAtUnit(pointerUnit), pointerUnit);
+      await nativeKey("Home");
+      await checkRate("minimum before integration", minimum, 0);
+
+      // Read Mercury's live world transform after scene rendering; Mercury
+      // need not be visible in this Earth-focused view. The cached THREE
+      // observer never changes scene objects, application state, or clock math.
+      observer = await page.evaluateHandle(async () => {
+        const THREE = await import(new URL("vendor/three.module.min.js", location.href).href);
+        const prototype = THREE.Scene.prototype;
+        const own = Object.getOwnPropertyDescriptor(prototype, "onAfterRender");
+        const original = prototype.onAfterRender;
+        const world = new THREE.Vector3();
+        let mercury, last, frames = 0;
+        prototype.onAfterRender = function (...args) {
+          original.apply(this, args);
+          if (!mercury) this.traverse((object) => {
+            if (object.isMesh && object.userData.bodyId === "mercury") mercury = object;
+          });
+          if (!mercury) return;
+          world.setFromMatrixPosition(mercury.matrixWorld);
+          last = { timestamp: window.speedAuditTickTimestamp, performanceNow: performance.now(),
+            world: world.toArray(), playing: document.querySelector("#play-button").getAttribute("aria-pressed"),
+            date: document.querySelector("#clock").textContent };
+          frames += 1;
+        };
+        return { snapshot: () => ({ frames, last }), restore() {
+          if (own) Object.defineProperty(prototype, "onAfterRender", own);
+          else delete prototype.onAfterRender;
+        } };
+      });
+      // Use a future pause target, then place the last paused RAF at the clock
+      // boundary before measuring an exact one-second application step.
+      await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+      await page.clock.fastForward(16);
+      const before = await observer.evaluate((value) => value.snapshot());
+      assert.ok(before.last && before.frames > 0, `${label}: Mercury scene-transform observer is active`);
+      assert.equal(before.last.playing, "false");
+      const expectedWorld = (days) => {
+        const at = keplerOffset(findBody("mercury"), null, days);
+        return [at.x, at.y, at.z];
+      };
+      const errorFrom = (sample, expected) => Math.hypot(...sample.world.map((value, i) => value - expected[i]));
+      assert.ok(errorFrom(before.last, expectedWorld(0)) < 1e-9,
+        `${label}: all paused control interactions retain the J2000 orbit`);
+      await activate("#play-button");
+      await page.clock.fastForward(1000);
+      const running = await observer.evaluate((value) => value.snapshot());
+      assert.equal(running.last.timestamp - before.last.timestamp, 1000,
+        `${label}: exactly one second between observed application RAFs`);
+      assert.equal(running.last.playing, "true");
+      const expectedDays = 1 / 86400;
+      assert.ok(errorFrom(running.last, expectedWorld(expectedDays)) < 1e-9,
+        `${label}: one real second advances the live scene orbit by one simulated second`);
+      assert.ok(errorFrom(running.last, before.last.world) > 1e-7,
+        `${label}: minimum speed is running, not frozen`);
+      await activate("#play-button");
+      await page.clock.fastForward(1000);
+      const paused = await observer.evaluate((value) => value.snapshot());
+      assert.equal(paused.last.playing, "false");
+      assert.deepEqual(paused.last.world, running.last.world, `${label}: pause holds the live scene orbit`);
+      assert.equal(paused.last.date, running.last.date, `${label}: pause holds the date`);
+      report.integration = { before, running, paused, elapsedSeconds: 1, expectedDays,
+        expectedWorld: expectedWorld(expectedDays), worldError: errorFrom(running.last, expectedWorld(expectedDays)) };
+      assert.deepEqual(errors, [], `${label}: no browser errors`);
+      console.log(`${label}: mouse/touch, native keys, buttons, global shortcuts, clamps and one-second integration passed`);
+    } catch (error) {
+      report.failure = error.message;
+      console.error(JSON.stringify(report));
+      throw error;
+    } finally {
+      if (observer) {
+        await observer.evaluate((value) => value.restore());
+        await observer.dispose();
+      }
+      await context.close();
+      if (screenshotDir) {
+        await mkdir(screenshotDir, { recursive: true });
+        await writeFile(path.join(screenshotDir, "time-speed-controls.json"), JSON.stringify(reports, null, 2) + "\n");
+      }
+    }
+  }
 }
 
 async function assertSimulationDatePlayPause(page, label) {
+  // This is the page's final audit before close. Replaying a saved native thumb
+  // would not restore an exact rate between steps, such as the 1 h/sec default.
   const play = page.locator("#play-button");
   const slider = page.locator("#speed-slider");
-  const previousSpeed = await slider.inputValue();
   const wasPlaying = await play.getAttribute("aria-pressed") === "true";
   if (wasPlaying) await play.click();
   const pausedDate = await page.locator("#clock").textContent();
@@ -2918,11 +3159,6 @@ async function assertSimulationDatePlayPause(page, label) {
   const stoppedDate = await page.locator("#clock").textContent();
   await page.waitForTimeout(400);
   assert.equal(await page.locator("#clock").textContent(), stoppedDate, `${label}: date remains stable after pause`);
-  await slider.evaluate((element, value) => {
-    element.value = value;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-  }, previousSpeed);
-  if (wasPlaying) await play.click();
 }
 
 async function assertCardClearsDock(page, viewport) {
@@ -3061,6 +3297,7 @@ try {
     await assertCardAuditWaitsForPaint(dateLayout);
     await assertResponsiveDateWidths(dateLayout);
   } finally { await dateLayout.close(); }
+  await auditTimeSpeedControls(browser);
   await runFocusTracking(browser, base, {
     onReport: async (report) => {
       if (screenshotDir) {

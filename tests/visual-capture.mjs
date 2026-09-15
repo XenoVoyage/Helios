@@ -48,6 +48,15 @@ const configMath = await import(pathToFileURL(path.join(sourceRoot, "js/config.j
 const { equatorialVectorToScene } = await import(pathToFileURL(path.join(sourceRoot, "js/sky.js")));
 const { BODIES, findBody, visualBodyRadius, keplerOffset, moonOrbitAttachment, bodyOrientationBasis } = bodyMath;
 const { CONFIG } = configMath;
+const sourceSpeedFromSlider = configMath.speedFromSlider || ((unit) =>
+  Math.exp(Math.log(CONFIG.minDaysPerSecond) + (Math.log(CONFIG.maxDaysPerSecond) - Math.log(CONFIG.minDaysPerSecond)) * unit));
+const sourceTimeRates = {
+  minimumDaysPerSecond: CONFIG.minDaysPerSecond,
+  defaultDaysPerSecond: CONFIG.defaultDaysPerSecond,
+  maximumDaysPerSecond: CONFIG.maxDaysPerSecond,
+  sliderConversion: configMath.speedFromSlider ? "source-exported speedFromSlider" : "source's existing logarithmic slider mapping",
+  quantization: "Native range-input step is retained. A fresh startup default is observed before any slider input; its internal rate is not reconstructed from the rounded thumb position.",
+};
 const primaryIds = BODIES.filter((body) => body.kind !== "moon").map((body) => body.id);
 const moonIds = BODIES.filter((body) => body.kind === "moon").map((body) => body.id);
 assert.equal(BODIES.length, 20);
@@ -96,6 +105,18 @@ for (const [width, height] of responsiveSizes) {
   expect(`supplement-responsive-closed-${width}x${height}`);
 }
 assert.equal(expected.size, 238);
+const timeRateViewports = [
+  { id: "desktop", size: [1440, 900], touch: false },
+  { id: "touch-portrait", size: [390, 844], touch: true },
+  { id: "touch-landscape", size: [568, 320], touch: true },
+];
+for (const { id } of timeRateViewports) {
+  for (const rate of ["default", "minimum", "maximum"]) {
+    expect(`supplement-time-rate-${id}-${rate}`);
+    expect(`supplement-time-rate-${id}-${rate}-dock`);
+  }
+}
+assert.equal(expected.size, 256);
 const trackingNames = new Map();
 for (const scenario of focusTrackingScenarios) {
   for (const offset of focusTrackingOffsets) {
@@ -104,7 +125,7 @@ for (const scenario of focusTrackingScenarios) {
     trackingNames.set(name, scenario);
   }
 }
-assert.equal(expected.size, 268);
+assert.equal(expected.size, 286);
 const completeMatrix = [...expected];
 const groupFor = (name) => {
   const tracking = trackingNames.get(name);
@@ -116,7 +137,7 @@ const groupFor = (name) => {
 for (const name of expected) {
   if (group === "focus" ? !trackingNames.has(name) : group !== "all" && groupFor(name) !== group) expected.delete(name);
 }
-assert.equal(expected.size, { all: 268, bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 97, focus: 30 }[group]);
+assert.equal(expected.size, { all: 286, bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 115, focus: 30 }[group]);
 const activeTrackingScenarios = focusTrackingScenarios.filter((item) =>
   expected.has(`focus-tracking-${item.id}-${focusTrackingOffsets[0]}ms`));
 
@@ -130,12 +151,15 @@ if (inventoryOnly) {
     harness: { commit: git(harnessRoot, "rev-parse", "HEAD"), tree: git(harnessRoot, "rev-parse", "HEAD^{tree}"), clean: harnessClean, sha256: sha256(await readFile(fileURLToPath(import.meta.url))), focusTracking: trackingHarness },
     expected: [...expected].map((name) => {
       const compact = name.match(/responsive-(?:closed-)?(\d+)x(\d+)$/);
+      const timeRateViewport = timeRateViewports.find(({ id }) => name.startsWith(`supplement-time-rate-${id}-`));
       return {
         name,
-        viewport: compact ? [Number(compact[1]), Number(compact[2])] : (name.includes("touch-portrait") || trackingNames.get(name)?.touch) ? [390, 844] : [1440, 900],
+        viewport: timeRateViewport?.size || (compact ? [Number(compact[1]), Number(compact[2])] : (name.includes("touch-portrait") || trackingNames.get(name)?.touch) ? [390, 844] : [1440, 900]),
+        ...(timeRateViewport && name.endsWith("-dock") ? { crop: "outward-rounded visible dock bounds; exact rectangle recorded at capture" } : {}),
         scenario: name.replace(/^supplement-/, "").replaceAll("-", " "),
       };
     }),
+    sourceTimeRates,
     sourceDistances: BODIES.map(({ id }) => ({ id, framed: framedDistance(id), minimum: minimumDistance(id) })),
   }, null, 2));
   process.exit(0);
@@ -157,17 +181,20 @@ const manifest = {
   },
   node: process.version,
   playwright: JSON.parse(await readFile(path.join(harnessRoot, "node_modules/playwright/package.json"), "utf8")).version,
-  rendering: "Headless Chromium; ANGLE SwiftShader; deviceScaleFactor 1; screenshots are full viewport originals",
+  rendering: "Headless Chromium; ANGLE SwiftShader; deviceScaleFactor 1; screenshots are full viewport originals except the explicitly named time-rate dock crops, whose source view and exact clip are recorded",
   clockPolicy: "Playwright clock installed before navigation. A ready observer uses the public Pause control; a thin requestAnimationFrame wrapper additionally verifies and, if necessary, pauses through that control immediately before the first application tick callback. The first-tick record is asserted on every page. The wrapper preserves timestamps and callback execution. After loading, browser time is paused and advanced with runFor. No simulation-time or camera-state hook is injected. Matching labels alone do not prove matching camera/time.",
   limits: [
     "Touch is emulated with CDP, not physical hardware.",
     "Body selection buttons use DOM click, while camera/pick gestures use browser mouse or CDP touch input.",
     "Source minimum zoom differs: main has a global floor; develop/candidate have a source-owned per-body floor.",
     "Main has no aria-busy attribute; absence is recorded, never converted to false.",
+    "Minimum rates and native-step intermediate rates differ across source revisions. Rates are source-owned; matched moving captures do not imply equal simulation times or poses.",
     "Screenshots do not certify physical screen-reader behavior or universal scientific correctness.",
   ],
   expected: [...expected],
   captures: [],
+  sourceTimeRates,
+  timeRateObservations: [],
   focusTrackingExpectedReports: activeTrackingScenarios.map((item) => item.id),
   focusTrackingReports: [],
   focusTrackingDiagnostics: [],
@@ -201,14 +228,14 @@ async function advance(page, milliseconds) {
   }
 }
 
-async function screenshot(page, purpose) {
+async function screenshot(page, purpose, clip = null) {
   const state = states.get(page);
   const started = performance.now();
   const timing = { page: state.id, operation: "page.screenshot", purpose, controlledAt: state.elapsed };
   try {
     // Screenshot acquisition exceeded 15s in CI after many controlled animation frames.
     // This bounds acquisition only; the stable-frame and semantic criteria are unchanged.
-    const png = await page.screenshot({ timeout: 60_000 });
+    const png = await page.screenshot({ timeout: 60_000, ...(clip ? { clip } : {}) });
     timing.bytes = png.length;
     return png;
   } catch (error) {
@@ -243,6 +270,12 @@ async function observe(page) {
       scene: document.querySelector("#scene-context")?.textContent,
       focus: document.activeElement?.id || document.activeElement?.dataset.bodyId || document.activeElement?.tagName,
       version: document.querySelector("#version-label")?.textContent,
+      timeSpeed: {
+        sliderValue: Number(document.querySelector("#speed-slider")?.value),
+        sliderStep: document.querySelector("#speed-slider")?.step,
+        readout: document.querySelector("#speed-readout")?.textContent,
+        accessibleValue: document.querySelector("#speed-slider")?.getAttribute("aria-valuetext"),
+      },
       uiObstacles: [...document.querySelectorAll(".sky-label, #stage .topbar, #body-card, #dock, #version-label")]
         .filter((element) => element.getClientRects().length > 0)
         .map((element) => {
@@ -439,6 +472,7 @@ async function capture(page, name, details = {}, moving = false) {
   }
   await flush();
   console.log(`Captured ${sourceLabel}/${group} ${manifest.captures.length}/${expected.size} ${name}${settled?.stable === false ? " (UNSETTLED)" : ""}`);
+  return entry;
 }
 
 async function captureFocusTracking() {
@@ -746,6 +780,64 @@ async function responsive() {
   });
 }
 
+async function timeRates() {
+  for (const { id, size, touch } of timeRateViewports) await scenario(`time rates ${id}`, async () => {
+    const page = await newPage(touch, size);
+    try {
+      // The fresh default is exact even when its displayed thumb is step-rounded.
+      // Replaying that thumb would change the rate, so capture the default first.
+      for (const [rate, requestedUnit] of [["default", null], ["minimum", 0], ["maximum", 1], ["intermediate-quarter", 0.25], ["intermediate-three-quarters", 0.75]]) {
+        if (requestedUnit !== null) {
+          const sliderValue = await page.locator("#speed-slider").evaluate((slider, unit) => {
+            slider.value = String(unit);
+            slider.dispatchEvent(new Event("input", { bubbles: true }));
+            return Number(slider.value);
+          }, requestedUnit);
+          states.get(page).inputs.push({ at: states.get(page).elapsed, kind: "public speed slider input", requestedUnit, sliderValue });
+          await advance(page, 32);
+        }
+        const observable = await observe(page);
+        const effectiveDaysPerSecond = rate === "default" ? CONFIG.defaultDaysPerSecond : sourceSpeedFromSlider(observable.timeSpeed.sliderValue);
+        assert.equal(observable.playing, "false", "time-rate comparison remains paused");
+        assert.equal(observable.clockText, "2000-01-01", "time-rate comparison preserves J2000");
+        assert.equal(observable.cardHidden, true, "time-rate comparison retains the reset overview");
+        assert.equal(observable.timeSpeed.readout, `${configMath.formatDaysPerSecond(effectiveDaysPerSecond)} / sec`, "rate readout uses this source's effective rate");
+        assert.equal(observable.timeSpeed.accessibleValue, configMath.describeDaysPerSecond(effectiveDaysPerSecond), "accessible rate uses this source's effective rate");
+        const observation = {
+          viewport: { id, width: size[0], height: size[1], touchEmulation: touch }, rate, requestedUnit,
+          effectiveDaysPerSecond,
+          effectiveRateBasis: rate === "default" ? "source CONFIG default before any slider input" : "source conversion of the actual native-step slider value",
+          ...observable.timeSpeed, controlledElapsed: states.get(page).elapsed,
+          clockText: observable.clockText, playing: observable.playing,
+        };
+        manifest.timeRateObservations.push(observation);
+        if (rate.startsWith("intermediate-")) { await flush(); continue; }
+        const name = `supplement-time-rate-${id}-${rate}`;
+        const full = await capture(page, name, { timeRate: observation, initialSimulation: "J2000; paused before the first application tick" });
+        const started = performance.now();
+        const clip = await page.locator("#dock").evaluate((dock) => {
+          const box = dock.getBoundingClientRect();
+          const x = Math.max(0, Math.floor(box.x)), y = Math.max(0, Math.floor(box.y));
+          return { x, y, width: Math.min(innerWidth, Math.ceil(box.right)) - x, height: Math.min(innerHeight, Math.ceil(box.bottom)) - y };
+        });
+        assert.ok(clip.width > 0 && clip.height > 0, "visible dock has a nonempty crop");
+        const cropName = `${name}-dock`;
+        assert.ok(expected.has(cropName) && !manifest.captures.some((entry) => entry.name === cropName), "expected dock crop is captured once");
+        const png = await screenshot(page, cropName, clip);
+        assert.deepEqual({ width: png.readUInt32BE(16), height: png.readUInt32BE(20) }, { width: clip.width, height: clip.height }, "dock crop retains native pixels without resizing");
+        await writeFile(path.join(output, `${cropName}.png`), png);
+        manifest.captures.push({
+          ...full, name: cropName, file: `${cropName}.png`, sha256: sha256(png), bytes: png.length,
+          crop: { sourceFullView: full.file, clip, criterion: "same settled paused frame; outward-rounded visible dock bounds, no resize" },
+          observable: await observe(page), acquisitionWallMilliseconds: Math.round(performance.now() - started),
+        });
+        await flush();
+        console.log(`Captured ${sourceLabel}/${group} ${manifest.captures.length}/${expected.size} ${cropName}`);
+      }
+    } finally { await closePage(page); }
+  });
+}
+
 try {
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("source server did not start")), 15_000);
@@ -770,6 +862,7 @@ try {
     await scenario("Saturn and Earth sky", ringsAndSky);
     await scenario("Controlled regular Triton, overview and Milky Way references", controlledLegacyViews);
     await responsive();
+    await timeRates();
   }
   await captureFocusTracking();
 } catch (error) {
