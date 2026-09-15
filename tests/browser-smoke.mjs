@@ -3110,18 +3110,19 @@ async function auditTimeSpeedControls(browser) {
           else delete prototype.onAfterRender;
         } };
       });
-      // Use a future pause target, then place the last paused RAF at the clock
-      // boundary before measuring an exact one-second application step.
-      await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+      // Leave setup ample headroom from the midnight installation, then place
+      // the paused RAF at the boundary before the exact one-second step.
+      await page.clock.pauseAt(new Date("2026-09-15T01:00:00Z"));
       await page.clock.fastForward(16);
       const before = await observer.evaluate((value) => value.snapshot());
       assert.ok(before.last && before.frames > 0, `${label}: Mercury scene-transform observer is active`);
       assert.equal(before.last.playing, "false");
       const expectedWorld = (days) => {
-        const at = keplerOffset(findBody("mercury"), null, days);
+        const at = keplerOffset(findBody("mercury"), findBody("sun"), days);
         return [at.x, at.y, at.z];
       };
       const errorFrom = (sample, expected) => Math.hypot(...sample.world.map((value, i) => value - expected[i]));
+      report.integration = { before, expectedInitialWorld: expectedWorld(0) };
       assert.ok(errorFrom(before.last, expectedWorld(0)) < 1e-9,
         `${label}: all paused control interactions retain the J2000 orbit`);
       await activate("#play-button");
