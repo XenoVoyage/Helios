@@ -2975,11 +2975,41 @@ async function auditTimeSpeedControls(browser) {
         await assertCardClearsDock(page, viewport);
         await waitForMoonCameraSettled(page);
         const audit = await assertSimulationDateInDock(page, `${label} ${name}`);
+        const box = await page.locator("#dock").boundingBox();
+        assert.ok(box);
+        const x = Math.max(0, Math.floor(box.x)), y = Math.max(0, Math.floor(box.y));
+        const clip = { x, y,
+          width: Math.min(width, Math.ceil(box.x + box.width)) - x,
+          height: Math.min(height, Math.ceil(box.y + box.height)) - y };
+        assert.ok(clip.width > 0 && clip.height > 0);
         await saveScreenshot(page, `${label}-${name}`);
-        const clip = await page.locator("#dock").boundingBox();
-        assert.ok(clip);
-        await saveScreenshot(page, `${label}-${name}-dock`, { clip });
-        report.views.push({ name, audit });
+        const sourceFullView = `${label}-${name}.png`;
+        if (screenshotDir) {
+          // Use the retained full frame: a second dock-only browser capture
+          // repeatedly stalled after the minimum-rate frame had already passed.
+          const full = await readFile(path.join(screenshotDir, sourceFullView));
+          assert.deepEqual([full.readUInt32BE(16), full.readUInt32BE(20)], [width, height]);
+          const crop = await page.evaluate(async ({ source, clip }) => {
+            const image = new Image();
+            const ready = new Promise((resolve, reject) => {
+              image.addEventListener("load", resolve, { once: true });
+              image.addEventListener("error", reject, { once: true });
+            });
+            image.src = `data:image/png;base64,${source}`;
+            await ready;
+            const surface = document.createElement("canvas");
+            surface.width = clip.width;
+            surface.height = clip.height;
+            const context = surface.getContext("2d");
+            context.imageSmoothingEnabled = false;
+            context.drawImage(image, -clip.x, -clip.y);
+            return surface.toDataURL("image/png").split(",")[1];
+          }, { source: full.toString("base64"), clip });
+          const png = Buffer.from(crop, "base64");
+          assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [clip.width, clip.height]);
+          await writeFile(path.join(screenshotDir, `${label}-${name}-dock.png`), png);
+        }
+        report.views.push({ name, audit, crop: { sourceFullView, clip, resized: false } });
       };
       const initial = await checkRate("default", CONFIG.defaultDaysPerSecond);
       assert.equal(initial.text, "1 h / sec");
