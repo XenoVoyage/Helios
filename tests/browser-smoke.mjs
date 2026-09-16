@@ -2583,6 +2583,11 @@ async function captureEarthSolstice(context, name, targetDate, southPole = false
 
 async function assertSimulationDateInDock(page, label) {
   const audit = await page.evaluate(() => {
+    const describeHit = (element) => element ? {
+      id: element.id,
+      tag: element.tagName,
+      rectangle: element.getBoundingClientRect().toJSON(),
+    } : null;
     const clocks = [...document.querySelectorAll("#clock")];
     const clock = clocks[0];
     const readout = document.querySelector("#speed-readout");
@@ -2614,6 +2619,10 @@ async function assertSimulationDateInDock(page, label) {
           id: element.id,
           ...box.toJSON(),
           hit: hit?.closest("button, input, select") === element,
+          hitElement: describeHit(hit),
+          hitStack: document.elementsFromPoint(
+            box.left + box.width / 2, box.top + box.height / 2,
+          ).slice(0, 8).map(describeHit),
           coversClock: overlaps(box, clockBox),
           coversReadout: overlaps(box, readoutBox),
         };
@@ -2623,8 +2632,14 @@ async function assertSimulationDateInDock(page, label) {
       clockBox.top + clockBox.height / 2,
     );
     return {
+      at: performance.now(),
       viewport: { width: innerWidth, height: innerHeight },
       dockHeight: dockBox.height,
+      dockClearance: Number.parseFloat(getComputedStyle(document.documentElement)
+        .getPropertyValue("--dock-clearance")),
+      dock: describeHit(dock),
+      camera: describeHit(document.querySelector("#camera-controls")),
+      cameraToggle: describeHit(document.querySelector("#camera-toggle")),
       clockCount: clocks.length,
       clockInDock: Boolean(clock.closest("#dock")),
       clockInTopbar: Boolean(clock.closest(".topbar")),
@@ -2743,11 +2758,150 @@ async function assertSimulationDateInDock(page, label) {
       control.width >= 43.5,
       `${label}: ${control.id} keeps a 44px-wide target (${control.width})`,
     );
-    assert.equal(control.hit, true, `${label}: ${control.id} remains hit-testable`);
+    try {
+      assert.equal(control.hit, true,
+        `${label}: ${control.id} remains hit-testable: ${JSON.stringify(audit)}`);
+    } catch (error) {
+      error.audit = audit; // Retain this sample before a later frame can change it.
+      throw error;
+    }
     assert.equal(control.coversClock || control.coversReadout, false,
       `${label}: ${control.id} clears the date and rate`);
   }
   return audit;
+}
+
+async function resizeAndAssertSimulationDateInDock(page, viewport, label) {
+  await page.setViewportSize(viewport);
+  // CSS can reflow before resize/ResizeObserver updates the Camera clearance.
+  await waitForTwoAnimationFrames(page);
+  return assertSimulationDateInDock(page, label);
+}
+
+async function assertResizeAuditWaitsForPaint(browser) {
+  const context = await browser.newContext({ viewport: { width: 720, height: 900 }, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  const report = { evidence: "controlled resize callback deferral, not a historical CI event trace", errors };
+  let check;
+  let checkState = "pending";
+  const boundedObservation = async (observation) => {
+    let deadline;
+    try {
+      return await Promise.race([observation, new Promise((_, reject) => {
+        deadline = setTimeout(() => reject(new Error("resize audit observation exceeded 15s")), 15_000);
+      })]);
+    } finally { clearTimeout(deadline); }
+  };
+  try {
+    await page.addInitScript(() => {
+      const raf = window.requestAnimationFrame.bind(window);
+      const add = window.addEventListener.bind(window);
+      const NativeResizeObserver = window.ResizeObserver;
+      const gate = window.resizeAudit = { held: false, frames: [], resize: [], observers: [] };
+      gate.delivered = { frames: 0, resize: 0, observers: 0 };
+      gate.resized = new Promise((resolve) => { gate.resizeArrived = resolve; });
+      gate.framesHeld = new Promise((resolve) => { gate.framesArrived = resolve; });
+      window.addEventListener = (type, listener, options) => add(type, type === "resize"
+        ? function (event) {
+          const deliver = () => { gate.delivered.resize += 1; listener.call(window, event); };
+          if (gate.held) { gate.resize.push(deliver); gate.resizeArrived(); }
+          else deliver();
+        } : listener, options);
+      window.ResizeObserver = class extends NativeResizeObserver {
+        constructor(callback) {
+          super((entries, observer) => {
+            const deliver = () => {
+              gate.delivered.observers += 1;
+              callback.call(observer, entries, observer);
+            };
+            if (gate.held) gate.observers.push(deliver);
+            else deliver();
+          });
+        }
+      };
+      window.requestAnimationFrame = (callback) => raf((time) => {
+        if (gate.held) {
+          gate.frames.push(callback);
+          if (gate.frames.length >= 2) gate.framesArrived();
+        } else { gate.delivered.frames += 1; callback(time); }
+      });
+      // Native checkpoints keep layout/observer delivery live while app and audit
+      // callbacks wait; no elapsed-time sleep substitutes for a browser frame.
+      gate.checkpoint = () => new Promise((resolve) => raf(() => raf(resolve)));
+      gate.release = () => {
+        gate.held = false;
+        for (const deliver of gate.resize.splice(0)) deliver();
+        for (const deliver of gate.observers.splice(0)) deliver();
+        for (const callback of gate.frames.splice(0)) raf((time) => {
+          gate.delivered.frames += 1;
+          callback(time);
+        });
+      };
+    });
+    await openReady(page);
+    await assertCardClearsDock(page, { width: 720, height: 900 });
+    report.before = await assertSimulationDateInDock(page, "resize regression 720 card open");
+    assert.equal(report.before.dockHeight, 48);
+    assert.equal(report.before.dockClearance, 48);
+    await page.evaluate(() => {
+      window.resizeAudit.held = true;
+      window.resizeAudit.delivered = { frames: 0, resize: 0, observers: 0 };
+    });
+    check = resizeAndAssertSimulationDateInDock(page, { width: 721, height: 900 }, "resize regression 721");
+    check.then(() => { checkState = "passed"; }, () => { checkState = "failed"; });
+    await boundedObservation(Promise.race([
+      page.evaluate(async () => {
+        await window.resizeAudit.resized;
+        await window.resizeAudit.framesHeld;
+        await window.resizeAudit.checkpoint();
+      }),
+      check.then(() => { throw new Error("resize audit completed before a render frame"); }),
+    ]));
+    report.pending = await page.evaluate(() => ({
+      frames: window.resizeAudit.frames.length,
+      resize: window.resizeAudit.resize.length,
+      observers: window.resizeAudit.observers.length,
+      delivered: window.resizeAudit.delivered,
+    }));
+    assert.ok(report.pending.frames >= 2, "both application and audit frames are held");
+    assert.ok(report.pending.resize > 0 && report.pending.observers > 0,
+      "real resize and ResizeObserver callbacks are queued");
+    assert.deepEqual(report.pending.delivered, { frames: 0, resize: 0, observers: 0 },
+      "no application resize, observer, or frame callback was delivered while held");
+    await assert.rejects(assertSimulationDateInDock(page, "resize regression without frame barrier"),
+      (error) => {
+        report.stale = error.audit;
+        return error instanceof assert.AssertionError && /play-button remains hit-testable/.test(error.message);
+      });
+    assert.equal(report.stale.dockHeight, 100);
+    assert.equal(report.stale.dockClearance, 48);
+    assert.equal(report.stale.controls.find((control) => control.id === "play-button").hitElement.id,
+      "camera-toggle", "stale Camera clearance intercepts the real Play center");
+    await saveScreenshot(page, "responsive-resize-audit-stale");
+    assert.equal(checkState, "pending", "the real resize audit waits for frame delivery");
+    await page.evaluate(() => window.resizeAudit.release());
+    report.after = await boundedObservation(check);
+    report.delivered = await page.evaluate(() => window.resizeAudit.delivered);
+    assert.ok(report.delivered.frames >= 2 && report.delivered.resize > 0 && report.delivered.observers > 0,
+      "the original queued resize, observer, and frame callbacks were delivered");
+    assert.equal(report.after.dockClearance, 100);
+    assert.equal(checkState, "passed");
+    await saveScreenshot(page, "responsive-resize-audit-settled");
+    assert.deepEqual(errors, [], "held-resize audit has no browser errors");
+    report.pass = true;
+    console.log("responsive resize audit waits for paint; stale Camera hit rejected, settled controls passed");
+  } catch (error) {
+    report.failure = String(error);
+    throw error;
+  } finally {
+    await context.close();
+    await check?.catch(() => {});
+    if (screenshotDir) {
+      await mkdir(screenshotDir, { recursive: true });
+      await writeFile(path.join(screenshotDir, "responsive-resize-audit.json"), JSON.stringify(report, null, 2) + "\n");
+    }
+  }
 }
 
 async function assertCardAuditWaitsForPaint(context) {
@@ -3056,6 +3210,7 @@ try {
   assert.match(String(line), /Helios local server/);
 
   browser = await launchBrowser();
+  await assertResizeAuditWaitsForPaint(browser);
   const dateLayout = await browser.newContext({ deviceScaleFactor: 1, hasTouch: true });
   try {
     await assertCardAuditWaitsForPaint(dateLayout);
@@ -3104,8 +3259,7 @@ try {
     { width: 720, height: 500 },
     { width: 721, height: 500 },
   ]) {
-    await desktopPage.setViewportSize(viewport);
-    await assertSimulationDateInDock(desktopPage, `desktop-${viewport.width}x${viewport.height}`);
+    await resizeAndAssertSimulationDateInDock(desktopPage, viewport, `desktop-${viewport.width}x${viewport.height}`);
     await assertCardClearsDock(desktopPage, viewport);
   }
   await desktopPage.setViewportSize({ width: 1440, height: 900 });
