@@ -1,3 +1,5 @@
+import { delayNextClockPause } from "./clock-pause-regression.mjs";
+
 /**
  * Shared browser regression and full-frame evidence for moving Solar targets.
  * The cached, served THREE module supplies read-only render observers: no app
@@ -138,7 +140,7 @@ async function openPaused(page, base) {
   });
   await page.goto(base, { waitUntil: "networkidle", timeout: 30_000 });
   await page.waitForFunction(() => document.documentElement.dataset.heliosReady === "1");
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.clock.pauseAt(new Date("2026-09-05T01:00:00Z"));
   await page.clock.runFor(32);
   const initial = await page.evaluate(() => ({
     pausedAtReady: globalThis.__heliosTrackingPausedAtReady,
@@ -233,6 +235,7 @@ export async function runFocusTracking(browser, base, {
     try {
       context = await browser.newContext({ viewport, deviceScaleFactor: 1, hasTouch: scenario.touch, isMobile: scenario.touch });
       page = await context.newPage();
+      if (scenario === scenarios[0]) delayNextClockPause(page);
       page.setDefaultTimeout(15_000);
       page.on("pageerror", (error) => report.browserErrors.push(`page: ${error.message}`));
       page.on("console", (message) => { if (message.type() === "error") report.browserErrors.push(`console: ${message.text()}`); });
