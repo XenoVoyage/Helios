@@ -15,7 +15,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.9.16a",
+  VERSION: "v2026.9.17",
   BRAND: "MarinsVoyage",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
@@ -42,7 +42,7 @@ export const CONFIG = Object.freeze({
   // All other globes, scene lights, and Saturn's rings retain their treatment.
   nightSideInspectionFill: Object.freeze({ uranus: 0.03, neptune: 0.25 }),
   defaultDaysPerSecond: 1 / 24,
-  minDaysPerSecond: 1 / 24,
+  minDaysPerSecond: 1 / 86400,
   maxDaysPerSecond: 400,
   // Debris fields: sparse point clouds, not rock catalogs. One owner for both.
   beltCount: 2400,
@@ -888,12 +888,35 @@ export function isShortcutTargetInteractive(target) {
   return false;
 }
 
-/** Honest clock-rate label. Hours below 1 day/sec; days, months, years above. */
+/** Logarithmic time control with exact, clamped endpoints. */
+export function speedFromSlider(unit) {
+  if (unit <= 0) return CONFIG.minDaysPerSecond;
+  if (unit >= 1) return CONFIG.maxDaysPerSecond;
+  const min = Math.log(CONFIG.minDaysPerSecond);
+  const max = Math.log(CONFIG.maxDaysPerSecond);
+  return Math.exp(min + (max - min) * unit);
+}
+
+export function sliderFromSpeed(daysPerSecond) {
+  if (daysPerSecond <= CONFIG.minDaysPerSecond) return 0;
+  if (daysPerSecond >= CONFIG.maxDaysPerSecond) return 1;
+  const min = Math.log(CONFIG.minDaysPerSecond);
+  const max = Math.log(CONFIG.maxDaysPerSecond);
+  return (Math.log(daysPerSecond) - min) / (max - min);
+}
+
+/** Compact clock-rate label, from real-time seconds through years. */
 export function formatDaysPerSecond(daysPerSecond) {
   if (daysPerSecond >= 365) return `${(daysPerSecond / 365.25).toFixed(1)} yr`;
   if (daysPerSecond >= 30) return `${(daysPerSecond / 30.437).toFixed(1)} mo`;
   if (daysPerSecond >= 1) return `${daysPerSecond.toFixed(daysPerSecond >= 10 ? 0 : 1)} d`;
-  return `${(daysPerSecond * 24).toFixed(0)} h`;
+  if (daysPerSecond >= 1 / 24) return `${(daysPerSecond * 24).toFixed(0)} h`;
+  if (daysPerSecond >= 1 / 1440) {
+    const minutes = daysPerSecond * 1440;
+    return `${Number(minutes.toFixed(minutes < 10 ? 1 : 0))} min`;
+  }
+  const seconds = daysPerSecond * 86400;
+  return `${Number(seconds.toFixed(seconds < 10 ? 1 : 0))} s`;
 }
 
 export function describeDaysPerSecond(daysPerSecond) {
@@ -908,9 +931,17 @@ export function describeDaysPerSecond(daysPerSecond) {
   } else if (daysPerSecond >= 1) {
     value = Number(daysPerSecond.toFixed(daysPerSecond >= 10 ? 0 : 1));
     unit = "day";
-  } else {
+  } else if (daysPerSecond >= 1 / 24) {
     value = Number((daysPerSecond * 24).toFixed(0));
     unit = "hour";
+  } else if (daysPerSecond >= 1 / 1440) {
+    const minutes = daysPerSecond * 1440;
+    value = Number(minutes.toFixed(minutes < 10 ? 1 : 0));
+    unit = "minute";
+  } else {
+    const seconds = daysPerSecond * 86400;
+    value = Number(seconds.toFixed(seconds < 10 ? 1 : 0));
+    unit = "second";
   }
   return `${value} ${unit}${value === 1 ? "" : "s"} per second`;
 }
