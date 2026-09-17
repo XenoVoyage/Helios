@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.9.16a](https://img.shields.io/badge/version-v2026.9.16a-66f7ff)](VERSION.txt)
+[![Version v2026.9.17](https://img.shields.io/badge/version-v2026.9.17-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D orrery of the solar system.
@@ -50,7 +50,7 @@ Marins Voyage: [X @MarinsVoyage](https://x.com/MarinsVoyage) · [YouTube](https:
 | Worlds | Sun, 8 planets, the Moon, Phobos, Deimos, Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, and Ceres |
 | Sky | Hipparcos bright stars, an 88-constellation figure catalog, a Milky Way band, and Andromeda at M31 inside the solar system. Major mode preserves the ten familiar default names; All makes all 88 names eligible and applies viewport, collision, and responsive-budget filtering. That sky remains constant through the solar cap and into the Milky Way tail, then turns off. After the tail a seamless spherical distant-density illustration stays up through Virgo behind catalog neighbors. Beyond Virgo, measured 2MRS galaxy points yield to an explicitly illustrative outer density and CMB shell. |
 | Belts | Asteroid field between Mars and Jupiter; nominal Kuiper field from about 30–50 AU. Sparse points, not rock catalogs; Pluto's eccentric visual path crosses the field's drawn edges |
-| Time | Independent of visual scale. Default/minimum: 1 simulated hour per real second. Background time catches up on return; JavaScript's last valid date is the hard stop |
+| Time | Independent of visual scale. Minimum: 1 simulated second per real second. Default: 1 simulated hour per real second; maximum: 400 simulated days per real second. Background time catches up on return; JavaScript's last valid date is the hard stop |
 | Play with | Mouse, keyboard, or touch |
 
 ## Visual scale
