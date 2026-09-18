@@ -324,6 +324,19 @@ select {
   min-width: 108px;
 }
 
+#play-button[aria-pressed="true"] {
+  border-color: var(--cyan);
+  background: rgba(102, 247, 255, 0.2);
+}
+
+#slower-button:disabled,
+#faster-button:disabled {
+  border-style: dashed;
+  color: var(--ink);
+  background: transparent;
+  cursor: default;
+}
+
 .constellation-control {
   flex-shrink: 0;
 }

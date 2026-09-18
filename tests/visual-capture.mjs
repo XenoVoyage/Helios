@@ -183,7 +183,7 @@ const manifest = {
   node: process.version,
   playwright: JSON.parse(await readFile(path.join(harnessRoot, "node_modules/playwright/package.json"), "utf8")).version,
   rendering: "Headless Chromium; ANGLE SwiftShader; deviceScaleFactor 1; screenshots are full viewport originals except the explicitly named time-rate dock crops, whose source view and exact clip are recorded",
-  clockPolicy: "Playwright clock installed before navigation. A ready observer uses the public Pause control; a thin requestAnimationFrame wrapper additionally verifies and, if necessary, pauses through that control immediately before the first application tick callback. The first-tick record is asserted on every page. The wrapper preserves timestamps and callback execution. After loading, browser time is paused and advanced with runFor. No simulation-time or camera-state hook is injected. Matching labels alone do not prove matching camera/time.",
+  clockPolicy: "Playwright clock installed before navigation. A ready observer uses the public playback toggle; a thin requestAnimationFrame wrapper additionally verifies and, if necessary, pauses through that control immediately before the first application tick callback. The first-tick record is asserted on every page. The wrapper preserves timestamps and callback execution. After loading, browser time is paused and advanced with runFor. No simulation-time or camera-state hook is injected. Matching labels alone do not prove matching camera/time.",
   limits: [
     "Touch is emulated with CDP, not physical hardware.",
     "Body selection buttons use DOM click, while camera/pick gestures use browser mouse or CDP touch input.",
