@@ -3059,6 +3059,12 @@ async function assertResponsiveDateWidths(context) {
 async function observeTimeControls(page) {
   await page.addInitScript(() => {
     window.timeControlMutations = [];
+    window.timeControlInputs = [];
+    document.addEventListener("input", (event) => {
+      if (event.target.id === "speed-slider") window.timeControlInputs.push({
+        focused: document.activeElement?.id, value: event.target.value, trusted: event.isTrusted,
+      });
+    }, true);
     new MutationObserver((records) => {
       for (const record of records) {
         const id = record.target.id || record.target.parentElement?.id;
@@ -3083,6 +3089,7 @@ async function observeTimeControls(page) {
 async function timeControlEvidence(page) {
   return page.evaluate(() => ({
     mutations: window.timeControlMutations.splice(0),
+    inputs: window.timeControlInputs.splice(0),
     status: document.querySelector("#time-status").textContent,
     focused: document.activeElement?.id,
   }));
@@ -3184,6 +3191,7 @@ async function auditTimeSpeedControls(browser) {
         assert.equal(sample.fasterDisabled, expectedRate === maximum, `${label} ${name}: exact maximum disables Faster`);
         assert.equal(sample.date, "2000-01-01", `${label} ${name}: paused date is unchanged`);
         const evidence = await timeControlEvidence(page);
+        report.controls.push({ name, expectedRate, ...sample, inputRoute, evidence });
         if (previousRate !== undefined) {
           const changed = expectedRate !== previousRate;
           const messages = evidence.mutations.filter((entry) => entry.id === "time-status" && entry.after);
@@ -3204,7 +3212,6 @@ async function auditTimeSpeedControls(browser) {
           }
         }
         previousRate = expectedRate;
-        report.controls.push({ name, expectedRate, ...sample, inputRoute, evidence });
         return sample;
       };
       const nativeKey = async (key) => {

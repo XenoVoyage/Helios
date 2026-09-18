@@ -1005,9 +1005,9 @@ function setTimeSpeed(daysPerSecond, nativeControl) {
 }
 
 function announceTime(nativeControl) {
-  // Focused sliders and toggles announce their native value/state. Clear an
-  // earlier fallback message so it cannot compete with the new native feedback.
-  const message = document.activeElement === nativeControl ? ""
+  // Range input can precede pointer focus; its native value feedback owns this
+  // path regardless. Clear earlier fallback text instead of duplicating it.
+  const message = nativeControl === ui.speed || document.activeElement === nativeControl ? ""
     : `Time ${state.playing ? "running" : "paused"}, ${describeDaysPerSecond(state.daysPerSecond)}.`;
   if (message || ui.timeStatus.textContent) ui.timeStatus.textContent = message;
 }
