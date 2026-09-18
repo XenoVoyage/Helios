@@ -664,6 +664,8 @@ function bindInput() {
   ui.play.addEventListener("click", togglePlay);
   ui.slower.addEventListener("click", () => scaleSpeed(0.5));
   ui.faster.addEventListener("click", () => scaleSpeed(2));
+  // Keep native rate feedback and subsequent keys on the touched control.
+  ui.speed.addEventListener("pointerdown", () => ui.speed.focus({ preventScroll: true }));
   ui.speed.addEventListener("input", () => {
     setTimeSpeed(speedFromSlider(Number(ui.speed.value)), ui.speed);
   });
@@ -1005,8 +1007,8 @@ function setTimeSpeed(daysPerSecond, nativeControl) {
 }
 
 function announceTime(nativeControl) {
-  // Range input can precede pointer focus; its native value feedback owns this
-  // path regardless. Clear earlier fallback text instead of duplicating it.
+  // Direct range input owns native value feedback; focused toggles own state
+  // feedback. Clear earlier fallback text instead of duplicating it.
   const message = nativeControl === ui.speed || document.activeElement === nativeControl ? ""
     : `Time ${state.playing ? "running" : "paused"}, ${describeDaysPerSecond(state.daysPerSecond)}.`;
   if (message || ui.timeStatus.textContent) ui.timeStatus.textContent = message;

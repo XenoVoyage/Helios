@@ -3203,6 +3203,11 @@ async function auditTimeSpeedControls(browser) {
           if (!changed) {
             assert.deepEqual(evidence.mutations, [], `${label} ${name}: a no-op writes no time semantics`);
           } else if (inputRoute === "native") {
+            assert.ok(evidence.inputs.length > 0, `${label} ${name}: native input is recorded`);
+            assert.ok(evidence.inputs.every((entry) => entry.trusted),
+              `${label} ${name}: native input comes from browser interaction`);
+            assert.ok(evidence.inputs.every((entry) => entry.focused === "speed-slider"),
+              `${label} ${name}: slider owns focus during every native input`);
             assert.equal(evidence.focused, "speed-slider", `${label} ${name}: native slider owns focus`);
             assert.deepEqual(messages, [], `${label} ${name}: native rate has no duplicate live message`);
             assert.equal(evidence.status, "", `${label} ${name}: native feedback clears stale live text`);
