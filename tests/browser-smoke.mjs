@@ -3056,6 +3056,66 @@ async function assertResponsiveDateWidths(context) {
   console.log(`responsive minimum, default and maximum-date layout passed at all ${reports.length} viewports`);
 }
 
+async function observeTimeControls(page) {
+  await page.addInitScript(() => {
+    window.timeControlMutations = [];
+    window.timeControlInputs = [];
+    document.addEventListener("input", (event) => {
+      if (event.target.id === "speed-slider") window.timeControlInputs.push({
+        focused: document.activeElement?.id, value: event.target.value, trusted: event.isTrusted,
+      });
+    }, true);
+    new MutationObserver((records) => {
+      for (const record of records) {
+        const id = record.target.id || record.target.parentElement?.id;
+        if (record.type === "attributes") {
+          if (!["play-button", "speed-slider", "slower-button", "faster-button"].includes(id)) continue;
+          window.timeControlMutations.push({ id, attribute: record.attributeName,
+            before: record.oldValue, after: record.target.getAttribute(record.attributeName) });
+        } else if (id === "time-status") {
+          window.timeControlMutations.push({ id, attribute: null,
+            before: record.oldValue,
+            after: record.type === "childList"
+              ? [...record.addedNodes].map((node) => node.textContent).join("")
+              : record.target.textContent });
+        }
+      }
+    }).observe(document, { subtree: true, childList: true, characterData: true,
+      characterDataOldValue: true, attributes: true, attributeOldValue: true,
+      attributeFilter: ["aria-pressed", "aria-valuetext", "disabled"] });
+  });
+}
+
+async function timeControlEvidence(page) {
+  return page.evaluate(() => ({
+    mutations: window.timeControlMutations.splice(0),
+    inputs: window.timeControlInputs.splice(0),
+    status: document.querySelector("#time-status").textContent,
+    focused: document.activeElement?.id,
+  }));
+}
+
+async function assertTimeStartup(page, label, playing) {
+  const startup = await timeControlEvidence(page);
+  assert.equal(startup.status, "", `${label}: startup has no time announcement`);
+  assert.deepEqual(startup.mutations.filter((entry) => entry.id === "time-status"), [],
+    `${label}: startup never writes the time live region`);
+  assert.equal(await page.getByRole("button", { name: "Play", exact: true, pressed: playing }).count(), 1,
+    `${label}: stable Play toggle exposes the startup state`);
+  assert.equal(await page.getByRole("slider", { name: "Time speed", exact: true }).count(), 1);
+  assert.equal(await page.locator("#speed-slider").getAttribute("aria-valuetext"), "1 hour per second");
+  await page.evaluate(() => new Promise((resolve) => {
+    let frames = 0;
+    const next = () => { if (++frames === 12) resolve(); else requestAnimationFrame(next); };
+    requestAnimationFrame(next);
+  }));
+  const idle = await timeControlEvidence(page);
+  assert.deepEqual(idle.mutations, [], `${label}: twelve render frames do not rewrite time semantics`);
+  return { label, playing, startup, idle, observedIdleFrames: 12,
+    accessibility: await page.locator("#dock").ariaSnapshot(),
+    manualScreenReader: "Unverified: DOM and accessibility-tree evidence does not measure speech." };
+}
+
 async function auditTimeSpeedControls(browser) {
   const reports = [];
   const minimum = CONFIG.minDaysPerSecond, maximum = CONFIG.maxDaysPerSecond;
@@ -3067,11 +3127,15 @@ async function auditTimeSpeedControls(browser) {
     const context = await browser.newContext({ viewport, deviceScaleFactor: 1, hasTouch: touch });
     const page = await context.newPage();
     const errors = captureErrors(page);
-    const report = { viewport, input: touch ? "emulated touch" : "mouse", controls: [], views: [] };
+    const report = { viewport, input: touch ? "emulated touch" : "mouse", controls: [], views: [],
+      accessibility: [], playback: [],
+      setup: "The harness clicks Play before the first application tick to preserve J2000. The initial trace includes that intentional pause; unmodified startup is audited separately.",
+      manualScreenReader: "Unverified: native semantics and live-region mutations are automated evidence, not observed speech." };
     reports.push(report);
     let observer;
     try {
       await page.clock.install({ time: new Date("2026-09-15T00:00:00Z") });
+      await observeTimeControls(page);
       await page.addInitScript(() => {
         const requestFrame = window.requestAnimationFrame.bind(window);
         window.requestAnimationFrame = (callback) => requestFrame((timestamp) => {
@@ -3091,7 +3155,10 @@ async function auditTimeSpeedControls(browser) {
       assert.equal(await page.evaluate(() => window.speedAuditFirstTick?.paused), true,
         `${label}: pause before the first application frame`);
       const slider = page.locator("#speed-slider");
+      let previousRate;
+      let inputRoute;
       const activate = async (selector) => {
+        inputRoute = selector === "#speed-slider" ? "native" : "live";
         const box = await page.locator(selector).boundingBox();
         assert.ok(box, `${label}: ${selector} has a pointer target`);
         const x = box.x + box.width / 2, y = box.y + box.height / 2;
@@ -3104,6 +3171,9 @@ async function auditTimeSpeedControls(browser) {
           text: document.querySelector("#speed-readout").textContent,
           aria: document.querySelector("#speed-slider").getAttribute("aria-valuetext"),
           playing: document.querySelector("#play-button").getAttribute("aria-pressed"),
+          playName: document.querySelector("#play-button").textContent,
+          slowerDisabled: document.querySelector("#slower-button").disabled,
+          fasterDisabled: document.querySelector("#faster-button").disabled,
           date: document.querySelector("#clock").textContent,
         }));
         const inverse = (Math.log(expectedRate) - Math.log(minimum))
@@ -3116,14 +3186,59 @@ async function auditTimeSpeedControls(browser) {
         assert.equal(sample.text, `${formatDaysPerSecond(expectedRate)} / sec`, `${label} ${name}: visible rate`);
         assert.equal(sample.aria, describeDaysPerSecond(expectedRate), `${label} ${name}: accessible rate`);
         assert.equal(sample.playing, "false", `${label} ${name}: changing rate preserves pause`);
+        assert.equal(sample.playName, "Play", `${label} ${name}: toggle name remains stable`);
+        assert.equal(sample.slowerDisabled, expectedRate === minimum, `${label} ${name}: exact minimum disables Slower`);
+        assert.equal(sample.fasterDisabled, expectedRate === maximum, `${label} ${name}: exact maximum disables Faster`);
         assert.equal(sample.date, "2000-01-01", `${label} ${name}: paused date is unchanged`);
-        report.controls.push({ name, expectedRate, ...sample });
+        const evidence = await timeControlEvidence(page);
+        report.controls.push({ name, expectedRate, ...sample, inputRoute, evidence });
+        if (previousRate !== undefined) {
+          const changed = expectedRate !== previousRate;
+          const messages = evidence.mutations.filter((entry) => entry.id === "time-status" && entry.after);
+          const rateWrites = evidence.mutations.filter((entry) => entry.attribute === "aria-valuetext");
+          assert.equal(rateWrites.length, Number(sample.aria !== describeDaysPerSecond(previousRate)),
+            `${label} ${name}: accessible rate changes only when its description changes`);
+          assert.equal(evidence.mutations.filter((entry) => entry.attribute === "aria-pressed").length, 0,
+            `${label} ${name}: rate input never rewrites playback state`);
+          if (!changed) {
+            assert.deepEqual(evidence.mutations, [], `${label} ${name}: a no-op writes no time semantics`);
+          } else if (inputRoute === "native") {
+            assert.ok(evidence.inputs.length > 0, `${label} ${name}: native input is recorded`);
+            assert.ok(evidence.inputs.every((entry) => entry.trusted),
+              `${label} ${name}: native input comes from browser interaction`);
+            assert.ok(evidence.inputs.every((entry) => entry.focused === "speed-slider"),
+              `${label} ${name}: slider owns focus during every native input`);
+            assert.equal(evidence.focused, "speed-slider", `${label} ${name}: native slider owns focus`);
+            assert.deepEqual(messages, [], `${label} ${name}: native rate has no duplicate live message`);
+            assert.equal(evidence.status, "", `${label} ${name}: native feedback clears stale live text`);
+          } else {
+            assert.deepEqual(messages.map((entry) => entry.after), [`Time paused, ${sample.aria}.`],
+              `${label} ${name}: one complete fallback announcement per changed rate`);
+          }
+        }
+        previousRate = expectedRate;
         return sample;
       };
-      const nativeKey = async (key) => { await slider.focus(); await page.keyboard.press(key); };
+      const nativeKey = async (key) => {
+        inputRoute = "native";
+        await slider.focus();
+        await page.keyboard.press(key);
+      };
       const globalKey = async (key) => {
+        inputRoute = "live";
         await page.locator("#viewport").focus();
         await page.keyboard.press(key);
+      };
+      const captureAccessibility = async (name, expectedRate, playing = false) => {
+        assert.equal(await page.getByRole("button", { name: "Play", exact: true, pressed: playing }).count(), 1);
+        assert.equal(await page.getByRole("button", { name: "Slower", exact: true, disabled: expectedRate === minimum }).count(), 1);
+        assert.equal(await page.getByRole("button", { name: "Faster", exact: true, disabled: expectedRate === maximum }).count(), 1);
+        const live = page.locator("#time-status");
+        assert.equal(await live.getAttribute("role"), "status");
+        assert.equal(await live.getAttribute("aria-live"), "polite");
+        assert.equal(await live.getAttribute("aria-atomic"), "true");
+        report.accessibility.push({ name, playing, expectedRate,
+          dock: await page.locator("#dock").ariaSnapshot(), status: await live.ariaSnapshot() });
       };
       const captureRate = async (name) => {
         await assertCardClearsDock(page, viewport);
@@ -3168,6 +3283,7 @@ async function auditTimeSpeedControls(browser) {
       const initial = await checkRate("default", CONFIG.defaultDaysPerSecond);
       assert.equal(initial.text, "1 h / sec");
       assert.equal(initial.aria, "1 hour per second");
+      await captureAccessibility("default", CONFIG.defaultDaysPerSecond);
       await captureRate("default");
       for (let step = 1; step <= 12; step += 1) {
         await activate("#slower-button");
@@ -3179,7 +3295,12 @@ async function auditTimeSpeedControls(browser) {
       const slowest = await checkRate("native Home", minimum, 0);
       assert.equal(slowest.text, "1 s / sec");
       assert.equal(slowest.aria, "1 second per second");
+      await captureAccessibility("minimum", minimum);
       await captureRate("minimum");
+      await page.locator("#play-button").focus();
+      await page.keyboard.press("Tab");
+      assert.equal(await page.evaluate(() => document.activeElement?.id), "speed-slider",
+        `${label}: keyboard focus skips disabled Slower at minimum`);
       await nativeKey("ArrowRight");
       await checkRate("native ArrowRight", rateAtUnit(0.01), 0.01);
       await nativeKey("ArrowLeft");
@@ -3207,7 +3328,12 @@ async function auditTimeSpeedControls(browser) {
       const fastest = await checkRate("native End", maximum, 1);
       assert.equal(fastest.text, "1.1 yr / sec");
       assert.equal(fastest.aria, "1.1 years per second");
+      await captureAccessibility("maximum", maximum);
       await captureRate("maximum");
+      await slider.focus();
+      await page.keyboard.press("Tab");
+      assert.equal(await page.evaluate(() => document.activeElement?.id), "sky-mode",
+        `${label}: keyboard focus skips disabled Faster at maximum`);
       await nativeKey("ArrowLeft");
       await checkRate("native step below maximum", rateAtUnit(0.99), 0.99);
       await nativeKey("ArrowRight");
@@ -3234,6 +3360,26 @@ async function auditTimeSpeedControls(browser) {
       const pointerUnit = Number(await slider.inputValue());
       assert.ok(pointerUnit > 0 && pointerUnit < 1, `${label}: pointer selects an interior slider step`);
       await checkRate("pointer slider selection", rateAtUnit(pointerUnit), pointerUnit);
+      await nativeKey("Home");
+      await checkRate("minimum before rounded-thumb check", minimum, 0);
+      for (let step = 1; step <= 4; step += 1) {
+        await nativeKey("ArrowRight");
+        await checkRate(`low boundary setup ${step}`, rateAtUnit(step / 100), step / 100);
+      }
+      await activate("#slower-button");
+      await checkRate("rounded minimum thumb keeps Slower enabled", rateAtUnit(0.04) / 2, 0);
+      await activate("#slower-button");
+      await checkRate("exact minimum after rounded thumb", minimum, 0);
+      await nativeKey("End");
+      await checkRate("maximum before rounded-thumb check", maximum, 1);
+      for (let step = 1; step <= 4; step += 1) {
+        await nativeKey("ArrowLeft");
+        await checkRate(`high boundary setup ${step}`, rateAtUnit((100 - step) / 100), (100 - step) / 100);
+      }
+      await activate("#faster-button");
+      await checkRate("rounded maximum thumb keeps Faster enabled", rateAtUnit(0.96) * 2, 1);
+      await activate("#faster-button");
+      await checkRate("exact maximum after rounded thumb", maximum, 1);
       await nativeKey("Home");
       await checkRate("minimum before integration", minimum, 0);
 
@@ -3279,7 +3425,31 @@ async function auditTimeSpeedControls(browser) {
       report.integration = { before, expectedInitialWorld: expectedWorld(0) };
       assert.ok(errorFrom(before.last, expectedWorld(0)) < 1e-9,
         `${label}: all paused control interactions retain the J2000 orbit`);
+      assert.deepEqual((await timeControlEvidence(page)).mutations, [],
+        `${label}: idle paused frames do not announce or rewrite time semantics`);
+      const checkPlayback = async (name, playing, native) => {
+        const evidence = await timeControlEvidence(page);
+        const messages = evidence.mutations.filter((entry) => entry.id === "time-status" && entry.after);
+        const pressed = evidence.mutations.filter((entry) => entry.attribute === "aria-pressed");
+        assert.deepEqual(pressed.map((entry) => entry.after), [String(playing)],
+          `${label} ${name}: playback state changes exactly once`);
+        assert.equal(evidence.mutations.filter((entry) => entry.attribute === "aria-valuetext").length, 0,
+          `${label} ${name}: playback does not repeat the unchanged native rate`);
+        if (native) {
+          assert.equal(evidence.focused, "play-button", `${label} ${name}: Play owns native feedback`);
+          assert.deepEqual(messages, [], `${label} ${name}: focused toggle has no duplicate live message`);
+          assert.equal(evidence.status, "", `${label} ${name}: focused toggle clears stale live text`);
+        } else {
+          assert.equal(evidence.focused, "viewport", `${label} ${name}: shortcut preserves scene focus`);
+          assert.deepEqual(messages.map((entry) => entry.after),
+            [`Time ${playing ? "running" : "paused"}, 1 second per second.`],
+            `${label} ${name}: off-control shortcut announces state and rate once`);
+        }
+        assert.equal(await page.getByRole("button", { name: "Play", exact: true, pressed: playing }).count(), 1);
+        report.playback.push({ name, playing, native, evidence });
+      };
       await activate("#play-button");
+      await checkPlayback("pointer play", true, true);
       await page.clock.fastForward(1000);
       const running = await observer.evaluate((value) => value.snapshot());
       assert.equal(running.last.timestamp - before.last.timestamp, 1000,
@@ -3290,7 +3460,10 @@ async function auditTimeSpeedControls(browser) {
         `${label}: one real second advances the live scene orbit by one simulated second`);
       assert.ok(errorFrom(running.last, before.last.world) > 1e-7,
         `${label}: minimum speed is running, not frozen`);
+      assert.deepEqual((await timeControlEvidence(page)).mutations, [],
+        `${label}: running frames do not repeat time announcements`);
       await activate("#play-button");
+      await checkPlayback("pointer pause", false, true);
       await page.clock.fastForward(1000);
       const paused = await observer.evaluate((value) => value.snapshot());
       assert.equal(paused.last.playing, "false");
@@ -3298,8 +3471,25 @@ async function auditTimeSpeedControls(browser) {
       assert.equal(paused.last.date, running.last.date, `${label}: pause holds the date`);
       report.integration = { before, running, paused, elapsedSeconds: 1, expectedDays,
         expectedWorld: expectedWorld(expectedDays), worldError: errorFrom(running.last, expectedWorld(expectedDays)) };
+      assert.deepEqual((await timeControlEvidence(page)).mutations, [],
+        `${label}: paused frames do not repeat time announcements`);
+      await globalKey("Space");
+      await checkPlayback("scene Space play", true, false);
+      await captureAccessibility("running at minimum", minimum, true);
+      await saveScreenshot(page, `${label}-running-minimum`);
+      await globalKey("Space");
+      await checkPlayback("scene Space pause", false, false);
+      await page.locator("#play-button").focus();
+      await page.keyboard.press("Space");
+      await checkPlayback("focused Space play", true, true);
+      await page.keyboard.press("Enter");
+      await checkPlayback("focused Enter pause", false, true);
+      await page.clock.fastForward(320);
+      report.idleAfterControls = await timeControlEvidence(page);
+      assert.deepEqual(report.idleAfterControls.mutations, [],
+        `${label}: completed controls leave no delayed time announcements`);
       assert.deepEqual(errors, [], `${label}: no browser errors`);
-      console.log(`${label}: mouse/touch, native keys, buttons, global shortcuts, clamps and one-second integration passed`);
+      console.log(`${label}: mouse/touch, native keys, buttons, shortcuts, exact bounds, accessible states, announcement routes and one-second integration passed; actual screen-reader speech unverified`);
     } catch (error) {
       report.failure = error.message;
       console.error(JSON.stringify(report));
@@ -3509,7 +3699,10 @@ try {
   await assertOuterPlanetNightSides(desktop, "desktop");
   const desktopPage = await desktop.newPage();
   const desktopErrors = captureErrors(desktopPage);
+  const timeStartupReports = [];
+  await observeTimeControls(desktopPage);
   await openReady(desktopPage);
+  timeStartupReports.push(await assertTimeStartup(desktopPage, "desktop-default", true));
   assert.equal(await desktopPage.locator("#brand-label").textContent(), "MarinsVoyage");
   assert.equal(await desktopPage.getAttribute("html", "data-galaxy-ready"), null);
   await assertRenderedCanvas(desktopPage);
@@ -3607,7 +3800,9 @@ try {
   for (const look of directLooks) {
     const directPage = await desktop.newPage();
     const directErrors = captureErrors(directPage);
+    await observeTimeControls(directPage);
     await openReady(directPage, `?look=${look}`);
+    timeStartupReports.push(await assertTimeStartup(directPage, `desktop-${look}`, look !== "sky"));
     await assertRenderedCanvas(directPage);
     await assertAccessibleHierarchy(directPage, LOOK_SEMANTICS[look], `desktop-${look}`);
     if (look === "sky") {
@@ -3624,6 +3819,10 @@ try {
     if (look === "universe") await assertCmbTextureVisible(directPage);
     assert.deepEqual(directErrors, [], `${look} has no browser errors`);
     await directPage.close();
+  }
+  if (screenshotDir) {
+    await mkdir(screenshotDir, { recursive: true });
+    await writeFile(path.join(screenshotDir, "time-control-startup.json"), JSON.stringify(timeStartupReports, null, 2) + "\n");
   }
   await auditSolarHandoff(desktop);
   await auditScaleTransitions(desktop);

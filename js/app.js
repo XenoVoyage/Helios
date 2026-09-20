@@ -227,6 +227,7 @@ function boot() {
   ui.helperAxis = $("helper-axis");
   ui.helperSpin = $("helper-spin");
   ui.status = $("status-live");
+  ui.timeStatus = $("time-status");
   ui.sceneContext = $("scene-context");
   ui.unsupported = $("unsupported");
   ui.version = $("version-label");
@@ -663,9 +664,10 @@ function bindInput() {
   ui.play.addEventListener("click", togglePlay);
   ui.slower.addEventListener("click", () => scaleSpeed(0.5));
   ui.faster.addEventListener("click", () => scaleSpeed(2));
+  // Keep native rate feedback and subsequent keys on the touched control.
+  ui.speed.addEventListener("pointerdown", () => ui.speed.focus({ preventScroll: true }));
   ui.speed.addEventListener("input", () => {
-    state.daysPerSecond = speedFromSlider(Number(ui.speed.value));
-    paintSpeed();
+    setTimeSpeed(speedFromSlider(Number(ui.speed.value)), ui.speed);
   });
   ui.reset.addEventListener("click", resetView);
   ui.cardClose.addEventListener("click", clearSelection);
@@ -986,23 +988,42 @@ function bindSelectionHelpers() {
 function togglePlay() {
   state.playing = !state.playing;
   paintSpeed();
-  say(state.playing ? "Time is running" : "Time is paused");
+  announceTime(ui.play);
 }
 
 function scaleSpeed(factor) {
-  state.daysPerSecond = clamp(
+  setTimeSpeed(clamp(
     state.daysPerSecond * factor,
     CONFIG.minDaysPerSecond,
     CONFIG.maxDaysPerSecond,
-  );
+  ));
+}
+
+function setTimeSpeed(daysPerSecond, nativeControl) {
+  if (daysPerSecond === state.daysPerSecond) return;
+  state.daysPerSecond = daysPerSecond;
   paintSpeed();
+  announceTime(nativeControl);
+}
+
+function announceTime(nativeControl) {
+  // Direct range input owns native value feedback; focused toggles own state
+  // feedback. Clear earlier fallback text instead of duplicating it.
+  const message = nativeControl === ui.speed || document.activeElement === nativeControl ? ""
+    : `Time ${state.playing ? "running" : "paused"}, ${describeDaysPerSecond(state.daysPerSecond)}.`;
+  if (message || ui.timeStatus.textContent) ui.timeStatus.textContent = message;
 }
 
 function paintSpeed() {
-  ui.play.textContent = state.playing ? "Pause" : "Play";
-  ui.play.setAttribute("aria-pressed", String(state.playing));
+  const playing = String(state.playing);
+  if (ui.play.getAttribute("aria-pressed") !== playing) ui.play.setAttribute("aria-pressed", playing);
+  const slowest = state.daysPerSecond === CONFIG.minDaysPerSecond;
+  const fastest = state.daysPerSecond === CONFIG.maxDaysPerSecond;
+  if (ui.slower.disabled !== slowest) ui.slower.disabled = slowest;
+  if (ui.faster.disabled !== fastest) ui.faster.disabled = fastest;
   ui.speed.value = String(sliderFromSpeed(state.daysPerSecond));
-  ui.speed.setAttribute("aria-valuetext", describeDaysPerSecond(state.daysPerSecond));
+  const rate = describeDaysPerSecond(state.daysPerSecond);
+  if (ui.speed.getAttribute("aria-valuetext") !== rate) ui.speed.setAttribute("aria-valuetext", rate);
   ui.speedReadout.textContent = `${formatDaysPerSecond(state.daysPerSecond)} / sec`;
   bodyLabelLayoutDirty = true;
 }
