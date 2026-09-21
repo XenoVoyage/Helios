@@ -567,6 +567,26 @@ function createBodyNode(body) {
   };
 }
 
+// Lambert shading clamps dot(N, L) at zero, so the double-sided ring face the
+// Sun does not reach gets only ambient fill and reads as a black halo. A ring
+// is a thin particle slab: sunlight from behind is transmitted and forward-
+// scattered, most where the ring is optically thin. Reuse the Sun's Lambert
+// term with the back-facing incidence, scaled by the map's transparency
+// (1 - alpha): dense bands stay dark, thin bands and divisions pass light,
+// gaps stay gaps. Bounded display behavior, not radiative transfer.
+const RING_TRANSMISSION_FRAGMENT = `#include <lights_fragment_end>
+#if NUM_POINT_LIGHTS > 0
+  IncidentLight ringBackLight;
+  #pragma unroll_loop_start
+  for ( int i = 0; i < NUM_POINT_LIGHTS; i ++ ) {
+    getPointLightInfo( pointLights[ i ], geometryPosition, ringBackLight );
+    reflectedLight.directDiffuse += saturate( - dot( geometryNormal, ringBackLight.direction ) )
+      * ringTransmission * ( 1.0 - diffuseColor.a ) * ringBackLight.color
+      * BRDF_Lambert( material.diffuseContribution );
+  }
+  #pragma unroll_loop_end
+#endif`;
+
 function createRing(body) {
   const inner = visualRingRadius(body, body.ringInnerKm);
   const outer = visualRingRadius(body, body.ringOuterKm);
@@ -579,18 +599,22 @@ function createRing(body) {
   }
   uv.needsUpdate = true;
   const ringMap = loadMap(body.ring);
-  const ring = new THREE.Mesh(
-    ringGeo,
-    new THREE.MeshStandardMaterial({
-      map: ringMap,
-      transparent: true,
-      alphaTest: 0.08,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      roughness: 0.58,
-      metalness: 0.12,
-    }),
-  );
+  const material = new THREE.MeshStandardMaterial({
+    map: ringMap,
+    transparent: true,
+    alphaTest: 0.08,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    roughness: 0.58,
+    metalness: 0.12,
+  });
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.ringTransmission = { value: CONFIG.ringTransmission };
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform float ringTransmission;")
+      .replace("#include <lights_fragment_end>", RING_TRANSMISSION_FRAGMENT);
+  };
+  const ring = new THREE.Mesh(ringGeo, material);
   ring.rotation.x = -Math.PI / 2;
   return ring;
 }
