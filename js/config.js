@@ -15,7 +15,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.9.18",
+  VERSION: "v2026.9.21",
   BRAND: "MarinsVoyage",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
@@ -41,6 +41,13 @@ export const CONFIG = Object.freeze({
   // not physical emission. Neptune's darker source map needs a larger factor.
   // All other globes, scene lights, and Saturn's rings retain their treatment.
   nightSideInspectionFill: Object.freeze({ uranus: 0.03, neptune: 0.25 }),
+  // Share of the Sun's Lambert term that Saturn's ring passes through to its
+  // unlit face, further scaled by the square root of the ring map's
+  // transparency, sqrt(1 - alpha). Display-only thin-slab approximation of
+  // transmitted / forward-scattered light; 1 keeps a thin band no brighter
+  // than its front-lit look. Not photometric; the sunlit face and every other
+  // material are untouched.
+  ringTransmission: 1,
   defaultDaysPerSecond: 1 / 24,
   minDaysPerSecond: 1 / 86400,
   maxDaysPerSecond: 400,

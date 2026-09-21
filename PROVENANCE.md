@@ -52,6 +52,19 @@ planetary emission or calibrated photometric brightness. The Sun still supplies
 the terminator; no scientific data, scene lights, other globes, or Saturn ring
 materials are changed by this fill.
 
+Saturn's ring material carries one bounded transmitted-light term owned by
+`CONFIG.ringTransmission`. Sunlight arriving from behind the visible ring face
+reuses the Sun's Lambert term, scaled by that share and by the square root of
+the ring map's transparency (`sqrt(1 - alpha)`), so the unlit face keeps its
+bands, divisions, and gaps readable instead of collapsing into a black halo.
+Treating the map's alpha as `1 - exp(-tau)`, that square root stays below the
+isotropic single-scattering transmission of a slab of optical depth `tau`
+across the map's range, so the unlit face remains dimmer than the sunlit face
+band for band. This is a display-only thin-slab approximation of transmitted
+and forward-scattered light, not radiative transfer, ring photometry, or a
+shadow model. The sunlit face, ring radii, geometry, UVs, pole, texture asset,
+scene lights, exposure, and every other material are unchanged.
+
 ## Orbital row ledger
 
 The test-only [orbital provenance fixture](tests/fixtures/orbital-provenance.json)
