@@ -2419,7 +2419,7 @@ async function assertOuterPlanetNightSides(context, prefix, touch = false) {
   await page.close();
 }
 
-// Radial texture bands of the NASA annulus as fractions of the inner→outer
+// Radial bands of the ring strip texture as fractions of the inner→outer
 // span, with margins away from every band edge (see assets/textures/saturn-ring.png).
 const SATURN_RING_BANDS = Object.freeze({
   gap: [0.01, 0.045],
