@@ -425,6 +425,19 @@ assert.match(provenance, /CONFIG\.nightSideInspectionFill/);
 assert.match(provenance, /not physical\nplanetary emission or calibrated photometric brightness/);
 assert.match(app, /new THREE\.AmbientLight\(0x24334a, 0\.21\)/,
   "inspection fill does not change shared ambient lighting or Saturn's rings");
+// Issue #44: the unlit ring face receives one bounded transmitted-light term
+// owned by the ring material; scene lights and other materials are untouched.
+assert.ok(Number.isFinite(CONFIG.ringTransmission) && CONFIG.ringTransmission > 0
+  && CONFIG.ringTransmission <= 1,
+"ring transmission stays a bounded display-only share of the Sun's Lambert term");
+assert.match(app, /shader\.uniforms\.ringTransmission = \{ value: CONFIG\.ringTransmission \}/);
+assert.match(app, /saturate\( - dot\( geometryNormal, ringBackLight\.direction \) \)/,
+  "ring transmission responds only to sunlight arriving from behind the visible ring face");
+assert.match(app, /\( 1\.0 - diffuseColor\.a \)/,
+  "ring transmission scales with the map's transparency so dense bands stay dark and gaps stay gaps");
+assert.equal((app.match(/onBeforeCompile/g) ?? []).length, 1, "only the ring material patches its shader");
+assert.doesNotMatch(app, /emissiveMap: ringMap/, "the rings gain no view-independent emissive glow");
+assert.match(provenance, /CONFIG\.ringTransmission/);
 assert.match(configSource, /minimumFocusDistance/);
 assert.match(configSource, /focusSurfaceClearance/);
 assert.match(configSource, /parentGlobeClearance/);

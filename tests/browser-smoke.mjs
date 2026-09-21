@@ -13,6 +13,7 @@ import {
   keplerOffset,
   moonOrbitAttachment,
   visualBodyRadius,
+  visualRingRadius,
 } from "../js/bodies.js";
 import {
   CONFIG,
@@ -2418,6 +2419,106 @@ async function assertOuterPlanetNightSides(context, prefix, touch = false) {
   await page.close();
 }
 
+// Radial texture bands of the NASA annulus as fractions of the inner→outer
+// span, with margins away from every band edge (see assets/textures/saturn-ring.png).
+const SATURN_RING_BANDS = Object.freeze({
+  gap: [0.01, 0.045],
+  c: [0.1, 0.29],
+  b: [0.33, 0.65],
+  a: [0.73, 0.88],
+});
+
+async function saturnRingSurfaceMetrics(page, distance, azimuth, elevation) {
+  const saturn = findBody("saturn");
+  const png = await stableCanvasFrame(page, page.locator("#viewport"));
+  return page.evaluate(async ({ source, center, pole, globeRadius, inner, outer, bands, distance, azimuth, elevation }) => {
+    const THREE = await import("./vendor/three.module.min.js");
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", reject, { once: true });
+    });
+    image.src = `data:image/png;base64,${source}`;
+    await ready;
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const context = surface.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, surface.width, surface.height).data;
+    const viewport = document.querySelector("#viewport").getBoundingClientRect();
+    const obstacles = [...document.querySelectorAll(
+      ".sky-label, #stage .topbar, #body-card, #dock, #version-label",
+    )].filter((element) => element.getClientRects().length > 0)
+      .map((element) => element.getBoundingClientRect());
+    const globeCenter = new THREE.Vector3(center.x, center.y, center.z);
+    const camera = new THREE.PerspectiveCamera(52, surface.width / surface.height, 0.05, 7000000);
+    camera.position.copy(globeCenter).add(new THREE.Vector3(
+      Math.cos(elevation) * Math.sin(azimuth),
+      Math.sin(elevation),
+      Math.cos(elevation) * Math.cos(azimuth),
+    ).multiplyScalar(distance));
+    camera.lookAt(globeCenter);
+    camera.updateMatrixWorld();
+    const sphere = new THREE.Sphere(globeCenter, globeRadius);
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+      new THREE.Vector3(pole.x, pole.y, pole.z), globeCenter,
+    );
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    const hit = new THREE.Vector3();
+    const values = Object.fromEntries(Object.keys(bands).map((name) => [name, []]));
+    const annulus = [];
+    for (let y = 1; y < surface.height; y += 2) {
+      for (let x = 1; x < surface.width; x += 2) {
+        const cssX = viewport.left + (x + 0.5) * viewport.width / surface.width;
+        const cssY = viewport.top + (y + 0.5) * viewport.height / surface.height;
+        if (obstacles.some((box) => cssX >= box.left - 3 && cssX <= box.right + 3
+          && cssY >= box.top - 3 && cssY <= box.bottom + 3)) continue;
+        ndc.set((x + 0.5) / surface.width * 2 - 1, 1 - (y + 0.5) / surface.height * 2);
+        raycaster.setFromCamera(ndc, camera);
+        // Only ring pixels seen against the sky: rays that meet the globe
+        // either occlude the ring or blend it over the lit globe.
+        if (raycaster.ray.intersectsSphere(sphere)) continue;
+        if (!raycaster.ray.intersectPlane(plane, hit)) continue;
+        const u = (hit.distanceTo(globeCenter) - inner) / (outer - inner);
+        if (u < 0 || u > 1) continue;
+        const offset = (y * surface.width + x) * 4;
+        const luma = pixels[offset] * 0.2126 + pixels[offset + 1] * 0.7152
+          + pixels[offset + 2] * 0.0722;
+        annulus.push(luma);
+        for (const [name, [start, end]] of Object.entries(bands)) {
+          if (u >= start && u <= end) values[name].push(luma);
+        }
+      }
+    }
+    const summarize = (list) => {
+      list.sort((a, b) => a - b);
+      return {
+        samples: list.length,
+        mean: list.length ? list.reduce((sum, value) => sum + value, 0) / list.length : 0,
+        p10: list[Math.floor(list.length * 0.1)] ?? 0,
+        p90: list[Math.floor(list.length * 0.9)] ?? 0,
+      };
+    };
+    return {
+      annulus: summarize(annulus),
+      ...Object.fromEntries(Object.entries(values).map(([name, list]) => [name, summarize(list)])),
+    };
+  }, {
+    source: png.toString("base64"),
+    center: keplerOffset(saturn, findBody(saturn.parent), 0),
+    pole: equatorialVectorToScene(bodyOrientationBasis(saturn).zAxis),
+    globeRadius: visualBodyRadius(saturn),
+    inner: visualRingRadius(saturn, saturn.ringInnerKm),
+    outer: visualRingRadius(saturn, saturn.ringOuterKm),
+    bands: SATURN_RING_BANDS,
+    distance,
+    azimuth,
+    elevation,
+  });
+}
+
 async function assertSaturnRingReferenceViews(context) {
   const page = await context.newPage();
   const errors = captureErrors(page);
@@ -2439,6 +2540,58 @@ async function assertSaturnRingReferenceViews(context) {
   await page.waitForTimeout(250);
   await assertRenderedCanvas(page);
   await saveScreenshot(page, "desktop-saturn-rings-back");
+
+  // Issue #44: at J2000 the Sun sits about 21° south of Saturn's ring plane,
+  // so this half-turn seat (about 47° north of the plane, Sun behind Saturn)
+  // looks at the unlit ring face. The transmitted-light approximation must
+  // keep its bands readable and dim, with the globe's night side still dark.
+  const saturn = findBody("saturn");
+  const framedDistance = Math.max(visualBodyRadius(saturn) * 7.5, 5.5);
+  const viewport = page.viewportSize();
+  const backAzimuth = CONFIG.cameraAzimuth - viewport.width * 0.44 * 0.005;
+  const unlit = await saturnRingSurfaceMetrics(page, framedDistance, backAzimuth, CONFIG.cameraElevation);
+  const globe = await outerPlanetSurfaceMetrics(page, "saturn", framedDistance, backAzimuth, CONFIG.cameraElevation);
+  console.log(`desktop saturn unlit ring face ${JSON.stringify({ ring: unlit, globe })}`);
+  // Display-readability floors and ceilings, not photometric claims.
+  assert.ok(unlit.annulus.samples >= 4000, "unlit ring face has a substantial sky-backed annulus ROI");
+  for (const band of ["c", "b", "a"]) {
+    assert.ok(unlit[band].samples >= 300, `unlit ${band} ring band has a substantial ROI`);
+    assert.ok(unlit[band].mean >= 10, `unlit ${band} ring band stays perceptible (${unlit[band].mean})`);
+  }
+  const bandMeans = [unlit.c.mean, unlit.b.mean, unlit.a.mean];
+  assert.ok(unlit.a.mean >= unlit.b.mean + 4,
+    `the thinner A ring passes more light than the dense B ring (${unlit.a.mean} vs ${unlit.b.mean})`);
+  assert.ok(Math.max(...bandMeans) - Math.min(...bandMeans) >= 6,
+    `unlit ring bands keep visible tonal variation (${bandMeans.join(", ")})`);
+  assert.ok(unlit.annulus.mean <= 64 && unlit.annulus.p90 <= 96,
+    `unlit ring face stays plausibly dim rather than glowing (${unlit.annulus.mean}, p90 ${unlit.annulus.p90})`);
+  assert.ok(unlit.gap.samples >= 100 && unlit.gap.p90 <= 24,
+    `the inner transparent gap still shows sky (${JSON.stringify(unlit.gap)})`);
+  assert.ok(globe.night.samples >= 500 && globe.night.mean <= 6,
+    `Saturn's night side stays dark behind the transmitted ring light (${JSON.stringify(globe.night)})`);
+
+  // Sunward seat 50° south of the ring plane: the lit face keeps its bright
+  // front-lit appearance and the day/night ring hierarchy.
+  const position = keplerOffset(saturn, findBody(saturn.parent), 0);
+  const sunAzimuth = Math.atan2(-position.x, -position.z);
+  const litElevation = -0.5;
+  await page.locator("#reset-button").click();
+  await page.evaluate(() => document.querySelector('[data-body-id="saturn"]').click());
+  await waitForCenteredBodyLabel(page, "saturn", 0.1);
+  const deltaAzimuth = Math.atan2(
+    Math.sin(sunAzimuth - CONFIG.cameraAzimuth), Math.cos(sunAzimuth - CONFIG.cameraAzimuth),
+  );
+  await dragCamera(page, -deltaAzimuth / 0.005, (litElevation - CONFIG.cameraElevation) / 0.004);
+  await waitForCenteredBodyLabel(page, "saturn", 0.1);
+  await saveScreenshot(page, "desktop-saturn-rings-lit");
+  const lit = await saturnRingSurfaceMetrics(page, framedDistance, sunAzimuth, litElevation);
+  console.log(`desktop saturn lit ring face ${JSON.stringify(lit)}`);
+  assert.ok(lit.annulus.samples >= 4000, "lit ring face has a substantial sky-backed annulus ROI");
+  assert.ok(lit.b.mean >= 110, `lit B ring keeps its bright front-lit appearance (${lit.b.mean})`);
+  assert.ok(lit.annulus.mean >= unlit.annulus.mean * 3,
+    `the lit face stays far brighter than the unlit face (${lit.annulus.mean} vs ${unlit.annulus.mean})`);
+  assert.ok(lit.gap.samples >= 100 && lit.gap.p90 <= 24,
+    `the inner transparent gap still shows sky on the lit face (${JSON.stringify(lit.gap)})`);
   assert.deepEqual(errors, [], "Saturn ring reference views have no browser errors");
   await page.close();
 }
