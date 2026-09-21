@@ -434,8 +434,9 @@ assert.ok(
 assert.match(app, /shader\.uniforms\.ringTransmission = \{ value: CONFIG\.ringTransmission \}/);
 assert.match(app, /saturate\( - dot\( geometryNormal, ringBackLight\.direction \) \)/,
   "ring transmission responds only to sunlight arriving from behind the visible ring face");
-assert.match(app, /\( 1\.0 - diffuseColor\.a \)/,
-  "ring transmission scales with the map's transparency so dense bands stay dark and gaps stay gaps");
+assert.match(app, /float ringPass = sqrt\( 1\.0 - diffuseColor\.a \);/,
+  "ring transmission scales with the square root of the map's transparency, so dense bands stay dimmer than thin ones and gaps stay gaps");
+assert.match(provenance, /`sqrt\(1 - alpha\)`/);
 assert.equal((app.match(/onBeforeCompile/g) ?? []).length, 1, "only the ring material patches its shader");
 assert.doesNotMatch(app, /emissiveMap: ringMap/, "the rings gain no view-independent emissive glow");
 assert.match(provenance, /CONFIG\.ringTransmission/);

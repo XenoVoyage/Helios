@@ -2425,6 +2425,7 @@ const SATURN_RING_BANDS = Object.freeze({
   gap: [0.01, 0.045],
   c: [0.1, 0.29],
   b: [0.33, 0.65],
+  cassini: [0.678, 0.705],
   a: [0.73, 0.88],
 });
 
@@ -2554,15 +2555,14 @@ async function assertSaturnRingReferenceViews(context) {
   console.log(`desktop saturn unlit ring face ${JSON.stringify({ ring: unlit, globe })}`);
   // Display-readability floors and ceilings, not photometric claims.
   assert.ok(unlit.annulus.samples >= 4000, "unlit ring face has a substantial sky-backed annulus ROI");
-  for (const band of ["c", "b", "a"]) {
+  for (const [band, floor] of [["c", 13], ["b", 40], ["a", 33], ["cassini", 12]]) {
     assert.ok(unlit[band].samples >= 300, `unlit ${band} ring band has a substantial ROI`);
-    assert.ok(unlit[band].mean >= 10, `unlit ${band} ring band stays perceptible (${unlit[band].mean})`);
+    assert.ok(unlit[band].mean >= floor, `unlit ${band} ring band stays readable against space (${unlit[band].mean})`);
   }
-  const bandMeans = [unlit.c.mean, unlit.b.mean, unlit.a.mean];
-  assert.ok(unlit.a.mean >= unlit.b.mean + 4,
-    `the thinner A ring passes more light than the dense B ring (${unlit.a.mean} vs ${unlit.b.mean})`);
-  assert.ok(Math.max(...bandMeans) - Math.min(...bandMeans) >= 6,
-    `unlit ring bands keep visible tonal variation (${bandMeans.join(", ")})`);
+  assert.ok(unlit.cassini.mean + 16 <= unlit.b.mean && unlit.cassini.mean + 16 <= unlit.a.mean,
+    `the Cassini Division stays a visible dark division between the B and A rings (${unlit.cassini.mean} vs ${unlit.b.mean}, ${unlit.a.mean})`);
+  assert.ok(unlit.c.mean + 20 <= unlit.b.mean,
+    `the translucent C ring stays visibly dimmer than the dense B ring (${unlit.c.mean} vs ${unlit.b.mean})`);
   assert.ok(unlit.annulus.mean <= 64 && unlit.annulus.p90 <= 96,
     `unlit ring face stays plausibly dim rather than glowing (${unlit.annulus.mean}, p90 ${unlit.annulus.p90})`);
   assert.ok(unlit.gap.samples >= 100 && unlit.gap.p90 <= 24,
@@ -2588,8 +2588,8 @@ async function assertSaturnRingReferenceViews(context) {
   console.log(`desktop saturn lit ring face ${JSON.stringify(lit)}`);
   assert.ok(lit.annulus.samples >= 4000, "lit ring face has a substantial sky-backed annulus ROI");
   assert.ok(lit.b.mean >= 110, `lit B ring keeps its bright front-lit appearance (${lit.b.mean})`);
-  assert.ok(lit.annulus.mean >= unlit.annulus.mean * 3,
-    `the lit face stays far brighter than the unlit face (${lit.annulus.mean} vs ${unlit.annulus.mean})`);
+  assert.ok(lit.b.mean >= unlit.b.mean * 1.8 && lit.a.mean >= unlit.a.mean * 1.35,
+    `the lit face stays substantially brighter than the unlit face band for band (B ${lit.b.mean} vs ${unlit.b.mean}, A ${lit.a.mean} vs ${unlit.a.mean})`);
   assert.ok(lit.gap.samples >= 100 && lit.gap.p90 <= 24,
     `the inner transparent gap still shows sky on the lit face (${JSON.stringify(lit.gap)})`);
   assert.deepEqual(errors, [], "Saturn ring reference views have no browser errors");

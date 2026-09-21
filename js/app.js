@@ -571,17 +571,20 @@ function createBodyNode(body) {
 // Sun does not reach gets only ambient fill and reads as a black halo. A ring
 // is a thin particle slab: sunlight from behind is transmitted and forward-
 // scattered, most where the ring is optically thin. Reuse the Sun's Lambert
-// term with the back-facing incidence, scaled by the map's transparency
-// (1 - alpha): dense bands stay dark, thin bands and divisions pass light,
-// gaps stay gaps. Bounded display behavior, not radiative transfer.
+// term with the back-facing incidence, scaled by the square root of the map's
+// transparency: sqrt(1 - alpha) stays below the isotropic single-scattering
+// transmission of a slab with optical depth -ln(1 - alpha) across the map's
+// range, so dense bands stay dimmer than thin ones, divisions stay dark,
+// and gaps stay gaps. Bounded display behavior, not radiative transfer.
 const RING_TRANSMISSION_FRAGMENT = `#include <lights_fragment_end>
 #if NUM_POINT_LIGHTS > 0
+  float ringPass = sqrt( 1.0 - diffuseColor.a );
   IncidentLight ringBackLight;
   #pragma unroll_loop_start
   for ( int i = 0; i < NUM_POINT_LIGHTS; i ++ ) {
     getPointLightInfo( pointLights[ i ], geometryPosition, ringBackLight );
     reflectedLight.directDiffuse += saturate( - dot( geometryNormal, ringBackLight.direction ) )
-      * ringTransmission * ( 1.0 - diffuseColor.a ) * ringBackLight.color
+      * ringTransmission * ringPass * ringBackLight.color
       * BRDF_Lambert( material.diffuseContribution );
   }
   #pragma unroll_loop_end
