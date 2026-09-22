@@ -397,6 +397,11 @@ assert.match(app, /ensureGalaxyLayer/);
 assert.match(app, /startGalaxyLayer/);
 assert.match(app, /function yieldToPaint/);
 assert.match(app, /function prepareGalaxyLayer/);
+assert.match(
+  app,
+  /state\.distance = next;\s*if \(next > CONFIG\.solarMaxDistance\) ensureGalaxyLayer\(\);/,
+  "boundary zoom commits the new distance before staging so loading tracks the real target",
+);
 assert.equal(CONFIG.inputFrameBudgetMs, 16);
 assert.match(configSource, /inputFrameBudgetMs:\s*16/);
 assert.doesNotMatch(app, /warmExtraZoom|renderer\.compile/);

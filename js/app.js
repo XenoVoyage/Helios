@@ -943,7 +943,6 @@ function zoomTo(distance) {
   const focusedRadius = nodes.get(state.focusedId)?.radius ?? 0;
   const next = clamp(distance, minimumFocusDistance(focusedRadius), CONFIG.maxDistance);
   const focused = nodes.get(state.focusedId);
-  if (next > CONFIG.solarMaxDistance) ensureGalaxyLayer();
   if (next > CONFIG.solarMaxDistance && state.distance <= CONFIG.solarMaxDistance) {
     resetParentGlobeContinuity(parentGlobeContinuity);
     setMoonFocusTransition(false);
@@ -970,6 +969,10 @@ function zoomTo(distance) {
     }
   }
   state.distance = next;
+  if (next > CONFIG.solarMaxDistance) ensureGalaxyLayer();
+  if (galaxyPreparing) {
+    setLoadingVisible(wantsDeepLayer(), wantsDeepLayer() && !loadingVisible());
+  }
   paintConstellations();
 }
 
@@ -1053,6 +1056,7 @@ function resetView() {
   state.azimuth = CONFIG.cameraAzimuth;
   state.elevation = CONFIG.cameraElevation;
   state.distance = CONFIG.cameraDistance;
+  if (galaxyPreparing) setLoadingVisible(false);
   paintCard();
   paintConstellations();
   paintSceneSemantics();
