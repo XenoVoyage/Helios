@@ -1078,6 +1078,322 @@ async function touchPinch(page, cdp, startGap, endGap, label) {
   await waitForTwoAnimationFrames(page);
 }
 
+async function selectionSnapshot(page) {
+  return page.evaluate(() => ({
+    cardHidden: document.querySelector("#body-card").hidden,
+    cardName: document.querySelector("#card-name").textContent,
+    status: document.querySelector("#status-live").textContent,
+    context: document.querySelector("#scene-context").textContent,
+    active: [...document.querySelectorAll("[data-body-id].is-active")].map((node) => node.dataset.bodyId),
+  }));
+}
+
+async function setSkyLabelPointerEvents(page, pointerEvents) {
+  await page.locator(".sky-label").evaluateAll((labels, value) => {
+    for (const label of labels) label.style.pointerEvents = value;
+  }, pointerEvents);
+}
+
+async function dispatchCanvasPointer(page, type, { pointerId, x, y, pointerType = "mouse" }) {
+  await page.locator("#viewport").evaluate((canvas, input) => {
+    canvas.dispatchEvent(new PointerEvent(input.type, {
+      bubbles: true,
+      cancelable: true,
+      pointerId: input.pointerId,
+      pointerType: input.pointerType,
+      isPrimary: input.pointerId === 1,
+      clientX: input.x,
+      clientY: input.y,
+      buttons: input.type === "pointerdown" || input.type === "pointermove" ? 1 : 0,
+    }));
+  }, { type, pointerId, x, y, pointerType });
+}
+
+async function beginCanvasPointer(page, point, cdp, touchId = 0) {
+  await page.evaluate(() => {
+    window.__heliosPointerDownId = null;
+    document.querySelector("#viewport").addEventListener(
+      "pointerdown",
+      (event) => {
+        window.__heliosPointerDownId = event.pointerId;
+      },
+      { once: true },
+    );
+  });
+  if (cdp) {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{
+        id: touchId,
+        x: point.x,
+        y: point.y,
+        radiusX: 4,
+        radiusY: 4,
+        force: 1,
+      }],
+    });
+  } else {
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down();
+  }
+  await page.waitForFunction(() => window.__heliosPointerDownId != null);
+  return page.evaluate(() => window.__heliosPointerDownId);
+}
+
+async function moveCanvasPointer(page, point, pointerId, cdp, touchId = 0) {
+  if (cdp) {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{
+        id: touchId,
+        x: point.x,
+        y: point.y,
+        radiusX: 4,
+        radiusY: 4,
+        force: 1,
+      }],
+    });
+    return;
+  }
+  await page.mouse.move(point.x, point.y);
+  await dispatchCanvasPointer(page, "pointermove", { pointerId, x: point.x, y: point.y });
+}
+
+async function endCanvasPointer(page, cdp) {
+  if (cdp) {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }).catch(() => {});
+    return;
+  }
+  await page.mouse.up();
+}
+
+async function clickCanvasPoint(page, point, cdp) {
+  if (cdp) {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ id: 0, x: point.x, y: point.y, radiusX: 4, radiusY: 4, force: 1 }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    return;
+  }
+  await page.mouse.click(point.x, point.y);
+}
+
+async function findCanvasPickPoint(page, cdp) {
+  const candidates = [
+    [0.5, 0.5], [0.5, 0.46], [0.48, 0.5], [0.52, 0.52], [0.5, 0.42], [0.46, 0.48],
+  ];
+  for (const [xFrac, yFrac] of candidates) {
+    const point = await unobstructedCanvasPoint(page, [[xFrac, yFrac]]);
+    if (!point) continue;
+    await clickCanvasPoint(page, point, cdp);
+    await waitForTwoAnimationFrames(page);
+    const snapshot = await selectionSnapshot(page);
+    if (!snapshot.cardHidden) {
+      await page.locator("#reset-button").click();
+      await page.locator("#body-card[hidden]").waitFor({ state: "attached" });
+      return { point, cardName: snapshot.cardName };
+    }
+  }
+  return null;
+}
+
+async function auditPointerCancelAbort(context, prefix, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  let cdp;
+  try {
+    await openReady(page);
+    if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
+      await page.locator("#play-button").click();
+    }
+    await page.locator("#reset-button").click();
+    if (touch) cdp = await context.newCDPSession(page);
+    await setSkyLabelPointerEvents(page, "none");
+
+    const pick = await findCanvasPickPoint(page, cdp);
+    assert.ok(pick, `${prefix}: canvas has a point that would select a body`);
+
+    const assertUnchanged = async (label, before) => {
+      await waitForTwoAnimationFrames(page);
+      assert.deepEqual(
+        await selectionSnapshot(page),
+        before,
+        `${prefix} ${label} must not select, clear, or retarget focus/card`,
+      );
+    };
+
+    const abortAt = async (label, point, afterStart) => {
+      const before = await selectionSnapshot(page);
+      const pointerId = await beginCanvasPointer(page, point, cdp);
+      if (afterStart) await afterStart(pointerId, point);
+      await dispatchCanvasPointer(page, "pointercancel", {
+        pointerId,
+        x: point.x,
+        y: point.y,
+        pointerType: touch ? "touch" : "mouse",
+      });
+      await endCanvasPointer(page, cdp);
+      await assertUnchanged(label, before);
+    };
+
+    await abortAt("pointercancel during tap", pick.point);
+    await abortAt("pointercancel after sub-threshold move", pick.point, async (pointerId, point) => {
+      await moveCanvasPointer(
+        page,
+        { x: point.x + Math.min(6, CONFIG.tapMovePx - 2), y: point.y },
+        pointerId,
+        cdp,
+      );
+    });
+
+    {
+      const before = await selectionSnapshot(page);
+      const pointerId = await beginCanvasPointer(page, pick.point, cdp);
+      const released = await page.locator("#viewport").evaluate((canvas, id) => {
+        if (canvas.hasPointerCapture(id)) {
+          canvas.releasePointerCapture(id);
+          return "capture";
+        }
+        canvas.dispatchEvent(new PointerEvent("lostpointercapture", {
+          bubbles: true,
+          pointerId: id,
+        }));
+        return "synthetic";
+      }, pointerId);
+      assert.ok(released, `${prefix}: lostpointercapture reached the canvas`);
+      await endCanvasPointer(page, cdp);
+      await assertUnchanged("lostpointercapture during tap", before);
+    }
+
+    await abortAt("pointercancel during drag", pick.point, async (pointerId, point) => {
+      await moveCanvasPointer(
+        page,
+        { x: point.x + CONFIG.tapMovePx + 28, y: point.y + 16 },
+        pointerId,
+        cdp,
+      );
+    });
+
+    await page.locator("#reset-button").click();
+    await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), "earth");
+    await page.locator("#body-card:not([hidden])").waitFor();
+    assert.equal(await page.locator("#card-name").textContent(), "Earth");
+
+    const missCandidates = [
+      [0.08, 0.22], [0.92, 0.22], [0.08, 0.78], [0.92, 0.78],
+      [0.1, 0.5], [0.9, 0.5], [0.5, 0.14], [0.5, 0.86],
+    ];
+    let miss = null;
+    for (const candidate of missCandidates) {
+      const point = await unobstructedCanvasPoint(page, [candidate]);
+      if (!point) continue;
+      await clickCanvasPoint(page, point, cdp);
+      await waitForTwoAnimationFrames(page);
+      if ((await selectionSnapshot(page)).cardHidden) {
+        miss = point;
+        await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), "earth");
+        await page.locator("#body-card:not([hidden])").waitFor();
+        break;
+      }
+    }
+    assert.ok(miss, `${prefix}: focused Earth still has an empty-space canvas point`);
+
+    await abortAt("pointercancel over empty space with a card open", miss);
+
+    {
+      const before = await selectionSnapshot(page);
+      const touches = (gap) => [
+        { id: 0, x: miss.x - gap / 2, y: miss.y, radiusX: 4, radiusY: 4, force: 1 },
+        { id: 1, x: miss.x + gap / 2, y: miss.y, radiusX: 4, radiusY: 4, force: 1 },
+      ];
+      let ids;
+      if (cdp) {
+        await page.evaluate(() => {
+          window.__heliosPinchIds = [];
+          const canvas = document.querySelector("#viewport");
+          const onDown = (event) => {
+            window.__heliosPinchIds.push(event.pointerId);
+            if (window.__heliosPinchIds.length >= 2) canvas.removeEventListener("pointerdown", onDown);
+          };
+          canvas.addEventListener("pointerdown", onDown);
+        });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: touches(80) });
+        await page.waitForFunction(() => window.__heliosPinchIds.length >= 2, null, { timeout: 5_000 });
+        ids = await page.evaluate(() => window.__heliosPinchIds.slice());
+        await cdp.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: touches(96),
+        });
+        await cdp.send("Input.dispatchTouchEvent", {
+          type: "touchCancel",
+          touchPoints: touches(96),
+        }).catch(() => {});
+      } else {
+        ids = [101, 102];
+        await dispatchCanvasPointer(page, "pointerdown", {
+          pointerId: 101, x: miss.x - 40, y: miss.y, pointerType: "touch",
+        });
+        await dispatchCanvasPointer(page, "pointerdown", {
+          pointerId: 102, x: miss.x + 40, y: miss.y, pointerType: "touch",
+        });
+        await dispatchCanvasPointer(page, "pointermove", {
+          pointerId: 101, x: miss.x - 48, y: miss.y, pointerType: "touch",
+        });
+        await dispatchCanvasPointer(page, "pointermove", {
+          pointerId: 102, x: miss.x + 48, y: miss.y, pointerType: "touch",
+        });
+      }
+      for (const pointerId of ids) {
+        await dispatchCanvasPointer(page, "pointercancel", {
+          pointerId,
+          x: miss.x,
+          y: miss.y,
+          pointerType: "touch",
+        });
+      }
+      await endCanvasPointer(page, cdp);
+      await assertUnchanged("pointercancel during two-pointer pinch", before);
+    }
+
+    await abortAt("pointercancel during drag with a card open", miss, async (pointerId, point) => {
+      await moveCanvasPointer(
+        page,
+        { x: point.x + CONFIG.tapMovePx + 36, y: point.y },
+        pointerId,
+        cdp,
+      );
+    });
+
+    await page.locator("#reset-button").click();
+    await page.locator("#body-card[hidden]").waitFor({ state: "attached" });
+    await clickCanvasPoint(page, pick.point, cdp);
+    await page.locator("#body-card:not([hidden])").waitFor();
+    assert.equal(
+      await page.locator("#card-name").textContent(),
+      pick.cardName,
+      `${prefix}: ordinary tap selection still works after abort cleanup`,
+    );
+
+    await page.locator("#reset-button").click();
+    await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), "earth");
+    await page.locator("#body-card:not([hidden])").waitFor();
+    await clickCanvasPoint(page, miss, cdp);
+    await page.locator("#body-card[hidden]").waitFor({ state: "attached" });
+    assert.equal(
+      await page.locator("#status-live").textContent(),
+      "Selection cleared",
+      `${prefix}: ordinary empty-space tap still clears after abort cleanup`,
+    );
+
+    await setSkyLabelPointerEvents(page, "");
+    assert.deepEqual(errors, [], `${prefix} pointer-cancel abort has no browser errors`);
+  } finally {
+    if (cdp) await cdp.detach().catch(() => {});
+    await page.close();
+  }
+}
+
 async function assertConstellationModesAndFreshLabels(page) {
   const select = page.locator("#sky-mode");
   const control = page.locator("#sky-control");
@@ -4284,6 +4600,7 @@ try {
   // Check the issue's new pixel gate before the longer unchanged scale and
   // moon sweeps, so a calibration failure reports its actual surface promptly.
   await assertOuterPlanetNightSides(desktop, "desktop");
+  await auditPointerCancelAbort(desktop, "desktop");
   const desktopPage = await desktop.newPage();
   const desktopErrors = captureErrors(desktopPage);
   const timeStartupReports = [];
@@ -4432,6 +4749,7 @@ try {
   await auditWheelDeltaModes(browser, true);
   await assertViewportBusyLifecycle(touch, "touch-portrait emulation");
   await assertOuterPlanetNightSides(touch, "touch-portrait", true);
+  await auditPointerCancelAbort(touch, "touch-portrait", true);
   const touchControlPage = await touch.newPage();
   const touchControlErrors = captureErrors(touchControlPage);
   await openReady(touchControlPage);
