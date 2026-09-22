@@ -1574,10 +1574,16 @@ function createNeighbors(THREE, group, maps) {
       new THREE.TextureLoader().load(SKY_ASSETS.andromeda, (loaded) => {
         loaded.colorSpace = THREE.SRGBColorSpace;
         loaded.anisotropy = 4;
-        sprite.material.map = brightenLoadedMap(THREE, loaded, 2.15);
+        const previous = sprite.material.map;
+        const next = brightenLoadedMap(THREE, loaded, 2.15);
+        sprite.material.map = next;
         sprite.material.color.set(0xfff4e8);
         sprite.material.blending = THREE.AdditiveBlending;
         sprite.material.needsUpdate = true;
+        // The generated placeholder is a one-off for this singleton sprite.
+        // Dispose it only after the real map owns the slot; load failure
+        // never reaches here, so the visible fallback stays intact.
+        if (previous && previous !== next) previous.dispose();
       });
     }
     const label = neighbor.messier ? `${neighbor.name} (${neighbor.messier})` : neighbor.name;

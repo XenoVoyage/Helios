@@ -1258,6 +1258,173 @@ async function auditSolarHandoff(context) {
   await page.close();
 }
 
+const M31_PLACEHOLDER_SIZE = 256;
+const M31_LOADED_SIZE = { width: 384, height: 348 };
+
+function placeholderDisposals(snapshot) {
+  return (snapshot?.disposals ?? []).filter((entry) => (
+    entry.isCanvas && entry.width === M31_PLACEHOLDER_SIZE && entry.height === M31_PLACEHOLDER_SIZE
+  ));
+}
+
+async function installM31TextureAudit(page) {
+  await page.evaluate(async () => {
+    if (globalThis.__heliosM31TextureAudit) return;
+    const THREE = await import(new URL("vendor/three.module.min.js", location.href).href);
+    const originalDispose = THREE.Texture.prototype.dispose;
+    const disposals = [];
+    THREE.Texture.prototype.dispose = function disposeTexture() {
+      const image = this.image || this.source?.data;
+      disposals.push({
+        uuid: this.uuid,
+        width: image?.width ?? null,
+        height: image?.height ?? null,
+        isCanvas: typeof HTMLCanvasElement !== "undefined" && image instanceof HTMLCanvasElement,
+      });
+      return originalDispose.apply(this, arguments);
+    };
+    const prototype = THREE.Scene.prototype;
+    const previous = prototype.onAfterRender;
+    let latest = null;
+    prototype.onAfterRender = function onAfterRender(renderer, scene, camera) {
+      if (typeof previous === "function") previous.call(this, renderer, scene, camera);
+      const layer = scene.getObjectByName("galaxy-layer");
+      const sprite = scene.getObjectByName("m31");
+      const map = sprite?.material?.map;
+      const image = map?.image || map?.source?.data;
+      latest = {
+        textureCount: renderer.info.memory.textures,
+        galaxyUuid: layer?.uuid ?? null,
+        m31: sprite ? {
+          uuid: map?.uuid ?? null,
+          width: image?.width ?? null,
+          height: image?.height ?? null,
+          isCanvas: typeof HTMLCanvasElement !== "undefined" && image instanceof HTMLCanvasElement,
+        } : null,
+      };
+    };
+    globalThis.__heliosM31TextureAudit = {
+      snapshot: () => ({
+        textureCount: latest?.textureCount ?? null,
+        galaxyUuid: latest?.galaxyUuid ?? null,
+        m31: latest?.m31 ? { ...latest.m31 } : null,
+        disposals: disposals.map((entry) => ({ ...entry })),
+      }),
+    };
+  });
+}
+
+async function waitForM31TextureAudit(page, predicate, message) {
+  let last = null;
+  for (let attempt = 0; attempt < 90; attempt += 1) {
+    await waitForTwoAnimationFrames(page);
+    last = await page.evaluate(() => globalThis.__heliosM31TextureAudit.snapshot());
+    if (last && predicate(last)) return last;
+  }
+  assert.fail(`${message}: ${JSON.stringify(last)}`);
+}
+
+async function auditM31PlaceholderDisposal(context) {
+  const successPage = await context.newPage();
+  const successErrors = captureErrors(successPage);
+  await openReady(successPage, "?look=solarfar");
+  if (await successPage.locator("#play-button").getAttribute("aria-pressed") === "true") {
+    await successPage.locator("#play-button").click();
+  }
+  assert.equal(await successPage.getAttribute("html", "data-galaxy-ready"), null);
+  await installM31TextureAudit(successPage);
+  await zoomBetweenAuditDistances(successPage, CONFIG.solarMaxDistance, CONFIG.neighborhoodViewDistance);
+  await successPage.waitForFunction(() => document.documentElement.dataset.galaxyReady === "1");
+  await waitForM31TextureAudit(
+    successPage,
+    (snapshot) => snapshot.m31?.width === M31_LOADED_SIZE.width
+      && snapshot.m31?.height === M31_LOADED_SIZE.height
+      && placeholderDisposals(snapshot).length === 1,
+    "successful M31 load should replace the 256 canvas placeholder and dispose it once",
+  );
+  await waitForTwoAnimationFrames(successPage);
+  await waitForTwoAnimationFrames(successPage);
+  const replaced = await successPage.evaluate(() => globalThis.__heliosM31TextureAudit.snapshot());
+  const placeholder = placeholderDisposals(replaced);
+  assert.equal(placeholder.length, 1, `placeholder disposed once: ${JSON.stringify(replaced.disposals)}`);
+  assert.notEqual(replaced.m31.uuid, placeholder[0].uuid, "the visible M31 map is not the disposed placeholder");
+  assert.equal(replaced.m31.isCanvas, true, "the loaded M31 map remains the brightened canvas sprite");
+  assert.equal(
+    replaced.disposals.filter((entry) => entry.uuid === replaced.m31.uuid).length,
+    0,
+    "the real loaded M31 map is not disposed",
+  );
+  const galaxyUuid = replaced.galaxyUuid;
+  const textureCount = replaced.textureCount;
+  assert.ok(galaxyUuid, "galaxy singleton exists after the first outbound zoom");
+  assert.ok(textureCount > 0, "renderer reports live textures after replacement");
+  await saveScreenshot(successPage, "desktop-m31-placeholder-disposed");
+
+  let distance = CONFIG.neighborhoodViewDistance;
+  for (let cycle = 0; cycle < 3; cycle += 1) {
+    await zoomBetweenAuditDistances(successPage, distance, CONFIG.solarMaxDistance);
+    distance = CONFIG.solarMaxDistance;
+    await zoomBetweenAuditDistances(successPage, distance, CONFIG.neighborhoodViewDistance);
+    distance = CONFIG.neighborhoodViewDistance;
+    const again = await waitForM31TextureAudit(
+      successPage,
+      (snapshot) => snapshot.galaxyUuid === galaxyUuid
+        && snapshot.m31?.uuid === replaced.m31.uuid
+        && placeholderDisposals(snapshot).length === 1,
+      "repeated Solar/deep transitions must keep the galaxy singleton and skip a second placeholder dispose",
+    );
+    assert.equal(again.galaxyUuid, galaxyUuid, "galaxy layer remains the same singleton");
+    assert.equal(again.m31.uuid, replaced.m31.uuid, "the loaded M31 map is reused");
+    assert.equal(placeholderDisposals(again).length, 1, "placeholder dispose stays one-shot");
+    assert.equal(again.textureCount, textureCount, "GPU texture count does not grow across zoom cycles");
+  }
+  assert.deepEqual(successErrors, [], "M31 placeholder disposal success path has no browser errors");
+  await successPage.close();
+
+  const failurePage = await context.newPage();
+  const failureErrors = [];
+  failurePage.on("pageerror", (error) => failureErrors.push(`page: ${error.message}`));
+  failurePage.on("console", (message) => {
+    if (message.type() !== "error") return;
+    const text = message.text();
+    if (text.includes("andromeda.png")) return;
+    failureErrors.push(`console: ${text}`);
+  });
+  failurePage.on("requestfailed", (request) => {
+    if (request.url().includes("andromeda.png")) return;
+    failureErrors.push(`request: ${request.url()} ${request.failure()?.errorText ?? "failed"}`);
+  });
+  await failurePage.route("**/assets/sky/andromeda.png", (route) => route.abort());
+  await openReady(failurePage, "?look=solarfar");
+  if (await failurePage.locator("#play-button").getAttribute("aria-pressed") === "true") {
+    await failurePage.locator("#play-button").click();
+  }
+  await installM31TextureAudit(failurePage);
+  await zoomBetweenAuditDistances(failurePage, CONFIG.solarMaxDistance, CONFIG.neighborhoodViewDistance);
+  await failurePage.waitForFunction(() => document.documentElement.dataset.galaxyReady === "1");
+  const fallback = await waitForM31TextureAudit(
+    failurePage,
+    (snapshot) => snapshot.m31?.width === M31_PLACEHOLDER_SIZE
+      && snapshot.m31?.height === M31_PLACEHOLDER_SIZE
+      && snapshot.m31?.isCanvas === true,
+    "failed M31 load should keep the generated placeholder visible",
+  );
+  const fallbackUuid = fallback.m31.uuid;
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await waitForTwoAnimationFrames(failurePage);
+  }
+  const retained = await failurePage.evaluate(() => globalThis.__heliosM31TextureAudit.snapshot());
+  assert.equal(placeholderDisposals(retained).length, 0, "load failure does not dispose the visible placeholder");
+  assert.equal(retained.m31.uuid, fallbackUuid, "the same placeholder map stays bound");
+  assert.equal(retained.m31.width, M31_PLACEHOLDER_SIZE);
+  assert.equal(retained.m31.height, M31_PLACEHOLDER_SIZE);
+  assert.equal(retained.m31.isCanvas, true);
+  await assertRenderedCanvas(failurePage);
+  await saveScreenshot(failurePage, "desktop-m31-placeholder-retained");
+  assert.deepEqual(failureErrors, [], "M31 placeholder retention on load failure has no unrelated browser errors");
+  await failurePage.close();
+}
+
 async function auditScaleTransitions(context) {
   const page = await context.newPage();
   const errors = captureErrors(page);
@@ -3978,6 +4145,7 @@ try {
     await writeFile(path.join(screenshotDir, "time-control-startup.json"), JSON.stringify(timeStartupReports, null, 2) + "\n");
   }
   await auditSolarHandoff(desktop);
+  await auditM31PlaceholderDisposal(desktop);
   await auditScaleTransitions(desktop);
   await auditFarSkyDirections(desktop);
   await captureEarthSolstice(desktop, "earth-june-solstice", "2000-06-21");

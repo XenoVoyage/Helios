@@ -3442,6 +3442,38 @@ test("post-Virgo map uses measured cluster anchors and no invented web links", a
   assert.notEqual(visualWeb(16.5), visualVirgo(16500));
 });
 
+test("M31 disposes the generated placeholder only after a successful image replacement", async () => {
+  const galaxySource = await readFile(path.join(root, "js/galaxy.js"), "utf8");
+  const neighbors = galaxySource.slice(
+    galaxySource.indexOf("function createNeighbors"),
+    galaxySource.indexOf("function createMilkyWayMarks"),
+  );
+  const replacement = neighbors.slice(
+    neighbors.indexOf('if (neighbor.id === "m31")'),
+    neighbors.indexOf("const label = neighbor.messier"),
+  );
+  assert.match(replacement, /new THREE\.TextureLoader\(\)\.load\(SKY_ASSETS\.andromeda/);
+  assert.match(replacement, /const previous = sprite\.material\.map/);
+  assert.match(replacement, /const next = brightenLoadedMap\(THREE, loaded, 2\.15\)/);
+  assert.match(replacement, /sprite\.material\.map = next/);
+  assert.match(replacement, /previous\.dispose\(\)/);
+  assert.ok(
+    replacement.indexOf("sprite.material.map = next") < replacement.indexOf("previous.dispose()"),
+    "the placeholder is unreferenced before dispose",
+  );
+  assert.ok(
+    replacement.indexOf("if (previous && previous !== next)") < replacement.indexOf("previous.dispose()"),
+    "dispose runs only when a distinct replacement map owns the slot",
+  );
+  assert.doesNotMatch(replacement, /loaded\.dispose\(/);
+  assert.equal((replacement.match(/\.dispose\(/g) ?? []).length, 1, "one placeholder dispose on the success path");
+  assert.match(
+    replacement,
+    /new THREE\.TextureLoader\(\)\.load\(SKY_ASSETS\.andromeda, \(loaded\) => \{/,
+    "TextureLoader.load takes only the success callback, so a failed fetch cannot dispose the visible fallback",
+  );
+});
+
 test("particle horizon and the artistically co-located CMB shell stay distinct", () => {
   assert.equal(PARTICLE_HORIZON.name, "Particle horizon");
   assert.equal(PARTICLE_HORIZON.comovingRadiusGly, 46.5);
