@@ -5,7 +5,7 @@
   "description": "Interactive 3D solar system.",
   "license": "MIT",
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "scripts": {
     "test": "npm run test:static && npm run test:browser",
