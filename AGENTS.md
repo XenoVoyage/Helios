@@ -40,6 +40,7 @@ alone.
 | Presentation | `styles.css` |
 | Public product version | `VERSION.txt` (`CONFIG.VERSION` and README badge must match) |
 | Scientific and asset provenance | `PROVENANCE.md` |
+| Tracked image membership and SHA-256 | `tests/fixtures/asset-digest-manifest.json` |
 | Reusable contributor policy | `REPOSITORY_STANDARD.md` |
 | Helios-specific contributor contract | `AGENTS.md` |
 | Human introduction | `README.md` |
@@ -48,6 +49,8 @@ alone.
 header—not the base64 body—unless the task specifically owns catalog
 regeneration or data integrity. `scripts/build-2mrs.mjs` is its canonical
 generator. The independent payload pin is `tests/fixtures/2mrs-integrity.json`.
+`tests/fixtures/asset-digest-manifest.json` owns tracked image-file membership
+and SHA-256 values recorded in `PROVENANCE.md`.
 
 Every issue PR landing on `develop` increments the public product version in
 all three mirrors together: canonical `VERSION.txt`, `CONFIG.VERSION` in

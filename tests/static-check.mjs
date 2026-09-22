@@ -137,6 +137,7 @@ assert.match(provenance, /01736aeafecb7f5082c9d2bbed1c6bb36bb9ea6bc4c9ebb3429ed2
 assert.match(provenance, /e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34/);
 assert.match(provenance, /unresolved\s+inherited sky-image\s+transformation records/);
 assert.match(provenance, /tests\/fixtures\/texture-provenance\.json/);
+assert.match(provenance, /tests\/fixtures\/asset-digest-manifest\.json/);
 assert.match(provenance, /2k_venus_atmosphere\.jpg/);
 assert.match(provenance, /2k_ceres_fictional\.jpg/);
 assert.match(provenance, /2k_saturn_ring_alpha\.png/);
@@ -681,10 +682,6 @@ for (const entry of [threeMetadata.module, threeMetadata.core]) {
   assert.equal((await stat(path.join(root, entry.path))).size, entry.bytes);
   assert.equal(await sha256(entry.path), entry.sha256);
 }
-assert.equal(
-  await sha256("assets/textures/triton.jpg"),
-  "7962d4997fc8c8f47e7f54304174a565f59d3cc01e5de119329f59673c684ba9",
-);
 
 const required = [
   "sun",

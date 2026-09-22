@@ -1,6 +1,6 @@
 {
   "checkedAt": "2026-09-22",
-  "scope": "Body-texture source identity and Helios-side transformations for every catalog globe and Saturn's ring strip. Family-manifest digest enforcement for all image assets remains issue #70 and is not owned here.",
+  "scope": "Body-texture source identity and Helios-side transformations for every catalog globe and Saturn's ring strip. Family-manifest digest enforcement for all image assets is owned by tests/fixtures/asset-digest-manifest.json.",
   "note": "Live upstream bytes were compared on 2026-09-22. Tests freeze the resulting record against tracked files only; they do not fetch upstream.",
   "families": {
     "solar-system-scope-2k": {
