@@ -4,7 +4,7 @@ This ledger records what Helios imports, what it transforms, and what remains
 unresolved. The repository's MIT license covers first-party code only.
 Third-party images, data, and Three.js retain their own terms and attribution.
 
-The latest source evidence recorded in this ledger is dated 2026-09-07;
+The latest source evidence recorded in this ledger is dated 2026-09-22;
 source-specific retrieval and check dates are recorded per entry when known.
 Hashes are SHA-256 of the tracked local files.
 
@@ -127,8 +127,8 @@ columns, including Neptune's longitude-to-argument/anomaly conversions.
 
 | Files | Origin, terms, projection, and transformations | Local SHA-256 |
 | --- | --- | --- |
-| `assets/textures/sun.jpg`, `mercury.jpg`, `venus.jpg`, `earth.jpg`, `moon.jpg`, `mars.jpg`, `jupiter.jpg`, `saturn.jpg`, `uranus.jpg`, `neptune.jpg`, `ceres.jpg`, `saturn-ring.png` | [Solar System Scope textures](https://www.solarsystemscope.com/textures/), CC BY 4.0. Equirectangular color maps and a radial ring strip were resized/compressed before import; the exact upstream revision and transformation chain were not retained. The publisher discloses saturation and fictional gap filling; its Ceres map is categorized as fictional. | Family manifest: `f566beedf75afa2fd1b7ae0536423ab77bfec59ae2413ba2cf5262fe01231ae7` |
-| `assets/textures/phobos.jpg`, `deimos.jpg`, `io.jpg`, `europa.jpg`, `ganymede.jpg`, `callisto.jpg`, `titan.jpg`, `pluto.jpg` | [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources), subject to [NASA media guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/). Imported as 2:1 atlases and JPEG-compressed; exact upstream commits and prior resize settings were not retained. Phobos and Deimos are approximate atlases displayed on spheres. Io has limited polar coverage. | Family manifest: `6ecc31814ef1d61922ba9ee827be7ba0cdaada38e07e18b61e8ccd457569586b` |
+| `assets/textures/sun.jpg`, `mercury.jpg`, `venus.jpg`, `earth.jpg`, `moon.jpg`, `mars.jpg`, `jupiter.jpg`, `saturn.jpg`, `uranus.jpg`, `neptune.jpg`, `ceres.jpg`, `saturn-ring.png` | [Solar System Scope 2k textures](https://www.solarsystemscope.com/textures/), CC BY 4.0. Checked 2026-09-22, every tracked file is byte-identical to the currently published 2k download (`2k_sun.jpg`, `2k_mercury.jpg`, `2k_venus_atmosphere.jpg`, `2k_earth_daymap.jpg`, `2k_moon.jpg`, `2k_mars.jpg`, `2k_jupiter.jpg`, `2k_saturn.jpg`, `2k_uranus.jpg`, `2k_neptune.jpg`, `2k_ceres_fictional.jpg`, `2k_saturn_ring_alpha.png`). Equirectangular globes are `2048×1024`; the ring strip is a `2048×125` radial alpha PNG. Helios applied no crop, resample, recompress, color, fill, or longitude operation. The original fetch date was not retained; SHA-256 identity with those 2026-09-22 publisher files is the version pin. The publisher discloses saturation and fictional gap filling; Venus is the atmosphere map, not `2k_venus_surface.jpg`; Ceres is categorized as fictional. | Family manifest: `f566beedf75afa2fd1b7ae0536423ab77bfec59ae2413ba2cf5262fe01231ae7` |
+| `assets/textures/phobos.jpg`, `deimos.jpg`, `io.jpg`, `europa.jpg`, `ganymede.jpg`, `callisto.jpg`, `titan.jpg`, `pluto.jpg` | [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources) JPEGs at commit [`11ebb4ee043715aefbba6aeec8a61746fad67fa7`](https://github.com/nasa/NASA-3D-Resources/commit/11ebb4ee043715aefbba6aeec8a61746fad67fa7), subject to [NASA media guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/). Checked 2026-09-22, every tracked file is byte-identical to that commit's published JPEG. Helios applied no additional JPEG compression, crop, or resize; companion TIFFs exist upstream and are not tracked. Io is `Jupiter - Io (A).jpg`, not Io (B). Phobos and Deimos are approximate atlases displayed on spheres. Io has limited polar coverage. Longitude registration is unverified. | Family manifest: `6ecc31814ef1d61922ba9ee827be7ba0cdaada38e07e18b61e8ccd457569586b` |
 | `assets/textures/triton.jpg` | [LPI full-resolution cylindrical mosaic underlying JPL PIA18668](https://www.lpi.usra.edu/icy_moons/neptune/triton/), produced by Dr. Paul Schenk (Lunar and Planetary Institute). Image selection, radiometric calibration, geographic registration, photometric correction, and final mosaic assembly were performed by Schenk; image data are from Voyager 2 (NASA/JPL). The producer's [public-use note](https://stereomoons.blogspot.com/2014/08/triton-at-25.html) states that the Triton maps are public domain and free to use, and requests credit to Dr. P. Schenk/LPI. Voyager coverage is incomplete. Full `14138×7069` source, no crop; observed coverage retained, connected black no-data region replaced by uniform `#8f9480`, then Lanczos-resized to `2048×1024`, JPEG 4:2:0 progressive quality 88. Source hash: `ff533af3163f53cc5560cd983cfe0f06b1c2cd0f3db36518d4c5cc5f5ddfeabb`. No inpainting or synthetic terrain. | `7962d4997fc8c8f47e7f54304174a565f59d3cc01e5de119329f59673c684ba9` |
 | `assets/sky/milky-way.jpg` | [ESA Gaia DR2 all-sky colour](https://sci.esa.int/web/gaia/-/60196-gaia-s-sky-in-colour-equirectangular-projection), ESA/Gaia/DPAC, CC BY-SA 3.0 IGO. Equirectangular galactic projection, resized/compressed to `2000×1000`; exact prior settings were not retained. | `95bca25ca3f2001b883e11e8317b5cda728b24ff80137ef749941d0fd4cbf899` |
 | `assets/sky/andromeda.png` | NASA/JPL-Caltech [Spitzer PIA04921](https://images.nasa.gov/details/PIA04921), subject to NASA media guidelines. Cropped to a transparent `384×348` sprite; the exact crop/matte recipe was not retained. | `f620a22e3f70db72a0c4a4a144a80e1d84106da716ad82a6d3088dafec7e9f8f` |
@@ -138,6 +138,28 @@ columns, including Neptune's longitude-to-argument/anomaly conversions.
 
 For a family manifest, its listed paths are bytewise-sorted, hashed individually
 with `sha256sum`, and that textual manifest is hashed once with `sha256sum`.
+
+## Body texture ledger
+
+The test-only [texture provenance fixture](tests/fixtures/texture-provenance.json)
+owns the exact record for every catalog globe and Saturn's ring strip: upstream
+URL/version, license, source digest, tracked digest, projection, dimensions, and
+Helios-side crop/resample/color/fill/longitude operations. The fixture is never
+imported by the runtime. Family-manifest digest enforcement across all image
+assets remains [#70](https://github.com/XenoVoyage/Helios/issues/70).
+
+| Catalog files | Recovered Helios-side record |
+| --- | --- |
+| Solar System Scope 2k globes and `saturn-ring.png` | Identity copies of the published 2k downloads checked 2026-09-22. No Helios crop, resample, recompress, color, fill, or longitude operation. Venus is `2k_venus_atmosphere.jpg`. Ceres is `2k_ceres_fictional.jpg`. |
+| NASA 3D Resources moon and Pluto JPEGs | Identity copies of the JPEGs at NASA-3D-Resources `11ebb4ee043715aefbba6aeec8a61746fad67fa7`. No Helios JPEG recompress, crop, or resize. Io is the Io (A) JPEG. |
+| Triton | Already recorded: LPI cylindrical mosaic, no-data fill `#8f9480`, Lanczos to `2048×1024`, JPEG quality 88. |
+
+Sky, Andromeda, and CMB transformation settings stay unresolved in the image-asset
+table above. Those gaps are not closed by matching body-map bytes. No replacement
+issue is opened: the tracked sky assets remain the approved runtime pixels.
+
+Longitude registration of inherited maps other than Earth, Moon, and Triton stays
+the existing orientation caveat; it is not a recovered texture-pixel operation.
 
 ## Vendored code
 
@@ -152,9 +174,14 @@ dependency used only by the browser/WebGL smoke test. It is not deployed.
 ## Provenance contributions to adoption status
 
 `AGENTS.md` is the sole owner of Helios's Repository Standard status. The
-provenance blockers contributing to its `adopting` state include the inherited image
-transformation records and the unresolved legacy orbital sources recorded in
-[#119](https://github.com/XenoVoyage/Helios/issues/119). The HYG bright-star subset is
-identified above as the v3.1–v3.4 equivalence class under CC BY-SA 2.5; the
-former unidentified-HYG blocker is closed. Unknown provenance is stated here
-rather than guessed; non-provenance blockers stay with their canonical owners.
+provenance blockers contributing to its `adopting` state include the unresolved
+inherited sky-image transformation records (Gaia Milky Way resize/compression
+settings, the Andromeda crop/matte recipe, and CMB generator settings) and the
+unresolved legacy orbital sources recorded in
+[#119](https://github.com/XenoVoyage/Helios/issues/119). Solar System Scope 2k and
+NASA 3D Resources JPEG body maps now have recovered source identity: tracked
+bytes match the published upstream files, so Helios did not retain a separate
+resize/recompress chain for them. The HYG bright-star subset is identified above
+as the v3.1–v3.4 equivalence class under CC BY-SA 2.5; the former
+unidentified-HYG blocker is closed. Unknown provenance is stated here rather
+than guessed; non-provenance blockers stay with their canonical owners.

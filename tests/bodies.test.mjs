@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import * as THREE from "../vendor/three.module.min.js";
@@ -30,6 +31,37 @@ import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
 const orbitalProvenance = JSON.parse(await readFile(
   new URL("./fixtures/orbital-provenance.json", import.meta.url), "utf8",
 ));
+const textureProvenance = JSON.parse(await readFile(
+  new URL("./fixtures/texture-provenance.json", import.meta.url), "utf8",
+));
+
+function sha256Bytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function rasterSize(bytes) {
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) {
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  }
+  let offset = 2;
+  while (offset < bytes.length - 8) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = bytes[offset + 1];
+    if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
+      return { width: bytes.readUInt16BE(offset + 7), height: bytes.readUInt16BE(offset + 5) };
+    }
+    if (marker === 0xda) break;
+    if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+      offset += 2;
+      continue;
+    }
+    offset += 2 + bytes.readUInt16BE(offset + 2);
+  }
+  throw new Error("raster size not found");
+}
 
 test("every scientific catalog row has a complete preservation and provenance record", () => {
   const expectedSources = {
@@ -132,6 +164,113 @@ test("published orbital source columns and derived angles reproduce their catalo
     }
     assert.deepEqual(Object.fromEntries(Object.keys(expected).map((key) => [key, body[key]])), expected, `${row.id}: published orbital fields`);
   }
+});
+
+test("every body texture has a complete source and transformation record", async () => {
+  const requiredFamilies = {
+    sun: "solar-system-scope-2k",
+    mercury: "solar-system-scope-2k",
+    venus: "solar-system-scope-2k",
+    earth: "solar-system-scope-2k",
+    moon: "solar-system-scope-2k",
+    mars: "solar-system-scope-2k",
+    phobos: "nasa-3d-resources-jpeg",
+    deimos: "nasa-3d-resources-jpeg",
+    ceres: "solar-system-scope-2k",
+    jupiter: "solar-system-scope-2k",
+    io: "nasa-3d-resources-jpeg",
+    europa: "nasa-3d-resources-jpeg",
+    ganymede: "nasa-3d-resources-jpeg",
+    callisto: "nasa-3d-resources-jpeg",
+    saturn: "solar-system-scope-2k",
+    "saturn-ring": "solar-system-scope-2k",
+    titan: "nasa-3d-resources-jpeg",
+    uranus: "solar-system-scope-2k",
+    neptune: "solar-system-scope-2k",
+    triton: "lpi-triton-mosaic",
+    pluto: "nasa-3d-resources-jpeg",
+  };
+  const expectedIds = [];
+  for (const body of BODIES) {
+    expectedIds.push(body.id);
+    if (body.ring) expectedIds.push("saturn-ring");
+  }
+  assert.deepEqual(Object.keys(requiredFamilies), expectedIds);
+  assert.deepEqual(textureProvenance.files.map((row) => row.id), expectedIds);
+  assert.equal(findBody("saturn").ring, "assets/textures/saturn-ring.png");
+
+  for (const [familyId, family] of Object.entries(textureProvenance.families)) {
+    for (const field of ["origin", "license", "licenseUri", "attribution", "versionPin", "projection", "heliosTransformSummary"]) {
+      assert.equal(typeof family[field], "string", `${familyId}: ${field} is documented`);
+      assert.ok(family[field].trim(), `${familyId}: ${field} is not empty`);
+    }
+    assert.equal(new URL(family.origin).protocol, "https:");
+    assert.equal(new URL(family.licenseUri).protocol, "https:");
+  }
+
+  for (const body of BODIES) {
+    const row = textureProvenance.files.find((entry) => entry.id === body.id);
+    assert.equal(row.path, body.texture, `${body.id}: fixture path matches the catalog texture`);
+  }
+
+  for (const row of textureProvenance.files) {
+    const bytes = await readFile(new URL(`../${row.path}`, import.meta.url));
+    const family = textureProvenance.families[row.family];
+    assert.ok(family, `${row.id}: family ${row.family} exists`);
+    assert.equal(row.family, requiredFamilies[row.id], `${row.id}: retain the recovered family classification`);
+    assert.equal(sha256Bytes(bytes), row.trackedDigest, `${row.id}: tracked digest matches the file`);
+    assert.equal(bytes.length, row.bytes, `${row.id}: recorded byte length matches the file`);
+    const size = rasterSize(bytes);
+    assert.equal(size.width, row.width, `${row.id}: recorded width matches the file`);
+    assert.equal(size.height, row.height, `${row.id}: recorded height matches the file`);
+    assert.equal(new URL(row.upstreamUri).protocol, "https:");
+    assert.equal(typeof row.upstreamName, "string");
+    assert.ok(row.upstreamName.trim());
+    assert.equal(typeof row.upstreamVersion, "string");
+    assert.ok(row.upstreamVersion.trim());
+    assert.match(row.heliosEntered, /^[0-9a-f]{40}$/);
+    assert.equal(typeof row.projection, "string");
+    assert.ok(Array.isArray(row.caveats));
+    assert.ok(row.caveats.length > 0, `${row.id}: retained caveats are explicit`);
+    assert.equal(row.unresolved, null, `${row.id}: recovered body textures must not hide an unresolved pixel transform`);
+
+    const transform = row.transformation;
+    for (const flag of ["crop", "resample", "color", "fill", "longitudeShift"]) {
+      assert.equal(typeof transform[flag], "boolean", `${row.id}: ${flag} is explicit`);
+    }
+    assert.equal(typeof transform.record, "string");
+    assert.ok(transform.record.trim());
+
+    if (transform.kind === "identity") {
+      assert.equal(row.sourceDigest, row.trackedDigest, `${row.id}: identity records require equal source and tracked digests`);
+      assert.equal(transform.crop, false);
+      assert.equal(transform.resample, false);
+      assert.equal(transform.color, false);
+      assert.equal(transform.fill, false);
+      assert.equal(transform.longitudeShift, false);
+      assert.match(transform.record, /no crop, resample, color, fill, or longitude operation/i);
+    } else {
+      assert.equal(transform.kind, "documented", `${row.id}: non-identity history must be documented, not guessed`);
+      assert.notEqual(row.sourceDigest, row.trackedDigest, `${row.id}: documented transforms retain a distinct source digest`);
+      assert.match(row.sourceDigest, /^[0-9a-f]{64}$/);
+    }
+  }
+
+  const venus = textureProvenance.files.find((row) => row.id === "venus");
+  assert.equal(venus.upstreamName, "2k_venus_atmosphere.jpg");
+  assert.doesNotMatch(venus.upstreamName, /surface/);
+  const ceres = textureProvenance.files.find((row) => row.id === "ceres");
+  assert.equal(ceres.upstreamName, "2k_ceres_fictional.jpg");
+  const ring = textureProvenance.files.find((row) => row.id === "saturn-ring");
+  assert.equal(ring.upstreamName, "2k_saturn_ring_alpha.png");
+  const io = textureProvenance.files.find((row) => row.id === "io");
+  assert.equal(io.upstreamName, "Jupiter - Io (A).jpg");
+  assert.doesNotMatch(io.upstreamPath, /Io \(B\)/);
+  const triton = textureProvenance.files.find((row) => row.id === "triton");
+  assert.equal(triton.transformation.kind, "documented");
+  assert.equal(triton.transformation.fill, true);
+  assert.equal(triton.transformation.resample, true);
+  assert.match(textureProvenance.scope, /issue #70/);
 });
 
 const required = [
