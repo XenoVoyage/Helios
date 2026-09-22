@@ -793,8 +793,8 @@ function bindInput() {
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
-  canvas.addEventListener("pointercancel", onPointerUp);
-  canvas.addEventListener("lostpointercapture", onPointerUp);
+  canvas.addEventListener("pointercancel", onPointerAbort);
+  canvas.addEventListener("lostpointercapture", onPointerAbort);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
@@ -804,7 +804,11 @@ function bindInput() {
 
 function onPointerDown(event) {
   canvasFocus();
-  ui.viewport.setPointerCapture(event.pointerId);
+  try {
+    ui.viewport.setPointerCapture(event.pointerId);
+  } catch {
+    // The pointer may already have been canceled before capture could stick.
+  }
   pointerIds.set(event.pointerId, { x: event.clientX, y: event.clientY });
   state.tap = { x: event.clientX, y: event.clientY, moved: 0 };
   if (pointerIds.size === 2) {
@@ -858,6 +862,20 @@ function onPointerUp(event) {
       pickAt(tap.x, tap.y);
     }
     state.tap = null;
+  }
+}
+
+// Canceled gestures and lost capture must not run tap-to-pick.
+function onPointerAbort(event) {
+  pointerIds.delete(event.pointerId);
+  if (pointerIds.size < 2) state.pinching = false;
+  if (pointerIds.size === 0) state.tap = null;
+  try {
+    if (ui.viewport.hasPointerCapture(event.pointerId)) {
+      ui.viewport.releasePointerCapture(event.pointerId);
+    }
+  } catch {
+    // Capture was already released with the canceled pointer.
   }
 }
 

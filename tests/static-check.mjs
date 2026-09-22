@@ -296,6 +296,21 @@ assert.match(html, /id="helper-spin"/);
 assert.match(app, /kuiperInnerAu/);
 assert.match(app, /selectedId/);
 assert.match(app, /visualBodyRadius/);
+assert.match(app, /addEventListener\("pointerup", onPointerUp\)/);
+assert.match(app, /addEventListener\("pointercancel", onPointerAbort\)/);
+assert.match(app, /addEventListener\("lostpointercapture", onPointerAbort\)/);
+assert.doesNotMatch(app, /addEventListener\("pointercancel", onPointerUp\)/);
+assert.doesNotMatch(app, /addEventListener\("lostpointercapture", onPointerUp\)/);
+{
+  const abortFn = app.match(/function onPointerAbort\(event\) \{[\s\S]*?\n\}\n\nfunction /);
+  assert.ok(abortFn, "canceled pointers use a dedicated abort handler");
+  assert.doesNotMatch(
+    abortFn[0],
+    /pickAt|selectBody|clearSelection|paintCard/,
+    "pointer abort must not run tap-selection or card/focus updates",
+  );
+  assert.match(abortFn[0], /releasePointerCapture/);
+}
 assert.match(
   app,
   /node\.tilt\.quaternion\.premultiply\(parentNode\.tilt\.quaternion\.clone\(\)\.invert\(\)\)/,
