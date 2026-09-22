@@ -1,6 +1,6 @@
 {
-  "checkedAt": "2026-09-07",
-  "catalogSnapshot": "https://github.com/XenoVoyage/Helios/blob/146e3aae5da53a0e099d16c9e29852acddbc4060/js/bodies.js",
+  "checkedAt": "2026-09-22",
+  "catalogSnapshot": "https://github.com/XenoVoyage/Helios/blob/c4d3181966e60849f04d41b6c0385a7c92eb0e0b/js/bodies.js",
   "scope": "Orbital source records and a preservation lock for every scientific catalog field. The catalog snapshot is first-party evidence, not proof of an upstream attribution. Physical and spin provenance remains in PROVENANCE.md.",
   "units": {
     "orbitAu": "AU",
@@ -36,7 +36,7 @@
     },
     "legacy-heliocentric": {
       "uri": "https://github.com/XenoVoyage/Helios/blob/d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0/js/bodies.js",
-      "table": "BODIES, named inherited row",
+      "table": "BODIES, named inherited row, six Keplerian fields",
       "version": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
       "upstreamUri": null,
       "upstreamTable": null,
@@ -46,10 +46,23 @@
       "center": "Sun in Helios; original source center unverified",
       "frame": "ecliptic J2000 in Helios; original source plane/equinox unverified",
       "elementType": "unknown; a generic mean-element claim is not verified",
-      "units": "AU, dimensionless eccentricity, degrees, days",
-      "derivation": "Original omega/M derivations and rounding were not retained; freeze the existing literals without reconstructing a source by inference.",
-      "validity": "Unknown source validity and error bounds. No complete row is attributed to current JPL Table 1.",
+      "units": "AU, dimensionless eccentricity, degrees",
+      "derivation": "Sidereal periods were split to nasa-nssdc-sidereal-period. Original omega/M derivations and rounding for a, e, i, Ω, ω, and M were not retained; freeze those six literals without reconstructing a source by inference.",
+      "validity": "Unknown source validity and error bounds for the six Keplerian fields. No complete six-field row is attributed to current JPL Table 1, to the NASA Mean Orbital Elements (J2000) a/e/i/Ω/ϖ/L block, or to Wikipedia infoboxes.",
       "gap": "https://github.com/XenoVoyage/Helios/issues/119"
+    },
+    "nasa-nssdc-sidereal-period": {
+      "uri": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/",
+      "table": "named body fact sheet, Orbital parameters, Sidereal orbit period (days)",
+      "version": "Williams/NSSDCA individual sheets in the Wayback 20240111 identity capture; Mars last updated 5 December 2023, Venus and Uranus 22 May 2023, others 11 January 2024. Rechecked 2026-09-22: live Mercury, Venus, Earth, Mars, Jupiter, Uranus, and Pluto sidereal periods still parse to the catalog; live Saturn (10,755.699, updated 18 March 2025) and Neptune (60,189.018, updated 3 October 2024) were later revised.",
+      "epoch": "not applicable to a period scalar",
+      "timeScale": "not applicable",
+      "center": "Sun",
+      "frame": "not applicable to a period scalar",
+      "elementType": "sidereal orbital period as printed on the individual fact sheet; not tropical and not derived from stored a",
+      "units": "Earth days of 86400 seconds",
+      "derivation": "Direct printed Sidereal orbit period (days) literals from the named body sheet. Thousands-separator commas and Neptune's trailing decimal in 60,189. are parsed as numbers. Mars 686.980 is the same IEEE-754 value as catalog 686.98. This is not the metric comparison-table Orbital Period row, which the notes define as tropical.",
+      "validity": "Fact-sheet rounded sidereal periods. Helios uses them as the frozen mean-anomaly clock, not as an accuracy interval for the two-body ellipse. Later sheet revisions may reprint different digits; Saturn and Neptune already have."
     },
     "ceres-horizons": {
       "uri": "https://ssd-api.jpl.nasa.gov/doc/horizons.html",
@@ -90,7 +103,7 @@
       "elementType": "best-fit Keplerian coefficients; JPL explicitly says these are not mean elements",
       "units": "a in AU, e dimensionless, I/L/long.peri./long.node. in degrees",
       "derivation": "omega = (long.peri. - long.node.) mod 360; M = (L - long.peri.) mod 360. No rates used at T=0.",
-      "validity": "The source elements plus rates are fit for 1800 AD - 2050 AD. Helios does not apply rates; its inherited 60189-day period is separately unverified and this source interval is not a runtime accuracy claim."
+      "validity": "The source elements plus rates are fit for 1800 AD - 2050 AD. Helios does not apply rates; its 60189-day period is the dated NASA fact-sheet sidereal printing, not a Table 1 value, and this source interval is not a runtime accuracy claim."
     },
     "satellite-de405-le405": {
       "uri": "https://ssd.jpl.nasa.gov/sats/elem/",
@@ -206,6 +219,10 @@
           "primeMeridianDeg": null,
           "spinDirection": 1
         }
+      },
+      "periodSource": "nasa-nssdc-sidereal-period",
+      "periodReference": {
+        "P": "87.969"
       }
     },
     {
@@ -230,6 +247,10 @@
           "primeMeridianDeg": null,
           "spinDirection": -1
         }
+      },
+      "periodSource": "nasa-nssdc-sidereal-period",
+      "periodReference": {
+        "P": "224.701"
       }
     },
     {
@@ -254,6 +275,10 @@
           "primeMeridianDeg": 190.147,
           "spinDirection": 1
         }
+      },
+      "periodSource": "nasa-nssdc-sidereal-period",
+      "periodReference": {
+        "P": "365.256"
       }
     },
     {
@@ -321,6 +346,10 @@
           "primeMeridianDeg": null,
           "spinDirection": 1
         }
+      },
+      "periodSource": "nasa-nssdc-sidereal-period",
+      "periodReference": {
+        "P": "686.980"
       }
     },
     {
@@ -463,6 +492,10 @@
           "primeMeridianDeg": null,
           "spinDirection": 1
         }
+      },
+      "periodSource": "nasa-nssdc-sidereal-period",
+      "periodReference": {
+        "P": "4,332.589"
       }
     },
     {
@@ -657,6 +690,10 @@
         },
         "ringInnerKm": 66900,
         "ringOuterKm": 136775
+      },
+      "periodSource": "nasa-nssdc-sidereal-period",
+      "periodReference": {
+        "P": "10,759.22"
       }
     },
     {
@@ -723,6 +760,10 @@
           "primeMeridianDeg": null,
           "spinDirection": -1
         }
+      },
+      "periodSource": "nasa-nssdc-sidereal-period",
+      "periodReference": {
+        "P": "30,685.4"
       }
     },
     {
@@ -756,7 +797,10 @@
         "longPeri": 44.96476227,
         "longNode": 131.78422574
       },
-      "periodSource": "legacy-heliocentric"
+      "periodSource": "nasa-nssdc-sidereal-period",
+      "periodReference": {
+        "P": "60,189."
+      }
     },
     {
       "id": "triton",
@@ -830,6 +874,10 @@
           "primeMeridianDeg": null,
           "spinDirection": 1
         }
+      },
+      "periodSource": "nasa-nssdc-sidereal-period",
+      "periodReference": {
+        "P": "90,560"
       }
     }
   ]
