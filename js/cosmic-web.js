@@ -53,33 +53,57 @@ function decodePayload() {
   return bytes;
 }
 
-/** Decode the compact 2MRS subset into one projected point/color pair. */
-export function createTwoMrsSamples(project) {
+function budgetExceeded(startedAt, budgetMs) {
+  return Number.isFinite(budgetMs) && performance.now() - startedAt >= budgetMs;
+}
+
+/** Cooperative 2MRS decode. Pumping does not change sample order or values. */
+export function startTwoMrsSampleJob(project) {
   if (typeof project !== "function") throw new TypeError("2MRS projection must be a function");
   const bytes = decodePayload();
   const count = TWOMRS_METADATA.includedRows;
   const stride = TWOMRS_METADATA.recordBytes;
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
-  for (let i = 0; i < count; i += 1) {
-    const offset = i * stride;
-    const lDeg = readUint16(bytes, offset) / 65535 * 360;
-    const bDeg = readUint16(bytes, offset + 2) / 65535 * 180 - 90;
-    const velocityKmS = readUint16(bytes, offset + 4);
-    const distanceMpc = velocityKmS / TWOMRS_METADATA.h0KmSPerMpc;
-    const at = project({ lDeg, bDeg, distanceMpc });
-    const positionOffset = i * 3;
-    positions[positionOffset] = at.x;
-    positions[positionOffset + 1] = at.y;
-    positions[positionOffset + 2] = at.z;
+  let i = 0;
+  return {
+    get done() { return i >= count; },
+    pump(budgetMs = Number.POSITIVE_INFINITY) {
+      const startedAt = performance.now();
+      while (i < count) {
+        const offset = i * stride;
+        const lDeg = readUint16(bytes, offset) / 65535 * 360;
+        const bDeg = readUint16(bytes, offset + 2) / 65535 * 180 - 90;
+        const velocityKmS = readUint16(bytes, offset + 4);
+        const distanceMpc = velocityKmS / TWOMRS_METADATA.h0KmSPerMpc;
+        const at = project({ lDeg, bDeg, distanceMpc });
+        const positionOffset = i * 3;
+        positions[positionOffset] = at.x;
+        positions[positionOffset + 1] = at.y;
+        positions[positionOffset + 2] = at.z;
 
-    const magnitude = 4 + bytes[offset + 6] / 32;
-    const brightness = clamp01((11.75 - magnitude) / 7.75);
-    colors[positionOffset] = 0.52 + brightness * 0.42;
-    colors[positionOffset + 1] = 0.65 + brightness * 0.3;
-    colors[positionOffset + 2] = 0.86 + brightness * 0.14;
-  }
-  return { positions, colors };
+        const magnitude = 4 + bytes[offset + 6] / 32;
+        const brightness = clamp01((11.75 - magnitude) / 7.75);
+        colors[positionOffset] = 0.52 + brightness * 0.42;
+        colors[positionOffset + 1] = 0.65 + brightness * 0.3;
+        colors[positionOffset + 2] = 0.86 + brightness * 0.14;
+        i += 1;
+        if ((i & 255) === 0 && budgetExceeded(startedAt, budgetMs)) break;
+      }
+      return i >= count;
+    },
+    result() {
+      if (i < count) throw new Error("2MRS sample job is incomplete");
+      return { positions, colors };
+    },
+  };
+}
+
+/** Decode the compact 2MRS subset into one projected point/color pair. */
+export function createTwoMrsSamples(project) {
+  const job = startTwoMrsSampleJob(project);
+  job.pump(Number.POSITIVE_INFINITY);
+  return job.result();
 }
 
 function unitSpherePoint(rand, inner = 0, outer = 1) {
@@ -143,11 +167,10 @@ function proximityScores(point, centers) {
 }
 
 /**
- * Generate exactly `settings.count` samples between two scene radii.
- * The small uniform floor leaves a sparse field while the Voronoi proximity
- * weights concentrate most accepted points on walls and their intersections.
+ * Cooperative density generation. Pumping preserves the same RNG stream as the
+ * one-shot helper, so sample counts and hashes stay deterministic.
  */
-export function generateCosmicDensity(settings, innerRadius, outerRadius) {
+export function startCosmicDensityJob(settings, innerRadius, outerRadius) {
   if (!(innerRadius >= 0) || !(outerRadius > innerRadius)) {
     throw new RangeError("cosmic density radii must define a positive shell");
   }
@@ -162,50 +185,77 @@ export function generateCosmicDensity(settings, innerRadius, outerRadius) {
   let accepted = 0;
   let attempts = 0;
   const maxAttempts = count * 180;
+  let finished = false;
 
-  while (accepted < count && attempts < maxAttempts) {
-    attempts += 1;
-    const point = unitSpherePoint(rand, 0.035, 0.965);
-    const scores = proximityScores(point, centers);
-    const acceptance = Math.min(
-      0.96,
-      0.012 + scores.wall * 0.2 + scores.filament * 0.54 + scores.node * 0.22,
-    );
-    if (rand() > acceptance) continue;
+  return {
+    get done() { return finished; },
+    pump(budgetMs = Number.POSITIVE_INFINITY) {
+      if (finished) return true;
+      const startedAt = performance.now();
+      while (accepted < count && attempts < maxAttempts) {
+        attempts += 1;
+        const point = unitSpherePoint(rand, 0.035, 0.965);
+        const scores = proximityScores(point, centers);
+        const acceptance = Math.min(
+          0.96,
+          0.012 + scores.wall * 0.2 + scores.filament * 0.54 + scores.node * 0.22,
+        );
+        if (rand() > acceptance) {
+          if ((attempts & 63) === 0 && budgetExceeded(startedAt, budgetMs)) return false;
+          continue;
+        }
 
-    const i = accepted * 3;
-    // Retain the accepted topology and radial ordering, but remap it into a
-    // volume-uniform shell beyond the measured 2MRS boundary. Normalize after
-    // the visual flattening so no direction can fall back inside that boundary.
-    const sourceRadius = Math.hypot(point.x, point.y, point.z);
-    const radialQuantile = (sourceRadius ** 3 - 0.035 ** 3) / (0.965 ** 3 - 0.035 ** 3);
-    const shellRadius = Math.cbrt(
-      innerRadius ** 3 + radialQuantile * (outerRadius ** 3 - innerRadius ** 3),
-    );
-    const directionLength = Math.hypot(point.x, point.y * verticalScale, point.z);
-    positions[i] = point.x / directionLength * shellRadius;
-    positions[i + 1] = point.y * verticalScale / directionLength * shellRadius;
-    positions[i + 2] = point.z / directionLength * shellRadius;
+        const i = accepted * 3;
+        // Retain the accepted topology and radial ordering, but remap it into a
+        // volume-uniform shell beyond the measured 2MRS boundary. Normalize after
+        // the visual flattening so no direction can fall back inside that boundary.
+        const sourceRadius = Math.hypot(point.x, point.y, point.z);
+        const radialQuantile = (sourceRadius ** 3 - 0.035 ** 3) / (0.965 ** 3 - 0.035 ** 3);
+        const shellRadius = Math.cbrt(
+          innerRadius ** 3 + radialQuantile * (outerRadius ** 3 - innerRadius ** 3),
+        );
+        const directionLength = Math.hypot(point.x, point.y * verticalScale, point.z);
+        positions[i] = point.x / directionLength * shellRadius;
+        positions[i + 1] = point.y * verticalScale / directionLength * shellRadius;
+        positions[i + 2] = point.z / directionLength * shellRadius;
 
-    const strength = clamp01(
-      0.12 + scores.wall * 0.18 + scores.filament * 0.44 + scores.node * 0.62,
-    );
-    // Cool walls, brighter violet filaments, and warm nodes reveal the
-    // illustrative topology without implying extra measured structure.
-    colors[i] = clamp01(
-      0.34 + warmth * 0.35 + scores.filament * 0.16 + scores.node * 0.72,
-    );
-    colors[i + 1] = clamp01(0.45 + strength * 0.28 + warmth * 0.08);
-    colors[i + 2] = clamp01(
-      0.66 + scores.wall * 0.08 + scores.filament * 0.14 - scores.node * 0.3 - warmth * 0.08,
-    );
-    accepted += 1;
-  }
+        const strength = clamp01(
+          0.12 + scores.wall * 0.18 + scores.filament * 0.44 + scores.node * 0.62,
+        );
+        // Cool walls, brighter violet filaments, and warm nodes reveal the
+        // illustrative topology without implying extra measured structure.
+        colors[i] = clamp01(
+          0.34 + warmth * 0.35 + scores.filament * 0.16 + scores.node * 0.72,
+        );
+        colors[i + 1] = clamp01(0.45 + strength * 0.28 + warmth * 0.08);
+        colors[i + 2] = clamp01(
+          0.66 + scores.wall * 0.08 + scores.filament * 0.14 - scores.node * 0.3 - warmth * 0.08,
+        );
+        accepted += 1;
+        if ((attempts & 63) === 0 && budgetExceeded(startedAt, budgetMs)) return false;
+      }
+      if (accepted !== count) {
+        throw new Error(`cosmic density accepted ${accepted} of ${count} samples`);
+      }
+      finished = true;
+      return true;
+    },
+    result() {
+      if (!finished) throw new Error("cosmic density job is incomplete");
+      return { positions, colors, attempts };
+    },
+  };
+}
 
-  if (accepted !== count) {
-    throw new Error(`cosmic density accepted ${accepted} of ${count} samples`);
-  }
-  return { positions, colors, attempts };
+/**
+ * Generate exactly `settings.count` samples between two scene radii.
+ * The small uniform floor leaves a sparse field while the Voronoi proximity
+ * weights concentrate most accepted points on walls and their intersections.
+ */
+export function generateCosmicDensity(settings, innerRadius, outerRadius) {
+  const job = startCosmicDensityJob(settings, innerRadius, outerRadius);
+  job.pump(Number.POSITIVE_INFINITY);
+  return job.result();
 }
 
 export function cosmicDensitySampleCount() {

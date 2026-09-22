@@ -15,7 +15,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.9.22",
+  VERSION: "v2026.9.22a",
   BRAND: "MarinsVoyage",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
@@ -126,6 +126,9 @@ export const CONFIG = Object.freeze({
   // Beyond this delta every legal camera distance already reaches a zoom limit.
   wheelMaxDeltaPixels: 10_000,
   focusLerp: 6,
+  // Wheel, pinch, and key zoom must return within this many milliseconds so
+  // the first truthful loading paint can commit before remaining galaxy work.
+  inputFrameBudgetMs: 16,
   // Parent-safe moon focus flight rates; log radius is scale-independent.
   moonFocusRadialLogRatePerSecond: 2.5,
   moonFocusAngularRateRadiansPerSecond: 3.5,

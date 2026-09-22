@@ -65,6 +65,7 @@ import {
   extraZoomCameraNear,
   farGalaxySkyRadius,
   generateFarGalaxySkySamples,
+  startFarGalaxySkySampleJob,
   galaxyOpacity,
   heliocentricGalactic,
   localWebOpacity,
@@ -1140,6 +1141,18 @@ test("far-galaxy backdrop is deterministic spherical density without cube faces"
   assert.match(source, /far-galaxy-density/);
   assert.match(source, /far-galaxy-cluster-cores/);
   assert.match(source, /sizeAttenuation:\s*attenuation/);
+
+  const pumped = startFarGalaxySkySampleJob(radius);
+  let pumps = 0;
+  while (!pumped.done) {
+    pumps += 1;
+    pumped.pump(0);
+    assert.ok(pumps < 50_000, "far-galaxy pumping stays bounded");
+  }
+  assert.ok(pumps > 1, "far-galaxy samples can yield between budgeted pumps");
+  assert.deepEqual(pumped.result().positions, first.positions);
+  assert.deepEqual(pumped.result().colors, first.colors);
+  assert.deepEqual(pumped.result().corePositions, first.corePositions);
 });
 
 test("far-galaxy sky remains camera-attached and tolerates an absent layer", () => {
@@ -3322,7 +3335,9 @@ test("post-Virgo map uses measured cluster anchors and no invented web links", a
   assert.match(galaxySource, /quietAndromedaMap|andromeda\.png/);
   assert.match(galaxySource, /cameraFar \* 0\.42/);
   assert.match(galaxySource, /generateFarGalaxySkySamples/);
-  assert.match(galaxySource, /generateCosmicDensity/);
+  assert.match(galaxySource, /startFarGalaxySkySampleJob/);
+  assert.match(galaxySource, /startCosmicDensityJob/);
+  assert.match(galaxySource, /startGalaxyLayer/);
   assert.match(galaxySource, /far-galaxy-density/);
   assert.match(galaxySource, /far-galaxy-cluster-cores/);
   assert.doesNotMatch(galaxySource, /CubeTexture|samplerCube|textureCube/);
@@ -3339,7 +3354,7 @@ test("post-Virgo map uses measured cluster anchors and no invented web links", a
   );
   assert.doesNotMatch(galaxySource, /farGalaxySkyRadius\(\) \* 0\.045/);
   assert.doesNotMatch(galaxySource, /t: 0\.16/);
-  assert.match(galaxySource, /createFarGalaxySky\(THREE, group\)/);
+  assert.match(galaxySource, /createFarGalaxySky\(THREE, group/);
   assert.doesNotMatch(galaxySource, /far-galaxy-shell/);
   assert.doesNotMatch(galaxySource, /far-galaxy-blobs/);
   assert.match(galaxySource, /brightenLoadedMap/);

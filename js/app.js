@@ -54,6 +54,7 @@ import {
   celestialSkyOpacity,
   constellationsAvailable,
   createGalaxyLayer,
+  startGalaxyLayer,
   galaxyOpacity,
   localGroupCameraAim,
   extraZoomCameraDistance,
@@ -151,6 +152,11 @@ let lastStamp = 0;
 let lastClockLabel = "";
 let bodyLabelLayoutDirty = true;
 const earthSkyLook = wantsEarthSkyLook();
+const LOADING_STATUS = "Loading";
+const DEEP_PREP_FAILURE = "Deep sky unavailable.";
+let galaxyBuild = null;
+let galaxyPreparing = false;
+let readyAnnounced = false;
 
 function $(id) {
   return document.getElementById(id);
@@ -160,15 +166,82 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function wantsDeepLayer() {
+  return state.distance > CONFIG.solarMaxDistance;
+}
+
+function loadingVisible() {
+  return Boolean(ui.loading) && !ui.loading.hidden;
+}
+
 function syncViewportBusy() {
   if (!ui.viewport) return;
   const busy = String(Boolean(
     moonFocusTransition.active
-      || (parentGlobeContinuity.active && !parentGlobeContinuity.settled),
+      || (parentGlobeContinuity.active && !parentGlobeContinuity.settled)
+      || loadingVisible()
+      || (galaxyPreparing && wantsDeepLayer()),
   ));
   if (ui.viewport.getAttribute("aria-busy") !== busy) {
     ui.viewport.setAttribute("aria-busy", busy);
   }
+}
+
+function setLoadingVisible(visible, announce = false) {
+  if (!ui.loading) return;
+  const shown = !ui.loading.hidden;
+  if (visible !== shown) {
+    ui.loading.hidden = !visible;
+    document.documentElement.dataset.heliosLoading = visible ? "1" : "";
+    if (visible && announce) say(LOADING_STATUS);
+  }
+  syncViewportBusy();
+}
+
+function yieldToPaint() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(resolve);
+    });
+  });
+}
+
+function attachGalaxyLayer(group) {
+  galaxy = group;
+  scene.add(galaxy);
+  document.documentElement.dataset.galaxyReady = "1";
+}
+
+function announceHeliosReady() {
+  if (readyAnnounced || !ui.status) return;
+  readyAnnounced = true;
+  say("Helios is ready. Drag to orbit, pinch or scroll to zoom, tap a world to focus.");
+}
+
+async function prepareGalaxyLayer() {
+  const afterStartup = document.documentElement.dataset.heliosReady === "1";
+  galaxyPreparing = true;
+  if (wantsDeepLayer()) setLoadingVisible(true, afterStartup);
+  if (afterStartup) await yieldToPaint();
+  try {
+    const session = startGalaxyLayer(THREE);
+    while (!session.done) {
+      session.advance(CONFIG.inputFrameBudgetMs);
+      if (session.done) break;
+      setLoadingVisible(wantsDeepLayer(), afterStartup && wantsDeepLayer() && !loadingVisible());
+      await yieldToPaint();
+    }
+    attachGalaxyLayer(session.group);
+  } catch {
+    galaxyBuild = null;
+    if (afterStartup) say(DEEP_PREP_FAILURE);
+  } finally {
+    galaxyPreparing = false;
+    setLoadingVisible(false);
+    if (galaxy) paintScaleLayer();
+    syncViewportBusy();
+  }
+  return galaxy;
 }
 
 function setMoonFocusTransition(active) {
@@ -237,6 +310,7 @@ function boot() {
   ui.cameraControls = $("camera-controls");
   ui.cameraToggle = $("camera-toggle");
   ui.cameraPanel = $("camera-panel");
+  ui.loading = $("loading");
   if (earthSkyLook) {
     ui.cameraControls.hidden = true;
     ui.viewport.setAttribute("aria-describedby", "scene-context");
@@ -427,10 +501,11 @@ function boot() {
   paintScaleLayer();
   lastStamp = performance.now();
   requestAnimationFrame(tick);
-  say("Helios is ready. Drag to orbit, pinch or scroll to zoom, tap a world to focus.");
+  announceHeliosReady();
 }
 
 function showUnsupported() {
+  setLoadingVisible(false);
   ui.stage.hidden = true;
   ui.stage.inert = true;
   ui.skip.hidden = true;
@@ -1170,6 +1245,7 @@ function paintSceneSemantics() {
   if (ui.sceneContext.textContent !== description) {
     ui.sceneContext.textContent = description;
   }
+  if (loadingVisible() || (galaxyPreparing && wantsDeepLayer())) return;
   if (lastHierarchyId !== null && id !== lastHierarchyId && announcement) {
     say(announcement);
   }
@@ -1570,16 +1646,21 @@ let lastHierarchyId = null;
 
 function ensureGalaxyLayer() {
   if (galaxy || !scene || earthSkyLook) return galaxy;
-  galaxy = createGalaxyLayer(THREE);
-  scene.add(galaxy);
-  document.documentElement.dataset.galaxyReady = "1";
+  if (document.documentElement.dataset.heliosReady !== "1") {
+    attachGalaxyLayer(createGalaxyLayer(THREE));
+    return galaxy;
+  }
+  if (!galaxyBuild) galaxyBuild = prepareGalaxyLayer();
   return galaxy;
 }
 
 function paintScaleLayer() {
   if (earthSkyLook) {
     paintSceneSemantics();
-    document.documentElement.dataset.heliosReady = "1";
+    if (!document.documentElement.dataset.heliosReady) {
+      document.documentElement.dataset.heliosReady = "1";
+      setLoadingVisible(false);
+    }
     return;
   }
   const solar = solarOpacity(state.distance);
@@ -1616,7 +1697,10 @@ function paintScaleLayer() {
     setHelperVisibility(helpers, { selected: false, orbit: false, axis: false, spin: false });
   }
   paintSceneSemantics();
-  document.documentElement.dataset.heliosReady = "1";
+  if (!document.documentElement.dataset.heliosReady) {
+    document.documentElement.dataset.heliosReady = "1";
+    setLoadingVisible(false);
+  }
 }
 
 function measureBodyLabels() {
