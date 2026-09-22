@@ -521,6 +521,10 @@ function showUnsupported() {
   ui.unsupported.focus({ preventScroll: true });
 }
 
+function cappedPixelRatio() {
+  return Math.min(window.devicePixelRatio || 1, 2);
+}
+
 function createRenderer() {
   try {
     renderer = new THREE.WebGLRenderer({
@@ -536,7 +540,7 @@ function createRenderer() {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(cappedPixelRatio());
   return true;
 }
 
@@ -1286,6 +1290,12 @@ function resize() {
   const height = window.innerHeight;
   camera.aspect = width / Math.max(1, height);
   camera.updateProjectionMatrix();
+  const pixelRatio = cappedPixelRatio();
+  // Browser zoom and mixed-DPI moves change devicePixelRatio after boot.
+  // Three.js keeps the last ratio until setPixelRatio runs; skip no-ops.
+  if (renderer.getPixelRatio() !== pixelRatio) {
+    renderer.setPixelRatio(pixelRatio);
+  }
   renderer.setSize(width, height, false);
   paintDockClearance();
   bodyLabelLayoutDirty = true;

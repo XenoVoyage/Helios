@@ -3808,6 +3808,259 @@ async function assertResizeAuditWaitsForPaint(browser) {
   }
 }
 
+function assertCappedDrawingBuffer(shot, expectedRatio, label) {
+  const ratio = Math.min(expectedRatio, 2);
+  assert.equal(
+    shot.bufferWidth,
+    Math.floor(shot.innerWidth * ratio),
+    `${label}: canvas buffer width follows capped DPR ${ratio}`,
+  );
+  assert.equal(
+    shot.bufferHeight,
+    Math.floor(shot.innerHeight * ratio),
+    `${label}: canvas buffer height follows capped DPR ${ratio}`,
+  );
+  assert.equal(
+    shot.drawingBufferWidth,
+    shot.bufferWidth,
+    `${label}: WebGL drawing buffer width matches the canvas buffer`,
+  );
+  assert.equal(
+    shot.drawingBufferHeight,
+    shot.bufferHeight,
+    `${label}: WebGL drawing buffer height matches the canvas buffer`,
+  );
+  assert.equal(shot.cssWidth, shot.innerWidth, `${label}: canvas CSS width follows layout`);
+  assert.equal(shot.cssHeight, shot.innerHeight, `${label}: canvas CSS height follows layout`);
+  assert.equal(shot.aspect, shot.innerWidth / Math.max(1, shot.innerHeight), `${label}: camera aspect follows CSS size`);
+  if (shot.pixelRatio !== undefined) {
+    assert.equal(shot.pixelRatio, ratio, `${label}: renderer pixel ratio is the capped DPR`);
+  }
+}
+
+async function attachRendererProbe(page) {
+  const probe = await page.evaluateHandle(async () => {
+    const THREE = await import(new URL("vendor/three.module.min.js", location.href).href);
+    const prototype = THREE.Scene.prototype;
+    const original = prototype.onAfterRender;
+    let renderer = null;
+    let camera = null;
+    const pixelRatioCalls = [];
+    let wrapped = false;
+    prototype.onAfterRender = function onAfterRender(nextRenderer, scene, nextCamera) {
+      renderer = nextRenderer;
+      camera = nextCamera;
+      if (!wrapped && renderer) {
+        wrapped = true;
+        const originalSet = renderer.setPixelRatio.bind(renderer);
+        renderer.setPixelRatio = function setPixelRatio(value) {
+          pixelRatioCalls.push(value);
+          return originalSet(value);
+        };
+      }
+      original.call(this, nextRenderer, scene, nextCamera);
+    };
+    return {
+      snapshot() {
+        if (!renderer || !camera) return null;
+        const canvas = document.querySelector("#viewport");
+        const gl = canvas.getContext("webgl2");
+        const css = canvas.getBoundingClientRect();
+        const dock = document.querySelector("#dock")?.getBoundingClientRect();
+        return {
+          pixelRatio: renderer.getPixelRatio(),
+          pixelRatioCalls: pixelRatioCalls.slice(),
+          aspect: camera.aspect,
+          projection: [...camera.projectionMatrix.elements],
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          bufferWidth: canvas.width,
+          bufferHeight: canvas.height,
+          drawingBufferWidth: gl.drawingBufferWidth,
+          drawingBufferHeight: gl.drawingBufferHeight,
+          cssWidth: css.width,
+          cssHeight: css.height,
+          devicePixelRatio: window.devicePixelRatio,
+          dockHeight: dock ? dock.height : 0,
+        };
+      },
+      clearCalls() {
+        pixelRatioCalls.length = 0;
+      },
+      restore() {
+        prototype.onAfterRender = original;
+      },
+    };
+  });
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    await waitForTwoAnimationFrames(page);
+    const shot = await probe.evaluate((item) => item.snapshot());
+    if (shot) return probe;
+  }
+  throw new Error("renderer probe did not observe a frame");
+}
+
+async function setLiveDevicePixelRatio(page, ratio) {
+  await page.evaluate((next) => {
+    Object.defineProperty(window, "devicePixelRatio", {
+      configurable: true,
+      get() {
+        return next;
+      },
+    });
+    window.dispatchEvent(new Event("resize"));
+  }, ratio);
+}
+
+async function assertBootCappedDpr(browser, deviceScaleFactor, expectedRatio, label) {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor,
+  });
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  try {
+    await openReady(page);
+    if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
+      await page.locator("#play-button").click();
+    }
+    await waitForTwoAnimationFrames(page);
+    const shot = await page.locator("#viewport").evaluate((canvas) => {
+      const gl = canvas.getContext("webgl2");
+      const css = canvas.getBoundingClientRect();
+      return {
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        cssWidth: css.width,
+        cssHeight: css.height,
+        bufferWidth: canvas.width,
+        bufferHeight: canvas.height,
+        drawingBufferWidth: gl.drawingBufferWidth,
+        drawingBufferHeight: gl.drawingBufferHeight,
+        devicePixelRatio: window.devicePixelRatio,
+        aspect: window.innerWidth / Math.max(1, window.innerHeight),
+      };
+    });
+    assert.equal(shot.devicePixelRatio, deviceScaleFactor, `${label}: context devicePixelRatio`);
+    assert.equal(shot.innerWidth, 1440, `${label}: CSS width is unchanged by DPR`);
+    assert.equal(shot.innerHeight, 900, `${label}: CSS height is unchanged by DPR`);
+    assertCappedDrawingBuffer(shot, expectedRatio, label);
+    await saveScreenshot(page, `dpr-boot-${label}`);
+    assert.deepEqual(errors, [], `${label} boot has no browser errors`);
+  } finally {
+    await page.close();
+    await context.close();
+  }
+}
+
+async function auditCappedDprResync(browser) {
+  // DPR 1 is the live page below. One extra context covers native DPR 2 at boot;
+  // the cap is proven on the live 2 → 3 step instead of a third full load.
+  await assertBootCappedDpr(browser, 2, 2, "dpr-2");
+
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 1,
+  });
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  let probe;
+  try {
+    await openReady(page);
+    if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
+      await page.locator("#play-button").click();
+    }
+    await page.locator("#reset-button").click();
+    probe = await attachRendererProbe(page);
+    await probe.evaluate((item) => item.clearCalls());
+
+    const settle = async (label) => {
+      await waitForTwoAnimationFrames(page);
+      const shot = await probe.evaluate((item) => item.snapshot());
+      assert.ok(shot, `${label}: renderer probe is live`);
+      return shot;
+    };
+
+    let shot = await settle("boot");
+    assert.equal(shot.devicePixelRatio, 1);
+    assertCappedDrawingBuffer(shot, 1, "live boot dpr 1");
+    assert.deepEqual(shot.pixelRatioCalls, [], "boot frames after wrapping do not call setPixelRatio");
+
+    await probe.evaluate((item) => item.clearCalls());
+    await page.setViewportSize({ width: 1280, height: 800 });
+    shot = await settle("same-dpr desktop resize");
+    assert.deepEqual(shot.pixelRatioCalls, [], "unchanged DPR resize does not call setPixelRatio");
+    assert.equal(shot.innerWidth, 1280);
+    assert.equal(shot.innerHeight, 800);
+    assert.equal(shot.pixelRatio, 1);
+    assertCappedDrawingBuffer(shot, 1, "same-dpr desktop resize");
+
+    await probe.evaluate((item) => item.clearCalls());
+    await page.setViewportSize({ width: 390, height: 844 });
+    shot = await settle("same-dpr compact resize");
+    assert.deepEqual(shot.pixelRatioCalls, [], "compact same-DPR resize does not call setPixelRatio");
+    assert.equal(shot.innerWidth, 390);
+    assert.equal(shot.innerHeight, 844);
+    assertCappedDrawingBuffer(shot, 1, "same-dpr compact resize");
+    const compactLayout = {
+      innerWidth: shot.innerWidth,
+      innerHeight: shot.innerHeight,
+      aspect: shot.aspect,
+      projection: shot.projection,
+      dockHeight: shot.dockHeight,
+      cssWidth: shot.cssWidth,
+      cssHeight: shot.cssHeight,
+    };
+    await saveScreenshot(page, "dpr-live-compact-1");
+
+    await probe.evaluate((item) => item.clearCalls());
+    await setLiveDevicePixelRatio(page, 2);
+    shot = await settle("live 1→2");
+    assert.deepEqual(shot.pixelRatioCalls, [2], "raising DPR to 2 calls setPixelRatio once");
+    assert.equal(shot.devicePixelRatio, 2);
+    assertCappedDrawingBuffer(shot, 2, "live 1→2");
+    assert.equal(shot.innerWidth, compactLayout.innerWidth);
+    assert.equal(shot.innerHeight, compactLayout.innerHeight);
+    assert.equal(shot.aspect, compactLayout.aspect);
+    assert.equal(shot.dockHeight, compactLayout.dockHeight);
+    assert.deepEqual(shot.projection, compactLayout.projection, "DPR-only change keeps the projection");
+    await saveScreenshot(page, "dpr-live-compact-2");
+
+    const highLayout = {
+      projection: shot.projection,
+      dockHeight: shot.dockHeight,
+      aspect: shot.aspect,
+    };
+    await probe.evaluate((item) => item.clearCalls());
+    await setLiveDevicePixelRatio(page, 3);
+    shot = await settle("live 2→3 capped");
+    assert.deepEqual(shot.pixelRatioCalls, [], "still-capped DPR 3 does not call setPixelRatio");
+    assert.equal(shot.devicePixelRatio, 3);
+    assertCappedDrawingBuffer(shot, 2, "live 2→3 capped");
+    assert.deepEqual(shot.projection, highLayout.projection);
+    assert.equal(shot.dockHeight, highLayout.dockHeight);
+
+    await probe.evaluate((item) => item.clearCalls());
+    await setLiveDevicePixelRatio(page, 1);
+    shot = await settle("live 2→1");
+    assert.deepEqual(shot.pixelRatioCalls, [1], "lowering capped DPR to 1 calls setPixelRatio once");
+    assert.equal(shot.devicePixelRatio, 1);
+    assertCappedDrawingBuffer(shot, 1, "live 2→1");
+    assert.equal(shot.innerWidth, compactLayout.innerWidth);
+    assert.equal(shot.innerHeight, compactLayout.innerHeight);
+    assert.equal(shot.aspect, compactLayout.aspect);
+    assert.deepEqual(shot.projection, compactLayout.projection, "return to DPR 1 keeps the projection");
+    assert.equal(shot.dockHeight, compactLayout.dockHeight);
+
+    assert.deepEqual(errors, [], "capped DPR resync has no browser errors");
+    console.log("capped DPR resync ok");
+  } finally {
+    if (probe) await probe.evaluate((item) => item.restore()).catch(() => {});
+    await page.close();
+    await context.close();
+  }
+}
+
 async function assertCardAuditWaitsForPaint(context) {
   const page = await context.newPage();
   const errors = captureErrors(page);
@@ -4570,6 +4823,7 @@ try {
 
   browser = await launchBrowser();
   await assertResizeAuditWaitsForPaint(browser);
+  await auditCappedDprResync(browser);
   const dateLayout = await browser.newContext({ deviceScaleFactor: 1, hasTouch: true });
   try {
     await assertCardAuditWaitsForPaint(dateLayout);
