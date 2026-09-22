@@ -107,11 +107,16 @@ test("every scientific catalog row has a complete preservation and provenance re
       }
       assert.equal(new URL(source.uri).protocol, "https:");
       if (sourceId === "legacy-heliocentric") {
-        assert.equal(source.upstreamUri, null, "unrecovered upstream provenance is explicit");
+        assert.equal(source.upstreamUri, null, "unrecovered Keplerian-angle provenance is explicit");
         assert.equal(source.upstreamTable, null);
         assert.equal(source.upstreamVersion, null);
         assert.ok(source.gap.startsWith("https://github.com/XenoVoyage/Helios/issues/"));
         assert.match(source.gap.slice("https://github.com/XenoVoyage/Helios/issues/".length), /^\d+$/);
+      } else if (sourceId === "nasa-nssdc-sidereal-period") {
+        assert.match(source.table, /Sidereal orbit period \(days\)/, `${id}: period source is the fact-sheet sidereal column`);
+        assert.match(source.derivation, /tropical/i, `${id}: tropical comparison-table row is excluded`);
+        assert.equal(source.epoch, "not applicable to a period scalar");
+        assert.equal(source.timeScale, "not applicable");
       } else if (sourceId !== "fixed-sun") {
         assert.match(source.timeScale, /^TDB\b/, `${id}: verified epoch time scale is TDB`);
         assert.match(source.epoch, /\bJD 2451545\.0\b/, `${id}: verified source epoch is JD 2451545.0`);
@@ -134,7 +139,7 @@ test("published orbital source columns and derived angles reproduce their catalo
       expected = { orbitAu: ref.a, eccentricity: ref.e, inclinationDeg: ref.I, nodeDeg: ref.longNode };
       assert.ok(Math.abs(body.periDeg - wrapDegrees(ref.longPeri - ref.longNode)) < 1e-10);
       assert.ok(Math.abs(body.meanAnomalyDeg - wrapDegrees(ref.L - ref.longPeri)) < 1e-10);
-      assert.equal(row.periodSource, "legacy-heliocentric", "Table 1 does not own the inherited period");
+      assert.equal(row.periodSource, "nasa-nssdc-sidereal-period", "Table 1 does not own the recovered fact-sheet period");
     } else if (row.source.startsWith("satellite-")) {
       assert.ok(ref, `${row.id}: published moon row is retained`);
       assert.equal(body.kind, "moon");
@@ -162,11 +167,39 @@ test("published orbital source columns and derived angles reproduce their catalo
       }
     } else {
       assert.ok(["fixed-sun", "legacy-heliocentric"].includes(row.source));
-      assert.equal(ref, undefined, `${row.id}: do not fabricate authoritative reference columns`);
+      assert.equal(ref, undefined, `${row.id}: do not fabricate authoritative Keplerian reference columns`);
       continue;
     }
     assert.deepEqual(Object.fromEntries(Object.keys(expected).map((key) => [key, body[key]])), expected, `${row.id}: published orbital fields`);
   }
+});
+
+test("dated NASA fact-sheet sidereal periods reproduce the inherited orbitDays literals", () => {
+  const expectedPrintings = {
+    mercury: "87.969",
+    venus: "224.701",
+    earth: "365.256",
+    mars: "686.980",
+    jupiter: "4,332.589",
+    saturn: "10,759.22",
+    uranus: "30,685.4",
+    neptune: "60,189.",
+    pluto: "90,560",
+  };
+  for (const [id, printed] of Object.entries(expectedPrintings)) {
+    const row = orbitalProvenance.rows.find((entry) => entry.id === id);
+    const body = findBody(id);
+    assert.equal(row.periodSource, "nasa-nssdc-sidereal-period", `${id}: period owner is the dated fact sheet`);
+    assert.equal(row.periodReference.P, printed, `${id}: retain the printed sidereal-period text`);
+    assert.equal(Number(printed.replaceAll(",", "")), body.orbitDays, `${id}: printed period parses to the catalog`);
+    assert.equal(row.catalog.orbitDays, body.orbitDays);
+  }
+  assert.equal(orbitalProvenance.sources["legacy-heliocentric"].upstreamUri, null);
+  assert.equal(
+    orbitalProvenance.rows.filter((row) => row.source === "legacy-heliocentric").length,
+    8,
+    "eight inherited Keplerian-angle rows remain unrecovered",
+  );
 });
 
 test("every body texture has a complete source and transformation record", async () => {

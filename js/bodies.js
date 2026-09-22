@@ -60,7 +60,8 @@ function orientationJ2000(bodyId, spinDirection, primeMeridianDeg = null) {
  * Heliocentric angles stay fixed J2000 approximations, not an ephemeris.
  * Ceres uses one geometric Horizons snapshot; Neptune uses the six
  * best-fit JPL Approximate Positions Table 1 coefficients at T=0.
- * Other heliocentric rows have unrecovered upstream source records.
+ * Other heliocentric rows keep unrecovered Keplerian-angle source records;
+ * their sidereal periods match dated NASA NSSDCA fact-sheet printings.
  */
 export const BODIES = Object.freeze([
   {
