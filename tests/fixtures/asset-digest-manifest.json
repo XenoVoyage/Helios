@@ -1,0 +1,241 @@
+{
+  "scope": "Tracked image assets documented in PROVENANCE.md. 2MRS source and payload pinning remains tests/fixtures/2mrs-integrity.json and is not owned here.",
+  "algorithm": "Listed family paths are sorted bytewise as UTF-8, hashed individually with sha256sum, and that textual two-space path manifest including a trailing newline is hashed once with sha256sum.",
+  "roots": [
+    "assets/textures",
+    "assets/sky",
+    "docs/assets",
+    "docs/issues"
+  ],
+  "families": [
+    {
+      "id": "solar-system-scope-2k",
+      "manifestSha256": "f566beedf75afa2fd1b7ae0536423ab77bfec59ae2413ba2cf5262fe01231ae7"
+    },
+    {
+      "id": "nasa-3d-resources-jpeg",
+      "manifestSha256": "6ecc31814ef1d61922ba9ee827be7ba0cdaada38e07e18b61e8ccd457569586b"
+    },
+    {
+      "id": "lpi-triton-mosaic",
+      "manifestSha256": "4e147762b9d3f5e3f467b8713a166a9789c1ae122c6d87bb0ca23678e3b8dc1c"
+    },
+    {
+      "id": "esa-gaia-milky-way",
+      "manifestSha256": "4a2b280e9d42155920d92ffe72f7082d1614040109b10118178fad1e614ea1b3"
+    },
+    {
+      "id": "nasa-spitzer-andromeda",
+      "manifestSha256": "175418da0b32b58fdb320d7cc2559e25f4942a8e9e8db95f2729fc3ab0dcdac3"
+    },
+    {
+      "id": "cmb-illustration",
+      "manifestSha256": "d940b7e478079b064824b2cfd85bd272e2abd8161736332126971dd8ffc12668"
+    },
+    {
+      "id": "documentation-screenshots",
+      "manifestSha256": "872d58b3bda6be63d37fb3e2009367bea8261209decc606f60667defa6049dc4"
+    },
+    {
+      "id": "saturn-ring-backface-evidence",
+      "manifestSha256": "29f6e1a563cd629d20a7c33b8bc6b9facebaf493787f7827d5f6298117093740"
+    }
+  ],
+  "files": [
+    {
+      "path": "assets/sky/andromeda.png",
+      "sha256": "f620a22e3f70db72a0c4a4a144a80e1d84106da716ad82a6d3088dafec7e9f8f",
+      "family": "nasa-spitzer-andromeda"
+    },
+    {
+      "path": "assets/sky/cmb.jpg",
+      "sha256": "59c0e76f91b8d81f67e06a61671d116a9456ef51b9e335a84c341ecd6ae58b3a",
+      "family": "cmb-illustration"
+    },
+    {
+      "path": "assets/sky/milky-way.jpg",
+      "sha256": "95bca25ca3f2001b883e11e8317b5cda728b24ff80137ef749941d0fd4cbf899",
+      "family": "esa-gaia-milky-way"
+    },
+    {
+      "path": "assets/textures/callisto.jpg",
+      "sha256": "b9f4fa5db94debabd12814853fd132db3449889646a490b6f95a897b2c47b121",
+      "family": "nasa-3d-resources-jpeg"
+    },
+    {
+      "path": "assets/textures/ceres.jpg",
+      "sha256": "ee59b2c7aa399dfdc810078c723373670133fe8505e439601dff4ce6f3cc5ad8",
+      "family": "solar-system-scope-2k"
+    },
+    {
+      "path": "assets/textures/deimos.jpg",
+      "sha256": "204e89cc7dc128e9fa6ae5f14cc23dc7917a4a8ccab9feff1a9544d22b354dce",
+      "family": "nasa-3d-resources-jpeg"
+    },
+    {
+      "path": "assets/textures/earth.jpg",
+      "sha256": "767ee1dc6eb3802699bfccf6f264880f8acd0b80de3191cd24984fe279b07b7c",
+      "family": "solar-system-scope-2k"
+    },
+    {
+      "path": "assets/textures/europa.jpg",
+      "sha256": "50d01ca5c01352d1c507bb17fefd1c46ba11260305656250062c6cdac89c8ebf",
+      "family": "nasa-3d-resources-jpeg"
+    },
+    {
+      "path": "assets/textures/ganymede.jpg",
+      "sha256": "1aa9d5a6f20e72230c13ce3d78592fc056e22f1e1ee39ea7acfa7e08d09fe173",
+      "family": "nasa-3d-resources-jpeg"
+    },
+    {
+      "path": "assets/textures/io.jpg",
+      "sha256": "fdd79a58331864ec1f93035b3ebb92767b01715d2ce75d5b73cf8537b6af3382",
+      "family": "nasa-3d-resources-jpeg"
+    },
+    {
+      "path": "assets/textures/jupiter.jpg",
+      "sha256": "b0f04d005350252636b0e3396fc592548cbd9e9126b269d32d5c6abd4b0e4f2b",
+      "family": "solar-system-scope-2k"
+    },
+    {
+      "path": "assets/textures/mars.jpg",
+      "sha256": "2d187f3e77a98eaa8cea5f4cc722f633c122ef170b9e94ace6b5fb6cbc3f8e01",
+      "family": "solar-system-scope-2k"
+    },
+    {
+      "path": "assets/textures/mercury.jpg",
+      "sha256": "5a5c80607f643496bac9a631e71957def35ed788895f18b678ac849c2b38e48a",
+      "family": "solar-system-scope-2k"
+    },
+    {
+      "path": "assets/textures/moon.jpg",
+      "sha256": "2764ba6535ea0481a062846ee033cc7a909dae05b31a8fd13f3e98f3a7fd92bd",
+      "family": "solar-system-scope-2k"
+    },
+    {
+      "path": "assets/textures/neptune.jpg",
+      "sha256": "cb42ea82709741d28b0af44d8b283cbc6dbd0c521a7f0e1e1e010ade00977df6",
+      "family": "solar-system-scope-2k"
+    },
+    {
+      "path": "assets/textures/phobos.jpg",
+      "sha256": "8ec807b353eb28f44b5aa24b8a887935ee5563f5b63bde2430a9988220f71463",
+      "family": "nasa-3d-resources-jpeg"
+    },
+    {
+      "path": "assets/textures/pluto.jpg",
+      "sha256": "a921387426a506b6f6ae8fd24872eeab59b81f963cd9c010b59d825059b29c64",
+      "family": "nasa-3d-resources-jpeg"
+    },
+    {
+      "path": "assets/textures/saturn-ring.png",
+      "sha256": "4b0644b2f3ef259fd0bfaedd9dc52f9e7d9738f65f50363e8c4dd19f650d7334",
+      "family": "solar-system-scope-2k"
+    },
+    {
+      "path": "assets/textures/saturn.jpg",
+      "sha256": "54a900ca9bf7ab62e70f862852759abdf342e6d6436a95a2fe9ebdb6bcd3bbac",
+      "family": "solar-system-scope-2k"
+    },
+    {
+      "path": "assets/textures/sun.jpg",
+      "sha256": "ff0f076ba65e03b5ab518451bc96699325be38e3ccbdd5869ee1c00f3a0c8816",
+      "family": "solar-system-scope-2k"
+    },
+    {
+      "path": "assets/textures/titan.jpg",
+      "sha256": "a213516e3ccbe46bfbdb576963859c82c75799612ccab775ec3cf24b451feca0",
+      "family": "nasa-3d-resources-jpeg"
+    },
+    {
+      "path": "assets/textures/triton.jpg",
+      "sha256": "7962d4997fc8c8f47e7f54304174a565f59d3cc01e5de119329f59673c684ba9",
+      "family": "lpi-triton-mosaic"
+    },
+    {
+      "path": "assets/textures/uranus.jpg",
+      "sha256": "d15239d46f82d3ea13d2b260b5b29b2a382f42f2916dae0694d0387b1204a09d",
+      "family": "solar-system-scope-2k"
+    },
+    {
+      "path": "assets/textures/venus.jpg",
+      "sha256": "225012ad4911730605c4e189ca2a3bf674fce50cc48aab4102b936b47d6991ac",
+      "family": "solar-system-scope-2k"
+    },
+    {
+      "path": "docs/assets/helios-constellations.webp",
+      "sha256": "3fdf02d7f1852a69f4a928ee9795f0a6a71dabdca2142cd706329161b03ea068",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-disk.webp",
+      "sha256": "e6b07e1ab09d11381a18f8a3165c11824b187baeabbcda878d9a7e9be98b9d60",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-growing.webp",
+      "sha256": "cef18904b17b06ce3c94a75d05e8e3d32ed7d1feb2e987c6e5e80dcc0b019631",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-local-group.webp",
+      "sha256": "b76997382f82b2fbf44f7b1a0ed346d6c587024cf754e7ab4f42c8eeeed3f053",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-milky-way.webp",
+      "sha256": "175723a9759f5ded31ed6fd703c06d2768575f1dfd47352e9baf74cae6f6ce6b",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-neighborhood.webp",
+      "sha256": "7acb6392b26b5d2269974c961c687e31912c8440f253f9ff4714f2d3a563893a",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-overview.webp",
+      "sha256": "451d8a7942cb5f68284d67428508c0cdaa05d82eb5b41b7217ecaef132419115",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-preweb.webp",
+      "sha256": "4a5a8ff97030932a24e6b6f7cb0202482cb7f54d092e606e68498bf3a7612473",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-solar-far.webp",
+      "sha256": "f324e9e873f5f66ce2cff941bf1692c91c706941b680ba83c51a318bea5db673",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-tail-sky.webp",
+      "sha256": "dd2b65706d2e994e5fd5a021e6cd9eefc30c4a73a3e2bef68e671f2816c933db",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-titan-rings.webp",
+      "sha256": "e6a1d9ff52ce5c380533a336de480427a3c21510f2b47a82b5e7a78711a5b95e",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-universe.webp",
+      "sha256": "43398d50a52c8456f63d4f0e2d392ae25eda120c1411f77850da1abfcc58b0df",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-virgo.webp",
+      "sha256": "d870fa6b11a18994bca0f9a303cc4dac5350cc37dab27faf99b792c0459fb859",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/assets/helios-web.webp",
+      "sha256": "26fca82942288ad89709d963e21d460034de9ccc66ab6f9ae4741ced59aab5c5",
+      "family": "documentation-screenshots"
+    },
+    {
+      "path": "docs/issues/saturn-ring-backface.webp",
+      "sha256": "a3ade073cb69b33424abeb5ce14c9b79540559eabc7e53b87ccf14276aef63c3",
+      "family": "saturn-ring-backface-evidence"
+    }
+  ]
+}

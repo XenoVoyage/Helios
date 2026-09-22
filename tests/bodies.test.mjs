@@ -34,6 +34,9 @@ const orbitalProvenance = JSON.parse(await readFile(
 const textureProvenance = JSON.parse(await readFile(
   new URL("./fixtures/texture-provenance.json", import.meta.url), "utf8",
 ));
+const assetDigestManifest = JSON.parse(await readFile(
+  new URL("./fixtures/asset-digest-manifest.json", import.meta.url), "utf8",
+));
 
 function sha256Bytes(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -270,7 +273,13 @@ test("every body texture has a complete source and transformation record", async
   assert.equal(triton.transformation.kind, "documented");
   assert.equal(triton.transformation.fill, true);
   assert.equal(triton.transformation.resample, true);
-  assert.match(textureProvenance.scope, /issue #70/);
+  assert.match(textureProvenance.scope, /asset-digest-manifest\.json/);
+  for (const row of textureProvenance.files) {
+    const digestRow = assetDigestManifest.files.find((entry) => entry.path === row.path);
+    assert.ok(digestRow, `${row.id}: image-asset digest fixture owns this path`);
+    assert.equal(row.trackedDigest, digestRow.sha256, `${row.id}: tracked digest matches the image-asset digest fixture`);
+    assert.equal(row.family, digestRow.family, `${row.id}: family membership matches the image-asset digest fixture`);
+  }
 });
 
 const required = [

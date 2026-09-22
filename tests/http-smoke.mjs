@@ -115,6 +115,7 @@ try {
     "tests/serve.mjs", "tests/fixtures/orbital-provenance.json",
     "tests/fixtures/2mrs-integrity.json",
     "tests/fixtures/texture-provenance.json",
+    "tests/fixtures/asset-digest-manifest.json",
     "scripts/build-2mrs.mjs", "scripts/stage-site.mjs",
     ".github/workflows/pages.yml", "docs/assets/helios-overview.webp",
   ]) {
