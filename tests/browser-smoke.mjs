@@ -1258,6 +1258,273 @@ async function auditSolarHandoff(context) {
   await page.close();
 }
 
+async function dispatchBoundaryWheel(page, deltaY) {
+  await page.locator("#viewport").evaluate((canvas, delta) => {
+    canvas.dispatchEvent(new WheelEvent("wheel", {
+      deltaY: delta,
+      bubbles: true,
+      cancelable: true,
+    }));
+  }, deltaY);
+}
+
+async function auditStagedDeepLoading(context, prefix, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  await openReady(page);
+  if (await page.locator("#play-button").getAttribute("aria-pressed") === "true") {
+    if (touch) await page.locator("#play-button").tap();
+    else await page.locator("#play-button").click();
+  }
+  assert.equal(await page.getAttribute("html", "data-galaxy-ready"), null, `${prefix}: default startup keeps the deferred galaxy layer lazy`);
+  assert.equal(await page.locator("#loading").getAttribute("hidden"), "");
+  assert.equal(await page.locator("#viewport").getAttribute("aria-busy"), "false");
+  await page.locator("#viewport").focus();
+  assert.notEqual(
+    await page.evaluate(() => document.activeElement?.id),
+    "loading",
+    `${prefix}: loading chrome is not a focus target`,
+  );
+
+  await page.evaluate(() => {
+    const canvas = document.querySelector("#viewport");
+    const loading = document.querySelector("#loading");
+    const live = document.querySelector("#status-live");
+    const longTasks = [];
+    let observer = null;
+    try {
+      observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          longTasks.push({ duration: entry.duration, startTime: entry.startTime });
+        }
+      });
+      observer.observe({ type: "longtask" });
+    } catch {
+      observer = null;
+    }
+    globalThis.__heliosStagingAudit = {
+      longTasks,
+      disconnect() { observer?.disconnect(); },
+      snapshot() {
+        return {
+          loading: !loading.hidden,
+          busy: canvas.getAttribute("aria-busy"),
+          galaxyReady: document.documentElement.dataset.galaxyReady === "1",
+          status: live.textContent,
+          focus: document.activeElement?.id || document.activeElement?.dataset.bodyId || null,
+        };
+      },
+    };
+  });
+
+  const firstCrossing = await page.evaluate((budgetMs) => {
+    const audit = globalThis.__heliosStagingAudit;
+    const started = performance.now();
+    document.querySelector("#viewport").dispatchEvent(new WheelEvent("wheel", {
+      deltaY: 2_400,
+      bubbles: true,
+      cancelable: true,
+    }));
+    const handlerEnd = performance.now();
+    return { handlerMs: handlerEnd - started, handlerEnd, budgetMs, ...audit.snapshot() };
+  }, CONFIG.inputFrameBudgetMs);
+  assert.ok(
+    firstCrossing.handlerMs <= CONFIG.inputFrameBudgetMs,
+    `${prefix}: first boundary wheel returned in ${firstCrossing.handlerMs}ms, budget ${CONFIG.inputFrameBudgetMs}ms`,
+  );
+  assert.equal(firstCrossing.galaxyReady, false, `${prefix}: boundary input does not finish the galaxy layer inline`);
+  assert.equal(firstCrossing.loading, true, `${prefix}: loading chrome is visible before remaining work`);
+  assert.equal(firstCrossing.busy, "true", `${prefix}: viewport is busy while deep prep is pending`);
+  assert.equal(firstCrossing.status, "Loading", `${prefix}: loading is announced once at first show`);
+  assert.notEqual(firstCrossing.focus, "loading", `${prefix}: showing loading does not steal focus`);
+
+  await waitForTwoAnimationFrames(page);
+  const afterPaint = await page.evaluate(() => globalThis.__heliosStagingAudit.snapshot());
+  assert.equal(afterPaint.galaxyReady, false, `${prefix}: first paint yield happens before the layer is usable`);
+  assert.equal(afterPaint.loading, true, `${prefix}: loading remains visible after the first paint yield`);
+  await saveScreenshot(page, `${prefix}-deep-loading`);
+
+  await page.waitForFunction(
+    () => document.documentElement.dataset.galaxyReady === "1"
+      && document.querySelector("#loading").hidden
+      && document.querySelector("#viewport").getAttribute("aria-busy") === "false",
+    null,
+    { timeout: 20_000 },
+  );
+  const ready = await page.evaluate(() => {
+    const audit = globalThis.__heliosStagingAudit;
+    audit.disconnect();
+    return { ...audit.snapshot(), longTasks: audit.longTasks.slice() };
+  });
+  assert.equal(ready.loading, false, `${prefix}: loading hides once the layer is usable`);
+  assert.equal(ready.busy, "false");
+  assert.notEqual(ready.status, "Loading", `${prefix}: loading is not re-announced after it is ready`);
+  const blockingDuringHandler = ready.longTasks.filter((entry) => entry.startTime < firstCrossing.handlerEnd);
+  assert.deepEqual(
+    blockingDuringHandler,
+    [],
+    `${prefix}: no long task ran inside the boundary handler: ${JSON.stringify(ready.longTasks)}`,
+  );
+  console.log(`${prefix} staged deep loading: handler ${firstCrossing.handlerMs}ms, longTasks ${JSON.stringify(ready.longTasks)}`);
+
+  const cancelPage = await context.newPage();
+  const cancelErrors = captureErrors(cancelPage);
+  await openReady(cancelPage);
+  if (await cancelPage.locator("#play-button").getAttribute("aria-pressed") === "true") {
+    if (touch) await cancelPage.locator("#play-button").tap();
+    else await cancelPage.locator("#play-button").click();
+  }
+  await cancelPage.locator("#viewport").focus();
+  const reversal = await cancelPage.evaluate(() => {
+    const canvas = document.querySelector("#viewport");
+    const loading = document.querySelector("#loading");
+    const started = performance.now();
+    canvas.dispatchEvent(new WheelEvent("wheel", {
+      deltaY: 2_400,
+      bubbles: true,
+      cancelable: true,
+    }));
+    const outboundMs = performance.now() - started;
+    const outbound = {
+      loading: !loading.hidden,
+      busy: canvas.getAttribute("aria-busy"),
+      galaxyReady: document.documentElement.dataset.galaxyReady === "1",
+    };
+    const inboundStarted = performance.now();
+    canvas.dispatchEvent(new WheelEvent("wheel", {
+      deltaY: -2_400,
+      bubbles: true,
+      cancelable: true,
+    }));
+    return {
+      outboundMs,
+      inboundMs: performance.now() - inboundStarted,
+      outbound,
+      inbound: {
+        loading: !loading.hidden,
+        busy: canvas.getAttribute("aria-busy"),
+        galaxyReady: document.documentElement.dataset.galaxyReady === "1",
+        skyHidden: document.querySelector("#sky-control").hidden,
+      },
+    };
+  });
+  assert.ok(reversal.outboundMs <= CONFIG.inputFrameBudgetMs, `${prefix} reversal outbound ${reversal.outboundMs}ms`);
+  assert.ok(reversal.inboundMs <= CONFIG.inputFrameBudgetMs, `${prefix} reversal inbound ${reversal.inboundMs}ms`);
+  assert.equal(reversal.outbound.loading, true, `${prefix}: outbound reversal path shows loading`);
+  assert.equal(reversal.inbound.loading, false, `${prefix}: reversing into Solar hides loading`);
+  assert.equal(reversal.inbound.busy, "false", `${prefix}: reversed Solar view is not kept busy`);
+  assert.equal(reversal.inbound.skyHidden, false, `${prefix}: constellation control returns with the Solar sky`);
+  await cancelPage.waitForFunction(
+    () => document.documentElement.dataset.galaxyReady === "1",
+    null,
+    { timeout: 20_000 },
+  );
+  assert.equal(await cancelPage.locator("#loading").getAttribute("hidden"), "");
+  const reuse = await cancelPage.evaluate((budgetMs) => {
+    const canvas = document.querySelector("#viewport");
+    const loading = document.querySelector("#loading");
+    const started = performance.now();
+    canvas.dispatchEvent(new WheelEvent("wheel", {
+      deltaY: 2_400,
+      bubbles: true,
+      cancelable: true,
+    }));
+    return {
+      handlerMs: performance.now() - started,
+      budgetMs,
+      loading: !loading.hidden,
+      galaxyReady: document.documentElement.dataset.galaxyReady === "1",
+      status: document.querySelector("#status-live").textContent,
+    };
+  }, CONFIG.inputFrameBudgetMs);
+  assert.ok(reuse.handlerMs <= CONFIG.inputFrameBudgetMs, `${prefix} already-ready handler ${reuse.handlerMs}ms`);
+  assert.equal(reuse.galaxyReady, true);
+  assert.equal(reuse.loading, false, `${prefix}: already-ready transition has no artificial loading delay`);
+  assert.notEqual(reuse.status, "Loading", `${prefix}: already-ready transition does not re-announce loading`);
+  assert.deepEqual(cancelErrors, [], `${prefix} cancellation path has no browser errors`);
+  await cancelPage.close();
+
+  const resourcePage = await context.newPage();
+  const resourceErrors = captureErrors(resourcePage);
+  await openReady(resourcePage, "?look=solarfar");
+  if (await resourcePage.locator("#play-button").getAttribute("aria-pressed") === "true") {
+    if (touch) await resourcePage.locator("#play-button").tap();
+    else await resourcePage.locator("#play-button").click();
+  }
+  assert.equal(await resourcePage.getAttribute("html", "data-galaxy-ready"), null);
+  await resourcePage.evaluate(async () => {
+    const THREE = await import(new URL("vendor/three.module.min.js", location.href).href);
+    const prototype = THREE.Scene.prototype;
+    const previous = prototype.onAfterRender;
+    let latest = null;
+    prototype.onAfterRender = function onAfterRender(renderer, scene) {
+      if (typeof previous === "function") previous.call(this, renderer, scene);
+      let galaxyCount = 0;
+      let galaxyUuid = null;
+      scene.traverse((object) => {
+        if (object.name === "galaxy-layer") {
+          galaxyCount += 1;
+          galaxyUuid = object.uuid;
+        }
+      });
+      latest = {
+        textureCount: renderer.info.memory.textures,
+        geometries: renderer.info.memory.geometries,
+        galaxyCount,
+        galaxyUuid,
+        heap: performance.memory?.usedJSHeapSize ?? null,
+      };
+    };
+    globalThis.__heliosGalaxyResourceAudit = {
+      snapshot: () => (latest ? { ...latest } : null),
+    };
+  });
+  await dispatchBoundaryWheel(resourcePage, 2_400);
+  await resourcePage.waitForFunction(() => document.documentElement.dataset.galaxyReady === "1");
+  const settleGalaxyResources = async () => {
+    let previous = null;
+    let stable = 0;
+    let latest = null;
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      await waitForTwoAnimationFrames(resourcePage);
+      latest = await resourcePage.evaluate(() => globalThis.__heliosGalaxyResourceAudit.snapshot());
+      if (
+        latest
+        && previous
+        && latest.textureCount === previous.textureCount
+        && latest.geometries === previous.geometries
+        && latest.galaxyUuid === previous.galaxyUuid
+      ) {
+        stable += 1;
+        if (stable >= 6) return latest;
+      } else {
+        stable = 0;
+      }
+      previous = latest;
+    }
+    return latest;
+  };
+  const first = await settleGalaxyResources();
+  assert.equal(first?.galaxyCount, 1, `${prefix}: one canonical galaxy layer after first deep zoom`);
+  let distance = CONFIG.solarMaxDistance * Math.exp(2_400 * 0.0016);
+  for (let cycle = 0; cycle < 3; cycle += 1) {
+    await dispatchBoundaryWheel(resourcePage, Math.log(CONFIG.solarMaxDistance / distance) / 0.0016);
+    distance = CONFIG.solarMaxDistance;
+    await dispatchBoundaryWheel(resourcePage, Math.log((CONFIG.solarMaxDistance * Math.exp(2_400 * 0.0016)) / distance) / 0.0016);
+    distance = CONFIG.solarMaxDistance * Math.exp(2_400 * 0.0016);
+    const again = await settleGalaxyResources();
+    assert.equal(again.galaxyCount, 1, `${prefix} cycle ${cycle + 1}: still one galaxy layer`);
+    assert.equal(again.galaxyUuid, first.galaxyUuid, `${prefix} cycle ${cycle + 1}: galaxy singleton is reused`);
+    assert.equal(again.geometries, first.geometries, `${prefix} cycle ${cycle + 1}: renderer geometry count plateaus`);
+    assert.equal(again.textureCount, first.textureCount, `${prefix} cycle ${cycle + 1}: renderer texture count plateaus`);
+    console.log(`${prefix} cycle ${cycle + 1}: geometries ${again.geometries}, textures ${again.textureCount}, heap ${again.heap}`);
+  }
+  assert.deepEqual(resourceErrors, [], `${prefix} singleton reuse has no browser errors`);
+  await resourcePage.close();
+  assert.deepEqual(errors, [], `${prefix} staged loading has no browser errors`);
+  await page.close();
+}
+
 const M31_PLACEHOLDER_SIZE = 256;
 const M31_LOADED_SIZE = { width: 384, height: 348 };
 
@@ -4145,6 +4412,7 @@ try {
     await writeFile(path.join(screenshotDir, "time-control-startup.json"), JSON.stringify(timeStartupReports, null, 2) + "\n");
   }
   await auditSolarHandoff(desktop);
+  await auditStagedDeepLoading(desktop, "desktop");
   await auditM31PlaceholderDisposal(desktop);
   await auditScaleTransitions(desktop);
   await auditFarSkyDirections(desktop);
@@ -4271,6 +4539,7 @@ try {
   await saveScreenshot(touchPage, "touch-landscape-card");
   assert.deepEqual(touchErrors, []);
   await auditResponsiveCosmology(touch, "touch-portrait");
+  await auditStagedDeepLoading(touch, "touch-portrait", true);
   await touchPage.close();
   await assertMinimumZoomViews(touch, "touch-portrait", ["sun", "jupiter", "saturn"], true);
   await assertMoonParentCloseViews(touch, "touch-portrait", true);
@@ -4318,6 +4587,7 @@ try {
     visibleFocusable: ["unsupported"],
   });
   await saveScreenshot(failurePage, "webgl-fallback");
+  assert.equal(await failurePage.locator("#loading").getAttribute("hidden"), "");
   await failure.close();
 
   console.log("browser-smoke ok");

@@ -10,6 +10,8 @@ import {
   cosmicDensitySampleCount,
   createTwoMrsSamples,
   generateCosmicDensity,
+  startCosmicDensityJob,
+  startTwoMrsSampleJob,
 } from "../js/cosmic-web.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -106,4 +108,34 @@ test("post-Virgo density stays deterministic and within the point budget", async
     "each density sample is submitted once rather than duplicated for a halo pass",
   );
   assert.doesNotMatch(source, /pushFilament|collectWebHubs|createWebVolume/);
+});
+
+test("budgeted 2MRS and density pumps match the one-shot helpers", () => {
+  const project = ({ lDeg, bDeg, distanceMpc }) => ({ x: lDeg, y: bDeg, z: distanceMpc });
+  const complete = createTwoMrsSamples(project);
+  const twoMrsJob = startTwoMrsSampleJob(project);
+  let twoMrsPumps = 0;
+  while (!twoMrsJob.done) {
+    twoMrsPumps += 1;
+    twoMrsJob.pump(0);
+    assert.ok(twoMrsPumps < 2_000, "2MRS pumping stays bounded");
+  }
+  assert.ok(twoMrsPumps > 1, "2MRS samples yield across budgeted pumps");
+  assert.deepEqual(twoMrsJob.result().positions, complete.positions);
+  assert.deepEqual(twoMrsJob.result().colors, complete.colors);
+
+  const innerRadius = 600;
+  const outerRadius = 1000;
+  const first = generateCosmicDensity(COSMIC_WEB_MODEL.outer, innerRadius, outerRadius);
+  const job = startCosmicDensityJob(COSMIC_WEB_MODEL.outer, innerRadius, outerRadius);
+  let pumps = 0;
+  while (!job.done) {
+    pumps += 1;
+    job.pump(0);
+    assert.ok(pumps < 20_000, "density pumping stays bounded");
+  }
+  assert.ok(pumps > 1, "outer density yields across budgeted pumps");
+  assert.deepEqual(job.result().positions, first.positions);
+  assert.deepEqual(job.result().colors, first.colors);
+  assert.equal(job.result().attempts, first.attempts);
 });
