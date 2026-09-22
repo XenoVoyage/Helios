@@ -3954,9 +3954,9 @@ async function assertBootCappedDpr(browser, deviceScaleFactor, expectedRatio, la
 }
 
 async function auditCappedDprResync(browser) {
-  await assertBootCappedDpr(browser, 1, 1, "dpr-1");
+  // DPR 1 is the live page below. One extra context covers native DPR 2 at boot;
+  // the cap is proven on the live 2 → 3 step instead of a third full load.
   await assertBootCappedDpr(browser, 2, 2, "dpr-2");
-  await assertBootCappedDpr(browser, 3, 2, "dpr-3-capped");
 
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
