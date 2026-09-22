@@ -494,6 +494,31 @@ assert.match(app, /function showUnsupported/);
 assert.match(app, /ui\.version\.hidden = true/);
 assert.match(app, /ui\.stage\.inert = true/);
 assert.match(app, /ResizeObserver/);
+{
+  const capFn = app.match(/function cappedPixelRatio\(\) \{\s*return Math\.min\(window\.devicePixelRatio \|\| 1, 2\);\s*\}/);
+  assert.ok(capFn, "DPR cap stays min(devicePixelRatio, 2) in one helper");
+  assert.equal(
+    [...app.matchAll(/Math\.min\(window\.devicePixelRatio \|\| 1, 2\)/g)].length,
+    1,
+    "the DPR cap has one owner",
+  );
+  assert.match(app, /renderer\.setPixelRatio\(cappedPixelRatio\(\)\)/);
+  const resizeFn = app.match(/function resize\(\) \{[\s\S]*?\n\}\n\nfunction /);
+  assert.ok(resizeFn, "resize owns CSS size, aspect, and capped pixel ratio");
+  assert.match(
+    resizeFn[0],
+    /if \(renderer\.getPixelRatio\(\) !== pixelRatio\) \{\s*renderer\.setPixelRatio\(pixelRatio\);\s*\}/,
+    "resize calls setPixelRatio only when the capped ratio changes",
+  );
+  assert.match(resizeFn[0], /cappedPixelRatio\(\)/);
+  assert.match(resizeFn[0], /renderer\.setSize\(width, height, false\)/);
+  assert.match(resizeFn[0], /camera\.aspect = width \/ Math\.max\(1, height\)/);
+  assert.doesNotMatch(
+    resizeFn[0],
+    /setPixelRatio\([^)]*3/,
+    "resize must not raise the DPR cap",
+  );
+}
 assert.match(app, /hidePlanets = scaleLayer\(state\.distance\) !== "solar"/);
 assert.match(app, /camera\.updateMatrixWorld\(true\);[\s\S]*updateConstellationLabels/);
 assert.ok(
