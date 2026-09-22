@@ -153,6 +153,21 @@ assert.doesNotMatch(
   /exact upstream HYG release and its matching license version were not retained/,
 );
 assert.match(readme, /v3\.1–v3\.4 \(CC BY-SA 2\.5\)/);
+{
+  const iauConstellationsUrl = "https://www.iau.org/IAU/Astronomy-FAQs/Constellations.aspx";
+  const retiredIauConstellationsPath = /https?:\/\/(?:www\.)?iau\.org\/public\/themes\/constellations\/?/i;
+  assert.ok(readme.includes(iauConstellationsUrl), "README cites the current IAU constellation page");
+  assert.ok(provenance.includes(iauConstellationsUrl), "PROVENANCE cites the current IAU constellation page");
+  for (const relative of await firstPartyFiles()) {
+    if (relative === "tests/static-check.mjs") continue;
+    const content = await read(relative);
+    assert.doesNotMatch(
+      content,
+      retiredIauConstellationsPath,
+      `${relative} still cites the retired IAU constellation route`,
+    );
+  }
+}
 assert.match(readme, /Venus uses that publisher's atmosphere map/);
 assert.match(readme, /Ceres's stored heliocentric state is one Horizons/);
 assert.match(readme, /Neptune's six orbital elements are one JPL Approximate Positions Table 1/);
