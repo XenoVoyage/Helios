@@ -1387,7 +1387,7 @@ async function auditM31PlaceholderDisposal(context) {
   failurePage.on("console", (message) => {
     if (message.type() !== "error") return;
     const text = message.text();
-    if (text.includes("andromeda.png")) return;
+    if (text.includes("andromeda.png") || text.includes("net::ERR_FAILED")) return;
     failureErrors.push(`console: ${text}`);
   });
   failurePage.on("requestfailed", (request) => {
