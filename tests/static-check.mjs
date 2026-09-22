@@ -106,7 +106,7 @@ assert.match(agents, /`\[SEVERITY\]\[Area\] Imperative outcome`/);
 for (const severity of ["CRITICAL", "HIGH", "MEDIUM", "LOW"]) {
   assert.match(agents, new RegExp(`\\b${severity}\\b`));
 }
-assert.match(agents, /Node 22 baseline/);
+assert.match(agents, /Node 24 baseline/);
 assert.match(agents, /Issue #44 exclusively owns Saturn's back-facing ring-shading correction/);
 assert.match(readme, /\[Repository Standard\]\(REPOSITORY_STANDARD\.md\)/);
 assert.match(provenance, /`AGENTS\.md` is the sole owner of Helios's Repository Standard status/);
@@ -180,9 +180,13 @@ const activeStandardFiles = [
 assert.doesNotMatch(activeStandardFiles, /\bv1\.[01]\b/i);
 assert.doesNotMatch(activeStandardFiles, /issue-74-standard-v1-1/i);
 assert.doesNotMatch(activeStandardFiles, /authorized bootstrap|bootstrap exception/i);
-assert.equal(packageJson.engines.node, "22.x");
+assert.equal(packageJson.engines.node, "24.x");
+assert.equal(packageLock.packages[""].engines.node, "24.x");
 assert.equal(packageJson.devDependencies.playwright, "1.62.1");
 assert.equal(packageLock.packages[""].devDependencies.playwright, "1.62.1");
+assert.equal((auditWorkflow.match(/node-version:\s*24\b/g) || []).length, 3);
+assert.equal((pagesWorkflow.match(/node-version:\s*24\b/g) || []).length, 1);
+assert.doesNotMatch(`${auditWorkflow}\n${pagesWorkflow}`, /node-version:\s*(?:22|26)\b/);
 for (const workflow of [auditWorkflow, pagesWorkflow]) {
   for (const action of workflow.matchAll(/uses:\s*[^@\s]+@([^\s]+)/g)) {
     assert.match(action[1], /^[0-9a-f]{40}$/, action[0]);

@@ -157,7 +157,7 @@ or physical verification.
   missing scientific data or imagery.
 - The diff is the smallest complete fix, contains no unrelated redesign, and
   accounts for every changed, added, generated, and deleted file.
-- `npm test` passes from a clean checkout on the Node 22 baseline declared in
+- `npm test` passes from a clean checkout on the Node 24 baseline declared in
   `package.json` and the workflows, including browser/WebGL checks. CI on the
   exact candidate is authoritative.
 - Documentation, provenance, product-version mirrors, tests, templates,
