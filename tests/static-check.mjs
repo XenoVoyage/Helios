@@ -120,7 +120,7 @@ assert.match(provenance, /p Eridani/);
 assert.match(provenance, /first non-empty `proper`/);
 assert.match(
   provenance,
-  /^The latest source evidence recorded in this ledger is dated 2026-09-07;\nsource-specific retrieval and check dates are recorded per entry when known\./m,
+  /^The latest source evidence recorded in this ledger is dated 2026-09-22;\nsource-specific retrieval and check dates are recorded per entry when known\./m,
 );
 assert.match(provenance, /`round\(float\(ra\) \* 15, 5\)`/);
 assert.match(provenance, /`round\(float\(dec\), 5\)`/);
@@ -135,12 +135,24 @@ assert.match(provenance, /b39c1d6dbab932bb624965241b6a13995886370781b9a398d0f1fb
 assert.match(provenance, /193dee77cbfef7179bf1eb6188cfdede9fd0d622760e4bc658ab775c1965c375/);
 assert.match(provenance, /01736aeafecb7f5082c9d2bbed1c6bb36bb9ea6bc4c9ebb3429ed2e8a3a0a4e1/);
 assert.match(provenance, /e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34/);
-assert.match(provenance, /inherited image\s+transformation records/);
+assert.match(provenance, /unresolved inherited sky-image\s+transformation records/);
+assert.match(provenance, /tests\/fixtures\/texture-provenance\.json/);
+assert.match(provenance, /2k_venus_atmosphere\.jpg/);
+assert.match(provenance, /2k_ceres_fictional\.jpg/);
+assert.match(provenance, /2k_saturn_ring_alpha\.png/);
+assert.match(provenance, /11ebb4ee043715aefbba6aeec8a61746fad67fa7/);
+assert.match(provenance, /Jupiter - Io \(A\)\.jpg/);
+assert.doesNotMatch(provenance, /resized\/compressed before import/);
+assert.doesNotMatch(
+  provenance,
+  /Imported as 2:1 atlases and JPEG-compressed; exact upstream commits/,
+);
 assert.doesNotMatch(
   provenance,
   /exact upstream HYG release and its matching license version were not retained/,
 );
 assert.match(readme, /v3\.1–v3\.4 \(CC BY-SA 2\.5\)/);
+assert.match(readme, /Venus uses that publisher's atmosphere map/);
 assert.match(readme, /Ceres's stored heliocentric state is one Horizons/);
 assert.match(readme, /Neptune's six orbital elements are one JPL Approximate Positions Table 1/);
 assert.doesNotMatch(readme, /not JPL Horizons or a perturbation ephemeris/);
