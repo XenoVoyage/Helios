@@ -47,7 +47,7 @@ alone.
 `js/2mrs-data.js` is a generated, hash-verified payload. Read its metadata
 header—not the base64 body—unless the task specifically owns catalog
 regeneration or data integrity. `scripts/build-2mrs.mjs` is its canonical
-generator.
+generator. The independent payload pin is `tests/fixtures/2mrs-integrity.json`.
 
 Every issue PR landing on `develop` increments the public product version in
 all three mirrors together: canonical `VERSION.txt`, `CONFIG.VERSION` in

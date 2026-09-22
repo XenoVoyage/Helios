@@ -113,6 +113,7 @@ try {
     ".git/config", ".git/HEAD", "package.json", "package-lock.json",
     "README.md", "VERSION.txt", "AGENTS.md", "REPOSITORY_STANDARD.md",
     "tests/serve.mjs", "tests/fixtures/orbital-provenance.json",
+    "tests/fixtures/2mrs-integrity.json",
     "scripts/build-2mrs.mjs", "scripts/stage-site.mjs",
     ".github/workflows/pages.yml", "docs/assets/helios-overview.webp",
   ]) {
