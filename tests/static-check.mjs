@@ -135,7 +135,7 @@ assert.match(provenance, /b39c1d6dbab932bb624965241b6a13995886370781b9a398d0f1fb
 assert.match(provenance, /193dee77cbfef7179bf1eb6188cfdede9fd0d622760e4bc658ab775c1965c375/);
 assert.match(provenance, /01736aeafecb7f5082c9d2bbed1c6bb36bb9ea6bc4c9ebb3429ed2e8a3a0a4e1/);
 assert.match(provenance, /e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34/);
-assert.match(provenance, /unresolved inherited sky-image\s+transformation records/);
+assert.match(provenance, /unresolved\s+inherited sky-image\s+transformation records/);
 assert.match(provenance, /tests\/fixtures\/texture-provenance\.json/);
 assert.match(provenance, /2k_venus_atmosphere\.jpg/);
 assert.match(provenance, /2k_ceres_fictional\.jpg/);
