@@ -194,6 +194,13 @@ function setLoadingVisible(visible, announce = false) {
     ui.loading.hidden = !visible;
     document.documentElement.dataset.heliosLoading = visible ? "1" : "";
     if (visible && announce) say(LOADING_STATUS);
+    else if (!visible && ui.status?.textContent === LOADING_STATUS) {
+      if (wantsDeepLayer()) ui.status.textContent = "";
+      else {
+        const { announcement } = sceneSemantics();
+        if (announcement) say(announcement);
+      }
+    }
   }
   syncViewportBusy();
 }

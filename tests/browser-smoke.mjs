@@ -1481,17 +1481,38 @@ async function auditStagedDeepLoading(context, prefix, touch = false) {
   });
   await dispatchBoundaryWheel(resourcePage, 2_400);
   await resourcePage.waitForFunction(() => document.documentElement.dataset.galaxyReady === "1");
-  await waitForTwoAnimationFrames(resourcePage);
-  const first = await resourcePage.evaluate(() => globalThis.__heliosGalaxyResourceAudit.snapshot());
-  assert.equal(first.galaxyCount, 1, `${prefix}: one canonical galaxy layer after first deep zoom`);
+  const settleGalaxyResources = async () => {
+    let previous = null;
+    let stable = 0;
+    let latest = null;
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      await waitForTwoAnimationFrames(resourcePage);
+      latest = await resourcePage.evaluate(() => globalThis.__heliosGalaxyResourceAudit.snapshot());
+      if (
+        latest
+        && previous
+        && latest.textureCount === previous.textureCount
+        && latest.geometries === previous.geometries
+        && latest.galaxyUuid === previous.galaxyUuid
+      ) {
+        stable += 1;
+        if (stable >= 6) return latest;
+      } else {
+        stable = 0;
+      }
+      previous = latest;
+    }
+    return latest;
+  };
+  const first = await settleGalaxyResources();
+  assert.equal(first?.galaxyCount, 1, `${prefix}: one canonical galaxy layer after first deep zoom`);
   let distance = CONFIG.solarMaxDistance * Math.exp(2_400 * 0.0016);
   for (let cycle = 0; cycle < 3; cycle += 1) {
     await dispatchBoundaryWheel(resourcePage, Math.log(CONFIG.solarMaxDistance / distance) / 0.0016);
     distance = CONFIG.solarMaxDistance;
-    await dispatchBoundaryWheel(resourcePage, Math.log((CONFIG.solarMaxDistance * 4) / distance) / 0.0016);
-    distance = CONFIG.solarMaxDistance * 4;
-    await waitForTwoAnimationFrames(resourcePage);
-    const again = await resourcePage.evaluate(() => globalThis.__heliosGalaxyResourceAudit.snapshot());
+    await dispatchBoundaryWheel(resourcePage, Math.log((CONFIG.solarMaxDistance * Math.exp(2_400 * 0.0016)) / distance) / 0.0016);
+    distance = CONFIG.solarMaxDistance * Math.exp(2_400 * 0.0016);
+    const again = await settleGalaxyResources();
     assert.equal(again.galaxyCount, 1, `${prefix} cycle ${cycle + 1}: still one galaxy layer`);
     assert.equal(again.galaxyUuid, first.galaxyUuid, `${prefix} cycle ${cycle + 1}: galaxy singleton is reused`);
     assert.equal(again.geometries, first.geometries, `${prefix} cycle ${cycle + 1}: renderer geometry count plateaus`);
