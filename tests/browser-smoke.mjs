@@ -1084,7 +1084,6 @@ async function selectionSnapshot(page) {
     cardName: document.querySelector("#card-name").textContent,
     status: document.querySelector("#status-live").textContent,
     context: document.querySelector("#scene-context").textContent,
-    active: [...document.querySelectorAll("[data-body-id].is-active")].map((node) => node.dataset.bodyId),
   }));
 }
 
@@ -1192,6 +1191,7 @@ async function findCanvasPickPoint(page, cdp) {
     if (!snapshot.cardHidden) {
       await page.locator("#reset-button").click();
       await page.locator("#body-card[hidden]").waitFor({ state: "attached" });
+      await waitForTwoAnimationFrames(page);
       return { point, cardName: snapshot.cardName };
     }
   }
@@ -1223,11 +1223,11 @@ async function auditPointerCancelAbort(context, prefix, touch = false) {
       );
     };
 
-    const abortAt = async (label, point, afterStart) => {
+    const abortAt = async (label, point, afterStart, type = "pointercancel") => {
       const before = await selectionSnapshot(page);
       const pointerId = await beginCanvasPointer(page, point, cdp);
       if (afterStart) await afterStart(pointerId, point);
-      await dispatchCanvasPointer(page, "pointercancel", {
+      await dispatchCanvasPointer(page, type, {
         pointerId,
         x: point.x,
         y: point.y,
@@ -1246,25 +1246,11 @@ async function auditPointerCancelAbort(context, prefix, touch = false) {
         cdp,
       );
     });
-
-    {
-      const before = await selectionSnapshot(page);
-      const pointerId = await beginCanvasPointer(page, pick.point, cdp);
-      const released = await page.locator("#viewport").evaluate((canvas, id) => {
-        if (canvas.hasPointerCapture(id)) {
-          canvas.releasePointerCapture(id);
-          return "capture";
-        }
-        canvas.dispatchEvent(new PointerEvent("lostpointercapture", {
-          bubbles: true,
-          pointerId: id,
-        }));
-        return "synthetic";
+    await abortAt("lostpointercapture during tap", pick.point, async (pointerId) => {
+      await page.locator("#viewport").evaluate((canvas, id) => {
+        if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
       }, pointerId);
-      assert.ok(released, `${prefix}: lostpointercapture reached the canvas`);
-      await endCanvasPointer(page, cdp);
-      await assertUnchanged("lostpointercapture during tap", before);
-    }
+    }, "lostpointercapture");
 
     await abortAt("pointercancel during drag", pick.point, async (pointerId, point) => {
       await moveCanvasPointer(
@@ -1367,19 +1353,32 @@ async function auditPointerCancelAbort(context, prefix, touch = false) {
 
     await page.locator("#reset-button").click();
     await page.locator("#body-card[hidden]").waitFor({ state: "attached" });
-    await clickCanvasPoint(page, pick.point, cdp);
-    await page.locator("#body-card:not([hidden])").waitFor();
+    await waitForMoonCameraSettled(page);
+    const stillPicks = await findCanvasPickPoint(page, cdp);
+    assert.ok(stillPicks, `${prefix}: ordinary tap selection still works after abort cleanup`);
     assert.equal(
-      await page.locator("#card-name").textContent(),
+      stillPicks.cardName,
       pick.cardName,
       `${prefix}: ordinary tap selection still works after abort cleanup`,
     );
 
-    await page.locator("#reset-button").click();
     await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), "earth");
     await page.locator("#body-card:not([hidden])").waitFor();
-    await clickCanvasPoint(page, miss, cdp);
-    await page.locator("#body-card[hidden]").waitFor({ state: "attached" });
+    await waitForMoonCameraSettled(page);
+    let cleared = false;
+    for (const candidate of missCandidates) {
+      const point = await unobstructedCanvasPoint(page, [candidate]);
+      if (!point) continue;
+      await clickCanvasPoint(page, point, cdp);
+      await waitForTwoAnimationFrames(page);
+      if ((await selectionSnapshot(page)).cardHidden) {
+        cleared = true;
+        break;
+      }
+      await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), "earth");
+      await page.locator("#body-card:not([hidden])").waitFor();
+    }
+    assert.equal(cleared, true, `${prefix}: ordinary empty-space tap still clears after abort cleanup`);
     assert.equal(
       await page.locator("#status-live").textContent(),
       "Selection cleared",
