@@ -3,6 +3,14 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Canonical 2MRS subset generator. Do not edit js/2mrs-data.js by hand.
+// An intentional catalog update is a reviewed issue, not a silent rebuild.
+// After the owner-approved source table is confirmed, refresh in the same
+// review: EXPECTED_SOURCE_SHA256 and EXPECTED_SOURCE_ROWS here, the generated
+// js/2mrs-data.js metadata and payload, PROVENANCE.md hashes, and the
+// independent pin in tests/fixtures/2mrs-integrity.json. Regenerating the
+// payload file does not update that pin.
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outputPath = path.join(root, "js/2mrs-data.js");
 const EXPECTED_SOURCE_SHA256 = "236be982e9a172c55d483d40c38ca38b36a3dc8b8af4f402a0fd045f1b87da6f";

@@ -15,25 +15,85 @@ import {
 } from "../js/cosmic-web.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const pin = JSON.parse(
+  await readFile(new URL("./fixtures/2mrs-integrity.json", import.meta.url), "utf8"),
+);
 
-test("tracked 2MRS payload matches the licensed source manifest", () => {
-  const payload = Buffer.from(TWOMRS_PAYLOAD_BASE64.replace(/\s/g, ""), "base64");
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function decodeTwoMrsPayload(payloadBase64) {
+  return Buffer.from(String(payloadBase64).replace(/\s/g, ""), "base64");
+}
+
+function twoMrsIntegrityFailures(metadata, payloadBytes, expected) {
+  const failures = [];
+  const payloadSha256 = sha256(payloadBytes);
+  if (metadata.sourceSha256 !== expected.sourceSha256) failures.push("source digest");
+  if (metadata.payloadSha256 !== expected.payloadSha256) failures.push("metadata payload digest");
+  if (payloadSha256 !== expected.payloadSha256) failures.push("payload digest");
+  if (metadata.sourceRows !== expected.sourceRows) failures.push("source rows");
+  if (metadata.includedRows !== expected.includedRows) failures.push("included rows");
+  if (metadata.recordBytes !== expected.recordBytes) failures.push("record width");
+  if (metadata.selection !== expected.selection) failures.push("selection");
+  if (payloadBytes.length !== expected.includedRows * expected.recordBytes) {
+    failures.push("payload length");
+  }
+  return failures;
+}
+
+test("tracked 2MRS payload matches the independent integrity pin", () => {
+  const payload = decodeTwoMrsPayload(TWOMRS_PAYLOAD_BASE64);
+  assert.equal(pin.generator, "scripts/build-2mrs.mjs");
+  assert.equal(pin.payload, "js/2mrs-data.js");
   assert.equal(TWOMRS_METADATA.catalog, "NASA HEASARC TWOMASSRSC");
   assert.equal(TWOMRS_METADATA.citation, "Huchra et al. 2012, ApJS 199, 26");
   assert.equal(TWOMRS_METADATA.license, "https://www.usa.gov/government-works");
-  assert.equal(TWOMRS_METADATA.sourceRows, 44599);
-  assert.equal(TWOMRS_METADATA.includedRows, 42927);
   assert.equal(TWOMRS_METADATA.h0KmSPerMpc, 73);
   assert.equal(TWOMRS_METADATA.maxDistanceMpc, 300);
-  assert.equal(
-    TWOMRS_METADATA.sourceSha256,
-    "236be982e9a172c55d483d40c38ca38b36a3dc8b8af4f402a0fd045f1b87da6f",
+  assert.deepEqual(twoMrsIntegrityFailures(TWOMRS_METADATA, payload, pin), []);
+});
+
+test("2MRS payload and header co-edit still fails the independent pin", () => {
+  const payload = decodeTwoMrsPayload(TWOMRS_PAYLOAD_BASE64);
+  const mutated = Buffer.from(payload);
+  mutated[0] ^= 0xff;
+  const mutatedHash = sha256(mutated);
+  const coeditedMetadata = { ...TWOMRS_METADATA, payloadSha256: mutatedHash };
+  assert.equal(sha256(mutated), coeditedMetadata.payloadSha256);
+  assert.deepEqual(
+    twoMrsIntegrityFailures(coeditedMetadata, mutated, pin).sort(),
+    ["metadata payload digest", "payload digest"],
   );
-  assert.equal(payload.length, TWOMRS_METADATA.includedRows * TWOMRS_METADATA.recordBytes);
-  assert.equal(
-    createHash("sha256").update(payload).digest("hex"),
-    TWOMRS_METADATA.payloadSha256,
+});
+
+test("2MRS payload truncation and corruption fail the independent pin", () => {
+  const payload = decodeTwoMrsPayload(TWOMRS_PAYLOAD_BASE64);
+  const truncated = payload.subarray(0, payload.length - pin.recordBytes);
+  assert.deepEqual(
+    twoMrsIntegrityFailures(TWOMRS_METADATA, truncated, pin).sort(),
+    ["payload digest", "payload length"],
   );
+  const corrupted = Buffer.from(payload);
+  corrupted[corrupted.length - 1] ^= 0x01;
+  assert.deepEqual(
+    twoMrsIntegrityFailures(TWOMRS_METADATA, corrupted, pin),
+    ["payload digest"],
+  );
+});
+
+test("canonical 2MRS generator still owns the tracked payload contract", async () => {
+  const generator = await readFile(path.join(root, pin.generator), "utf8");
+  assert.match(generator, /js\/2mrs-data\.js/);
+  assert.match(generator, new RegExp(`EXPECTED_SOURCE_SHA256 = "${pin.sourceSha256}"`));
+  assert.match(generator, new RegExp(`EXPECTED_SOURCE_ROWS = ${pin.sourceRows}`));
+  assert.match(generator, new RegExp(`RECORD_BYTES = ${pin.recordBytes}`));
+  assert.match(
+    generator,
+    new RegExp(pin.selection.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+  );
+  assert.match(generator, /tests\/fixtures\/2mrs-integrity\.json/);
 });
 
 test("2MRS samples retain galactic directions and bounded Hubble-law distances", () => {
