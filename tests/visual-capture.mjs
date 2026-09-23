@@ -65,7 +65,7 @@ assert.equal(moonIds.length, 9);
 const touchMoons = ["moon", "phobos", "io", "triton"];
 const radius = (id) => visualBodyRadius(findBody(id));
 const framedDistance = (id) => Math.max(radius(id) * 7.5, 5.5);
-// Main predates the per-body floor. Preserve that source's actual supported minimum.
+// Preserve the source's supported minimum, including older historical fallbacks.
 const minimumDistance = (id) => configMath.minimumFocusDistance
   ? configMath.minimumFocusDistance(radius(id)) : CONFIG.minDistance;
 const expected = new Set();
@@ -187,8 +187,8 @@ const manifest = {
   limits: [
     "Touch is emulated with CDP, not physical hardware.",
     "Body selection buttons use DOM click, while camera/pick gestures use browser mouse or CDP touch input.",
-    "Source minimum zoom differs: main has a global floor; develop/candidate have a source-owned per-body floor.",
-    "Main has no aria-busy attribute; absence is recorded, never converted to false.",
+    "Minimum zoom follows each source's minimumFocusDistance export when available, otherwise its global floor.",
+    "Ordinary captures require the expected aria-busy value on main, develop, and candidate; absence is recorded, never converted to false.",
     "Minimum rates and native-step intermediate rates differ across source revisions. Rates are source-owned; matched moving captures do not imply equal simulation times or poses.",
     "Screenshots do not certify physical screen-reader behavior or universal scientific correctness.",
   ],
@@ -387,7 +387,7 @@ async function pinch(page, from, to) {
 
 async function zoomMinimum(page) {
   if (states.get(page).touch) {
-    // Two supported pinch gestures reach even main's inherited global floor.
+    // Two supported pinch gestures reach the source's supported focus minimum.
     await pinch(page, 40, 370);
     await advance(page, 32);
     await pinch(page, 40, 370);
@@ -443,7 +443,7 @@ async function settle(page) {
     if (sha256(previous) === sha256(next) && busy !== "true") { stable = true; break; }
     previous = next;
   }
-  return { stable, elapsed, criterion: "two byte-identical full-viewport PNGs separated by 400 controlled milliseconds; aria-busy not true (may be absent on main)" };
+  return { stable, elapsed, criterion: "two byte-identical full-viewport PNGs separated by 400 controlled milliseconds; aria-busy not true, with its exact expected value checked at capture" };
 }
 
 async function capture(page, name, details = {}, moving = false) {
@@ -463,14 +463,12 @@ async function capture(page, name, details = {}, moving = false) {
   entry.acquisitionWallMilliseconds = Math.round(performance.now() - started);
   manifest.captures.push(entry);
   if (settled && !settled.stable) manifest.failures.push({ name, reason: "bounded stable-frame criterion was not reached; original retained for review" });
-  if (sourceLabel !== "main") {
-    const expectedBusy = moving ? "true" : "false";
-    if (entry.observable.busy !== expectedBusy) {
-      manifest.failures.push({ name, reason: `expected aria-busy=${expectedBusy}, observed ${entry.observable.busy}; original retained for review` });
-    }
-    if (entry.pickMatched === false) {
-      manifest.failures.push({ name, reason: `centered pick did not select ${entry.requestedPick}; original retained for review` });
-    }
+  const expectedBusy = moving ? "true" : "false";
+  if (entry.observable.busy !== expectedBusy) {
+    manifest.failures.push({ name, reason: `expected aria-busy=${expectedBusy}, observed ${entry.observable.busy}; original retained for review` });
+  }
+  if (sourceLabel !== "main" && entry.pickMatched === false) {
+    manifest.failures.push({ name, reason: `centered pick did not select ${entry.requestedPick}; original retained for review` });
   }
   await flush();
   console.log(`Captured ${sourceLabel}/${group} ${manifest.captures.length}/${expected.size} ${name}${settled?.stable === false ? " (UNSETTLED)" : ""}`);
