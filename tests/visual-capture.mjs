@@ -20,7 +20,7 @@ const inventoryOnly = options.has("--inventory-only");
 for (const name of ["--source-root", "--source-label", ...(inventoryOnly ? [] : ["--output"])]) assert.ok(options.has(name), `${name} is required`);
 for (const name of options.keys()) assert.ok(["--source-root", "--output", "--source-label", "--inventory-only", "--group"].includes(name), `unknown argument ${name}`);
 const group = options.get("--group") || "all";
-assert.ok(["all", "bodies", "desktop-moons", "touch-moons", "other", "focus"].includes(group), "group must be all, bodies, desktop-moons, touch-moons, other or focus");
+assert.ok(["all", "bodies", "desktop-moons", "touch-moons", "other", "ordinary", "focus"].includes(group), "group must be all, bodies, desktop-moons, touch-moons, other, ordinary or focus");
 const sourceRoot = path.resolve(options.get("--source-root"));
 const output = options.has("--output") ? path.resolve(options.get("--output")) : null;
 const sourceLabel = options.get("--source-label");
@@ -65,7 +65,7 @@ assert.equal(moonIds.length, 9);
 const touchMoons = ["moon", "phobos", "io", "triton"];
 const radius = (id) => visualBodyRadius(findBody(id));
 const framedDistance = (id) => Math.max(radius(id) * 7.5, 5.5);
-// Main predates the per-body floor. Preserve that source's actual supported minimum.
+// Preserve the source's supported minimum, including older historical fallbacks.
 const minimumDistance = (id) => configMath.minimumFocusDistance
   ? configMath.minimumFocusDistance(radius(id)) : CONFIG.minDistance;
 const expected = new Set();
@@ -127,8 +127,34 @@ for (const scenario of focusTrackingScenarios) {
   }
 }
 assert.equal(expected.size, 286);
+const ordinaryDirectLooks = [
+  "sky", "solarfar", "tailsky", "growing", "disk", "milkyway", "mwedge",
+  "mwbelow", "neighborhood", "localgroup", "virgo", "preweb", "web", "universe",
+];
+const ordinaryVirgoFractions = [0.15, 0.35, 0.55, 0.75, 0.92];
+const ordinaryUniverseFractions = [0.15, 0.35, 0.55, 0.68, 0.7, 0.72, 0.74, 0.76, 0.78, 0.8, 0.82, 0.85, 0.9, 0.95, 1.01];
+const ordinaryPercent = (fraction) => String(Math.round(fraction * 100)).padStart(2, "0");
+const ordinaryNames = [
+  ...["major-initial", "off", "all", "major-restored"].map((mode) => `desktop-constellations-${mode}`),
+  "desktop-overview",
+  ...ordinaryDirectLooks.map((look) => `desktop-${look}`),
+  ...["start", "mid", "end"].map((seat) => `desktop-solar-handoff-${seat}`),
+  ...ordinaryVirgoFractions.map((fraction) => `desktop-transition-virgo-web-${ordinaryPercent(fraction)}`),
+  ...ordinaryUniverseFractions.map((fraction) => `desktop-transition-web-universe-${ordinaryPercent(fraction)}`),
+  ...["forward", "yaw-quarter", "yaw-180", "pitch-high", "pitch-low", "diagonal"].map((seat) => `desktop-far-sky-${seat}`),
+  "earth-june-solstice", "earth-december-solstice", "touch-card", "touch-landscape-card",
+  ...["portrait", "landscape"].flatMap((aspect) => ["localgroup", "virgo", "web", "universe"].map((look) => `touch-${aspect}-${look}`)),
+  "triton-rotation-a", "triton-rotation-b", "webgl-fallback",
+];
+assert.equal(ordinaryNames.length, 63);
+assert.equal(new Set(ordinaryNames).size, 63);
+const ordinaryNameSet = new Set(ordinaryNames);
+
+for (const name of ordinaryNames) expect(name);
+assert.equal(expected.size, 349);
 const completeMatrix = [...expected];
 const groupFor = (name) => {
+  if (ordinaryNameSet.has(name)) return "ordinary";
   const tracking = trackingNames.get(name);
   if (tracking) return tracking.touch ? "other" : tracking.bodyId === "io" ? "desktop-moons" : "bodies";
   if (name.includes("-moon-parent-")) return name.startsWith("desktop-") ? "desktop-moons" : "touch-moons";
@@ -138,12 +164,12 @@ const groupFor = (name) => {
 for (const name of expected) {
   if (group === "focus" ? !trackingNames.has(name) : group !== "all" && groupFor(name) !== group) expected.delete(name);
 }
-assert.equal(expected.size, { all: 286, bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 115, focus: 30 }[group]);
+assert.equal(expected.size, { all: 349, bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 115, ordinary: 63, focus: 30 }[group]);
 const activeTrackingScenarios = focusTrackingScenarios.filter((item) =>
   expected.has(`focus-tracking-${item.id}-${focusTrackingOffsets[0]}ms`));
 
 if (inventoryOnly) {
-  console.log(JSON.stringify({
+  const inventory = JSON.stringify({
     mode: "inventory only; no browser launched, no screenshots captured, no visual pass asserted",
     group,
     completeMatrixCount: completeMatrix.length,
@@ -155,14 +181,16 @@ if (inventoryOnly) {
       const timeRateViewport = timeRateViewports.find(({ id }) => name.startsWith(`supplement-time-rate-${id}-`));
       return {
         name,
-        viewport: timeRateViewport?.size || (compact ? [Number(compact[1]), Number(compact[2])] : (name.includes("touch-portrait") || trackingNames.get(name)?.touch) ? [390, 844] : [1440, 900]),
+        viewport: name === "webgl-fallback" ? [1024, 768] : name === "touch-card" ? [390, 844] : name === "touch-landscape-card" ? [568, 320] : name.startsWith("touch-landscape-") ? [844, 390] : timeRateViewport?.size || (compact ? [Number(compact[1]), Number(compact[2])] : (name.includes("touch-portrait") || trackingNames.get(name)?.touch) ? [390, 844] : [1440, 900]),
+        ...(/^triton-rotation-[ab]$/.test(name) ? { crop: "360px Triton crop; exact rectangle recorded at capture" } : {}),
         ...(timeRateViewport && name.endsWith("-dock") ? { crop: "outward-rounded visible dock bounds; exact rectangle recorded at capture" } : {}),
         scenario: name.replace(/^supplement-/, "").replaceAll("-", " "),
       };
     }),
     sourceTimeRates,
     sourceDistances: BODIES.map(({ id }) => ({ id, framed: framedDistance(id), minimum: minimumDistance(id) })),
-  }, null, 2));
+  }, null, 2) + "\n";
+  await new Promise((resolve, reject) => process.stdout.write(inventory, (error) => error ? reject(error) : resolve()));
   process.exit(0);
 }
 
@@ -182,13 +210,13 @@ const manifest = {
   },
   node: process.version,
   playwright: JSON.parse(await readFile(path.join(harnessRoot, "node_modules/playwright/package.json"), "utf8")).version,
-  rendering: "Headless Chromium; ANGLE SwiftShader; deviceScaleFactor 1; screenshots are full viewport originals except the explicitly named time-rate dock crops, whose source view and exact clip are recorded",
-  clockPolicy: "Playwright clock installed before navigation. A ready observer uses the public playback toggle; a thin requestAnimationFrame wrapper additionally verifies and, if necessary, pauses through that control immediately before the first application tick callback. The first-tick record is asserted on every page. The wrapper preserves timestamps and callback execution. After loading, browser time is paused and advanced with runFor. No simulation-time or camera-state hook is injected. Matching labels alone do not prove matching camera/time.",
+  rendering: "Headless Chromium; ANGLE SwiftShader; deviceScaleFactor 1; screenshots are full viewport originals except the explicitly named time-rate dock and ordinary Triton crops, whose source view and exact clip are recorded; observed renderer and font metadata are retained per capture",
+  clockPolicy: "For deterministic PNG captures only: Playwright clock installed before navigation. A ready observer uses the public playback toggle; a thin requestAnimationFrame wrapper additionally verifies and, if necessary, pauses through that control immediately before the first application tick callback. The first-tick record is asserted on every supported WebGL page; intentional fallback records its separate failure contract. The wrapper preserves timestamps and callback execution. After loading, browser time is paused and advanced with runFor. No simulation-time or camera-state hook is injected. Matching labels alone do not prove matching camera/time. The separate deepLoadObservations contexts use real browser performance.now without Playwright clock installation; their method, completion semantics, and limits are recorded in that field.",
   limits: [
     "Touch is emulated with CDP, not physical hardware.",
     "Body selection buttons use DOM click, while camera/pick gestures use browser mouse or CDP touch input.",
-    "Source minimum zoom differs: main has a global floor; develop/candidate have a source-owned per-body floor.",
-    "Main has no aria-busy attribute; absence is recorded, never converted to false.",
+    "Minimum zoom follows each source's minimumFocusDistance export when available, otherwise its global floor.",
+    "Ordinary captures require the expected aria-busy value on main, develop, and candidate; absence is recorded, never converted to false.",
     "Minimum rates and native-step intermediate rates differ across source revisions. Rates are source-owned; matched moving captures do not imply equal simulation times or poses.",
     "Screenshots do not certify physical screen-reader behavior or universal scientific correctness.",
   ],
@@ -252,6 +280,9 @@ async function screenshot(page, purpose, clip = null) {
 async function observe(page) {
   return page.evaluate(() => {
     const canvas = document.querySelector("#viewport");
+    const gl = canvas?.getContext("webgl2");
+    const debug = gl?.getExtension("WEBGL_debug_renderer_info");
+    const labelStyle = getComputedStyle(document.querySelector(".sky-label") || document.body);
     const labels = [...document.querySelectorAll(".sky-label")].map((label) => ({
       id: label.dataset.bodyId, hidden: label.hidden, transform: label.style.transform,
       rectangle: (() => { const r = label.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })(),
@@ -271,6 +302,15 @@ async function observe(page) {
       scene: document.querySelector("#scene-context")?.textContent,
       focus: document.activeElement?.id || document.activeElement?.dataset.bodyId || document.activeElement?.tagName,
       version: document.querySelector("#version-label")?.textContent,
+      renderer: gl ? {
+        vendor: gl.getParameter(gl.VENDOR), renderer: gl.getParameter(gl.RENDERER),
+        unmaskedVendor: debug ? gl.getParameter(debug.UNMASKED_VENDOR_WEBGL) : null,
+        unmaskedRenderer: debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : null,
+        drawingBuffer: [gl.drawingBufferWidth, gl.drawingBufferHeight],
+        devicePixelRatio,
+      } : null,
+      fonts: { status: document.fonts.status, labelFamily: labelStyle.fontFamily,
+        labelSize: labelStyle.fontSize, labelWeight: labelStyle.fontWeight },
       timeSpeed: {
         sliderValue: Number(document.querySelector("#speed-slider")?.value),
         sliderStep: document.querySelector("#speed-slider")?.step,
@@ -329,6 +369,7 @@ async function newPage(touch = false, size = touch ? [390, 844] : [1440, 900], s
   });
   await page.goto(base + suffix, { waitUntil: "networkidle", timeout: 30_000 });
   await page.waitForFunction(() => document.documentElement.dataset.heliosReady === "1");
+  await page.evaluate(() => document.fonts.ready);
   assert.equal(await page.evaluate(() => globalThis.__heliosVisualPausedAtReady), true, "simulation paused at initial ready signal");
   assert.equal(await page.evaluate(() => globalThis.__heliosVisualFirstTick?.pausedBeforeCallback), true, "public Pause state is verified before the first application tick");
   assert.equal(await page.locator("#play-button").getAttribute("aria-pressed"), "false");
@@ -387,7 +428,7 @@ async function pinch(page, from, to) {
 
 async function zoomMinimum(page) {
   if (states.get(page).touch) {
-    // Two supported pinch gestures reach even main's inherited global floor.
+    // Two supported pinch gestures reach the source's supported focus minimum.
     await pinch(page, 40, 370);
     await advance(page, 32);
     await pinch(page, 40, 370);
@@ -443,7 +484,7 @@ async function settle(page) {
     if (sha256(previous) === sha256(next) && busy !== "true") { stable = true; break; }
     previous = next;
   }
-  return { stable, elapsed, criterion: "two byte-identical full-viewport PNGs separated by 400 controlled milliseconds; aria-busy not true (may be absent on main)" };
+  return { stable, elapsed, criterion: "two byte-identical full-viewport PNGs separated by 400 controlled milliseconds; aria-busy not true, with its exact expected value checked at capture" };
 }
 
 async function capture(page, name, details = {}, moving = false) {
@@ -452,7 +493,7 @@ async function capture(page, name, details = {}, moving = false) {
   assert.ok(!manifest.captures.some((entry) => entry.name === name), `duplicate capture ${name}`);
   const settled = moving ? null : await settle(page);
   const state = states.get(page);
-  const png = await screenshot(page, name);
+  const png = await screenshot(page, name, details.clip || null);
   await writeFile(path.join(output, `${name}.png`), png);
   const entry = {
     name, file: `${name}.png`, sha256: sha256(png), bytes: png.length,
@@ -463,14 +504,12 @@ async function capture(page, name, details = {}, moving = false) {
   entry.acquisitionWallMilliseconds = Math.round(performance.now() - started);
   manifest.captures.push(entry);
   if (settled && !settled.stable) manifest.failures.push({ name, reason: "bounded stable-frame criterion was not reached; original retained for review" });
-  if (sourceLabel !== "main") {
-    const expectedBusy = moving ? "true" : "false";
-    if (entry.observable.busy !== expectedBusy) {
-      manifest.failures.push({ name, reason: `expected aria-busy=${expectedBusy}, observed ${entry.observable.busy}; original retained for review` });
-    }
-    if (entry.pickMatched === false) {
-      manifest.failures.push({ name, reason: `centered pick did not select ${entry.requestedPick}; original retained for review` });
-    }
+  const expectedBusy = moving ? "true" : "false";
+  if (entry.observable.busy !== expectedBusy) {
+    manifest.failures.push({ name, reason: `expected aria-busy=${expectedBusy}, observed ${entry.observable.busy}; original retained for review` });
+  }
+  if (sourceLabel !== "main" && entry.pickMatched === false) {
+    manifest.failures.push({ name, reason: `centered pick did not select ${entry.requestedPick}; original retained for review` });
   }
   await flush();
   console.log(`Captured ${sourceLabel}/${group} ${manifest.captures.length}/${expected.size} ${name}${settled?.stable === false ? " (UNSETTLED)" : ""}`);
@@ -840,6 +879,529 @@ async function timeRates() {
   });
 }
 
+async function ordinaryContext(page, look) {
+  const expected = {
+    sky: /Earth sky/, solarfar: /Solar system/, tailsky: /Milky Way/,
+    growing: /Milky Way/, disk: /Milky Way/, milkyway: /Milky Way/,
+    mwedge: /Milky Way/, mwbelow: /Milky Way/, neighborhood: /Nearby galaxies/,
+    localgroup: /Local Group/, virgo: /Virgo Cluster/, preweb: /Laniakea Supercluster/,
+    web: /2MRS galaxy distribution/, universe: /Schematic observable universe/,
+  }[look];
+  assert.match(await page.locator("#scene-context").textContent(), expected, `${look}: source scene context`);
+  assert.equal(await page.locator("#viewport").getAttribute("aria-label"), "Helios scene");
+  if (look === "sky") assert.equal(await page.locator("#card-name").textContent(), "Earth");
+  else if (look === "solarfar") assert.equal(await page.getAttribute("html", "data-galaxy-ready"), null);
+  else assert.equal(await page.getAttribute("html", "data-galaxy-ready"), "1");
+}
+
+async function ordinaryOverviewAndConstellations() {
+  const page = await newPage();
+  try {
+    for (const [mode, seat] of [["major", "major-initial"], ["off", "off"], ["all", "all"], ["major", "major-restored"]]) {
+      await page.locator("#sky-mode").selectOption(mode);
+      states.get(page).inputs.push({ at: states.get(page).elapsed, kind: "public constellation select", mode });
+      await capture(page, `desktop-constellations-${seat}`, { initialSimulation: "J2000; paused before first application tick" });
+    }
+    await click(page, "#reset-button");
+    await capture(page, "desktop-overview", { initialSimulation: "J2000; settled reset overview" });
+  } finally { await closePage(page); }
+}
+
+async function ordinaryDirectViews() {
+  for (const look of ordinaryDirectLooks) await scenario(`ordinary direct ${look}`, async () => {
+    const page = await newPage(false, [1440, 900], `?look=${look}`);
+    try {
+      await ordinaryContext(page, look);
+      await capture(page, `desktop-${look}`, { requestedLook: look, initialSimulation: "J2000; paused before first application tick" });
+    } finally { await closePage(page); }
+  });
+}
+
+async function ordinaryHandoff() {
+  const page = await newPage();
+  try {
+    const blendStart = CONFIG.solarMaxDistance + (CONFIG.handoffViewDistance - CONFIG.solarMaxDistance) * 0.7;
+    let distance = CONFIG.cameraDistance;
+    for (const [seat, target] of [
+      ["start", blendStart],
+      ["mid", blendStart + (CONFIG.handoffViewDistance - blendStart) * 0.5],
+      ["end", CONFIG.handoffViewDistance - 10],
+    ]) {
+      await zoomDistance(page, distance, target);
+      distance = target;
+      await capture(page, `desktop-solar-handoff-${seat}`, {
+        expectedDistance: target, acquisition: "settled controlled comparison; transient Loading is separately tested by browser-smoke",
+      });
+      assert.equal(await page.getAttribute("html", "data-galaxy-ready"), "1");
+    }
+  } finally { await closePage(page); }
+}
+
+async function ordinaryTransitions() {
+  const page = await newPage(false, [1440, 900], "?look=virgo");
+  try {
+    await ordinaryContext(page, "virgo");
+    let distance = CONFIG.virgoViewDistance;
+    const stops = [
+      ...ordinaryVirgoFractions.map((fraction) => ({ name: `desktop-transition-virgo-web-${ordinaryPercent(fraction)}`, distance: CONFIG.virgoViewDistance + (CONFIG.webViewDistance - CONFIG.virgoViewDistance) * fraction })),
+      ...ordinaryUniverseFractions.map((fraction) => ({ name: `desktop-transition-web-universe-${ordinaryPercent(fraction)}`, distance: CONFIG.webViewDistance + (CONFIG.universeViewDistance - CONFIG.webViewDistance) * fraction })),
+    ];
+    for (const stop of stops) {
+      await zoomDistance(page, distance, stop.distance);
+      distance = stop.distance;
+      await capture(page, stop.name, { expectedDistance: distance, initialSimulation: "J2000; paused before first application tick" });
+    }
+  } finally { await closePage(page); }
+}
+
+async function ordinaryFarSky() {
+  const page = await newPage(false, [1440, 900], "?look=virgo");
+  try {
+    await ordinaryContext(page, "virgo");
+    const shots = [];
+    for (const [seat, gestures] of [
+      ["forward", []], ["yaw-quarter", [[-300, 0]]], ["yaw-180", [[-300, 0]]],
+      ["pitch-high", [[0, 300], [0, 300]]],
+      ["pitch-low", [[0, -300], [0, -300], [0, -300], [0, -300]]],
+      ["diagonal", [[260, 220]]],
+    ]) {
+      for (const [dx, dy] of gestures) await orbit(page, dx, dy);
+      shots.push(await capture(page, `desktop-far-sky-${seat}`, { referenceDragPixels: gestures, requestedLook: "virgo" }));
+    }
+    assert.notEqual(shots[0].sha256, shots[1].sha256, "quarter yaw changes visible sky");
+    assert.notEqual(shots[0].sha256, shots[2].sha256, "half yaw changes visible sky");
+    assert.notEqual(shots[3].sha256, shots[4].sha256, "pitch extremes differ");
+    assert.notEqual(shots[4].sha256, shots[5].sha256, "diagonal differs");
+  } finally { await closePage(page); }
+}
+
+// Exact solstice time through public controls, without a simulation-state hook.
+// Each 16 ms playing frame at400 d/s advances6.4 days. Successively halving
+// that public rate gives3.2,1.6,0.8,0.4,0.2,0.1 days per frame. Both requested
+// J2000-to-midnight offsets are integer tenths, so a short binary decomposition
+// reaches them exactly (subject to ordinary floating-point arithmetic).
+async function installOrdinaryFrameObserver(page) {
+  await page.evaluate(() => {
+    const prior = window.requestAnimationFrame.bind(window);
+    const evidence = globalThis.__ordinaryFrameEvidence = { previous: null, ticks: [], rate: 0 };
+    window.requestAnimationFrame = (callback) => prior((timestamp) => {
+      if (callback.name === "tick") {
+        const playing = document.querySelector("#play-button")?.getAttribute("aria-pressed") === "true";
+        if (playing) evidence.ticks.push({ timestamp, elapsed: (timestamp - evidence.previous) / 1000, rate: evidence.rate });
+        evidence.previous = timestamp;
+      }
+      callback(timestamp);
+    });
+  });
+  await advance(page, 48); // Observe a full paused application tick before playing.
+  assert.ok(await page.evaluate(() => Number.isFinite(globalThis.__ordinaryFrameEvidence.previous)));
+}
+
+async function ordinaryPlayingFrames(page, frames, rate) {
+  assert.ok(Number.isInteger(frames) && frames > 0);
+  await page.evaluate(({ frames, rate }) => {
+    globalThis.__ordinaryFrameEvidence.rate = rate;
+    const record = globalThis.__ordinaryPlayback = { requestedFrames: frames, timestamps: [] };
+    requestAnimationFrame((start) => {
+      const play = document.querySelector("#play-button");
+      if (play.getAttribute("aria-pressed") !== "false") throw new Error("timed playback must start paused");
+      play.click();
+      record.startedAt = start;
+      function afterApplicationTick(timestamp) {
+        record.timestamps.push(timestamp);
+        if (record.timestamps.length === frames) {
+          play.click();
+          record.endedAt = timestamp;
+        } else requestAnimationFrame(afterApplicationTick);
+      }
+      requestAnimationFrame(afterApplicationTick);
+    });
+  }, { frames, rate });
+  await advance(page, (frames + 2) * 16);
+  const playback = await page.evaluate(() => globalThis.__ordinaryPlayback);
+  assert.equal(playback.timestamps.length, frames);
+  assert.equal(playback.endedAt - playback.startedAt, frames * 16, "one16 ms interval per requested playing frame");
+  assert.equal(await page.locator("#play-button").getAttribute("aria-pressed"), "false");
+  states.get(page).inputs.push({ at: states.get(page).elapsed, kind: "frame-aligned public Play/Pause", rate, ...playback });
+}
+
+async function ordinarySolstice(name, targetDate, southPole = false) {
+  const page = await newPage();
+  try {
+    await select(page, "earth");
+    await settle(page);
+    await installOrdinaryFrameObserver(page);
+    assert.equal(CONFIG.maxDaysPerSecond, 400, "reviewed endpoint remains400 days/sec");
+    await page.locator("#speed-slider").evaluate((slider) => { slider.value = "1"; slider.dispatchEvent(new Event("input", { bubbles: true })); });
+    // Main's logarithm/exponent endpoint can exceed400 by2e-13. Faster clamps
+    // it to the exact source maximum. Develop already holds400 and is disabled.
+    await click(page, "#faster-button");
+    const targetDays = (Date.parse(`${targetDate}T00:00:00Z`) - Date.UTC(2000, 0, 1, 12)) / 86400000;
+    let units = Math.round(targetDays * 10);
+    assert.equal(units / 10, targetDays, "target is representable in tenths of a day");
+    const plan = [];
+    for (let level = 0; level <= 6; level += 1) {
+      if (level > 0) await click(page, "#slower-button");
+      const unitsPerFrame = 64 / 2 ** level;
+      const frames = Math.floor(units / unitsPerFrame);
+      const rate = 400 / 2 ** level;
+      if (frames) {
+        await ordinaryPlayingFrames(page, frames, rate);
+        plan.push({ frames, rate, days: frames * rate * 0.016 });
+        units -= frames * unitsPerFrame;
+      }
+    }
+    assert.equal(units, 0);
+    const ticks = await page.evaluate(() => globalThis.__ordinaryFrameEvidence.ticks);
+    assert.equal(ticks.length, plan.reduce((total, segment) => total + segment.frames, 0));
+    for (const tick of ticks) assert.equal(tick.elapsed, 0.016, "recorded application playing interval is16 ms");
+    const observedDays = ticks.reduce((days, tick) => days + tick.elapsed * tick.rate, 0);
+    assert.ok(Math.abs(observedDays - targetDays) < 0.001, `public-control simulation delta${observedDays} matches target${targetDays}`);
+    assert.equal(await page.locator("#clock").textContent(), targetDate, "exact target calendar date");
+    const north = equatorialVectorToScene(bodyOrientationBasis(findBody("earth")).zAxis);
+    const direction = southPole ? -1 : 1;
+    const azimuth = Math.atan2(north.x * direction, north.z * direction);
+    const elevation = Math.asin(north.y * direction);
+    await orbit(page, (CONFIG.cameraAzimuth - azimuth) / 0.005, (elevation - CONFIG.cameraElevation) / 0.004);
+    await wheel(page, -500);
+    await capture(page, name, { targetDate, targetDays, observedDays, plan, playingTicks: ticks, southPole, timingBasis: "public endpoint/Faster clamp/Slower halvings; unchanged application RAF timestamps and public Play/Pause" });
+  } finally { await closePage(page); }
+}
+
+async function ordinaryTouch() {
+  for (const [name, size] of [["touch-card", [390, 844]], ["touch-landscape-card", [568, 320]]]) {
+    const page = await newPage(true, size);
+    try {
+      await page.locator("#sky-mode").selectOption("all");
+      await select(page, "earth");
+      await capture(page, name, { initialSimulation: "J2000; settled Earth focus" });
+    } finally { await closePage(page); }
+  }
+  for (const [aspect, size] of [["portrait", [390, 844]], ["landscape", [844, 390]]]) {
+    for (const look of ["localgroup", "virgo", "web", "universe"]) {
+      const page = await newPage(true, size, `?look=${look}`);
+      try {
+        await ordinaryContext(page, look);
+        await capture(page, `touch-${aspect}-${look}`, { requestedLook: look, initialSimulation: "J2000; paused before first application tick" });
+      } finally { await closePage(page); }
+    }
+  }
+}
+
+async function ordinaryTriton() {
+  const page = await newPage();
+  try {
+    await select(page, "triton");
+    await advance(page, 1500);
+    await click(page, "#card-close");
+    await orbit(page, page.viewportSize().width * 0.44);
+    await wheel(page, -1200);
+    const captureCrop = async (name, details = {}) => {
+      await settle(page);
+      const viewport = page.viewportSize();
+      const label = await page.locator('.sky-label[data-body-id="triton"]').boundingBox();
+      assert.ok(label && label.x >= 0 && label.y >= 0 && label.x + label.width <= viewport.width && label.y + label.height + 72 <= viewport.height);
+      const cropSize = Math.min(360, viewport.width, viewport.height);
+      const clip = {
+        x: Math.max(0, Math.min(viewport.width - cropSize, label.x + label.width / 2 - cropSize / 2)),
+        y: Math.max(0, Math.min(viewport.height - cropSize, label.y + label.height + 32 - cropSize / 2)),
+        width: cropSize, height: cropSize,
+      };
+      await capture(page, name, { clip, ...details });
+    };
+    await captureCrop("triton-rotation-a", { initialSimulation: "J2000; paused before first application tick" });
+    const speed = await page.locator("#speed-slider").evaluate((slider, { minimum, maximum }) => {
+      slider.value = String((Math.log(5.876994) - Math.log(minimum)) / (Math.log(maximum) - Math.log(minimum)));
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+      return { sliderValue: Number(slider.value), sliderStep: slider.step, readout: document.querySelector("#speed-readout").textContent };
+    }, { minimum: CONFIG.minDaysPerSecond, maximum: CONFIG.maxDaysPerSecond });
+    speed.effectiveDaysPerSecond = sourceSpeedFromSlider(speed.sliderValue);
+    await page.evaluate(() => {
+      const record = globalThis.__ordinaryTritonPlayback = {};
+      requestAnimationFrame((timestamp) => {
+        const play = document.querySelector("#play-button");
+        play.click(); record.startedAt = timestamp;
+        setTimeout(() => { play.click(); record.endedAt = performance.now(); }, 500);
+      });
+    });
+    await advance(page, 532);
+    const playback = await page.evaluate(() => globalThis.__ordinaryTritonPlayback);
+    assert.equal(playback.endedAt - playback.startedAt, 500);
+    assert.equal(await page.locator("#play-button").getAttribute("aria-pressed"), "false");
+    await captureCrop("triton-rotation-b", { speed, playback, sourceRateLimit: "#78 changes native intermediate quantization;500 ms equal browser time is not equal simulated phase" });
+  } finally { await closePage(page); }
+}
+
+async function ordinaryFallback() {
+  const context = await browser.newContext({ viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  const state = { id: nextPageId++, context, touch: false, elapsed: 0, inputs: [], cdp: null, errors: [] };
+  states.set(page, state);
+  const expectedConsoleErrors = [];
+  page.on("pageerror", (error) => state.errors.push(`page:${error.message}`));
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
+    if (message.text() === "THREE.WebGLRenderer: THREE.WebGLRenderer: Error creating WebGL context.") expectedConsoleErrors.push(message.text());
+    else state.errors.push(`console:${message.text()}`);
+  });
+  page.on("requestfailed", (request) => state.errors.push(`request:${request.url()} ${request.failure()?.errorText}`));
+  page.on("response", (response) => { if (response.status() >= 400) state.errors.push(`HTTP${response.status()}:${response.url()}`); });
+  try {
+    await page.clock.install({ time: new Date("2026-09-05T00:00:00Z") });
+    await page.addInitScript(() => {
+      const original = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+        if (["webgl", "webgl2", "experimental-webgl"].includes(type)) return null;
+        return original.call(this, type, ...args);
+      };
+    });
+    await page.goto(base, { waitUntil: "networkidle" });
+    await page.locator("#unsupported:not([hidden])").waitFor();
+    await page.clock.pauseAt(new Date("2026-09-05T01:00:00Z"));
+    const failure = await page.evaluate(() => ({
+      active: document.activeElement?.id,
+      role: document.querySelector("#unsupported").getAttribute("role"),
+      stageHidden: document.querySelector("#stage").hidden,
+      stageInert: document.querySelector("#stage").inert,
+      visibleFocusable: [...document.querySelectorAll("a, button, input, select, [tabindex]")].filter((element) => !element.hidden && element.getClientRects().length > 0).map((element) => element.id),
+    }));
+    assert.deepEqual(failure, { active: "unsupported", role: "alert", stageHidden: true, stageInert: true, visibleFocusable: ["unsupported"] });
+    // Both exact sources initialize aria-busy=false before creating WebGL.
+    // There is no broad main exemption and no invented heliosReady success.
+    assert.equal(await page.locator("#viewport").getAttribute("aria-busy"), "false");
+    assert.notEqual(await page.getAttribute("html", "data-helios-ready"), "1");
+    state.initial = await observe(page);
+    await capture(page, "webgl-fallback", { failure, expectedConsoleErrors, expectedMissingReady: true });
+  } finally { await closePage(page); }
+}
+
+// Public Playwright request events; independent of navigation lifecycle state.
+function trackPageRequests(page) {
+  const pending = new Set();
+  const snapshot = () => [...pending].map((request) => request.url());
+  let activeDrain = null;
+  let terminalError = null;
+  const changed = () => activeDrain?.changed();
+  const onRequest = (request) => { pending.add(request); changed(); };
+  const onFinished = (request) => { pending.delete(request); changed(); };
+  const stop = (message) => {
+    terminalError ??= new Error(message);
+    activeDrain?.finish(terminalError);
+  };
+  const listeners = {
+    request: onRequest, requestfinished: onFinished, requestfailed: onFinished,
+    close: () => stop("Page closed before request drain completed"),
+    crash: () => stop("Page crashed before request drain completed"),
+  };
+  for (const [event, listener] of Object.entries(listeners)) page.on(event, listener);
+  return {
+    snapshot,
+    // Options permit isolated lifecycle checks; the actual observer uses these
+    // defaults: the existing 30-second bound and a fresh 500ms quiet window.
+    async drain({ timeoutMs = 30_000, quietMs = 500 } = {}) {
+      if (terminalError) throw terminalError;
+      assert.equal(activeDrain, null, "one request drain at a time");
+      return new Promise((resolve, reject) => {
+        const started = performance.now();
+        let quietTimer = null;
+        let deadlineTimer = null;
+        let finished = false;
+        const finish = (error) => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(quietTimer);
+          clearTimeout(deadlineTimer);
+          activeDrain = null;
+          if (error) reject(error);
+          else resolve({ pendingRequests: snapshot(), quietMilliseconds: quietMs,
+            elapsedMilliseconds: performance.now() - started });
+        };
+        const onChanged = () => {
+          clearTimeout(quietTimer);
+          quietTimer = pending.size === 0 ? setTimeout(() => finish(null), quietMs) : null;
+        };
+        activeDrain = { changed: onChanged, finish };
+        deadlineTimer = setTimeout(() => finish(new Error(
+          `Request drain exceeded ${timeoutMs}ms; pending: ${JSON.stringify(snapshot())}`,
+        )), timeoutMs);
+        onChanged();
+      });
+    },
+    dispose() {
+      stop("Request tracker disposed before drain completed");
+      for (const [event, listener] of Object.entries(listeners)) page.off(event, listener);
+    },
+  };
+}
+
+async function observeDeepLoadWallClock({ browser, base, source, report, onSample = async () => {} }) {
+  Object.assign(report, {
+    source, browser: browser.version(), samples: [],
+    method: "Three fresh browser contexts per viewport, default Solar startup, public Pause at readiness, real browser performance.now, then a synthetic public WheelEvent(deltaY=2400). No Playwright clock, screenshots, or private renderer hooks are used. Completion is MutationObserver delivery observing galaxy-ready=1, aria-busy=false, and no visible Loading element when one exists. Exact main predates the Loading element; its absence is recorded as null, not fabricated feedback. This is not GPU completion or display presentation.",
+    limits: [
+      "Portrait uses touch emulation but the same synthetic wheel as desktop; it is not physical pinch or hardware evidence.",
+      "Fresh contexts share the browser process and host. Browser-process, GPU, OS, and filesystem caches are not claimed cold.",
+      "Sources run sequentially on one CI runner. Sample ranges describe that runner; they are not general performance bounds.",
+      "DOM readiness does not establish completion of textures, GPU drawing, or a visible deep-space frame.",
+      "These real-clock observations are separate from the deterministic still clock policy and do not add or replace stills.",
+    ],
+  });
+  for (const touch of [false, true]) {
+    const viewport = touch ? { width: 390, height: 844 } : { width: 1440, height: 900 };
+    for (let sample = 1; sample <= 3; sample += 1) {
+      const context = await browser.newContext({ viewport, deviceScaleFactor: 1, hasTouch: touch, isMobile: touch });
+      const page = await context.newPage();
+      const errors = [];
+      let environment = null;
+      let measurement = null;
+      let requestDrain = null;
+      const requests = trackPageRequests(page);
+      const errorListeners = {
+        pageerror: (error) => errors.push(`page: ${error.message}`),
+        console: (message) => { if (message.type() === "error") errors.push(`console: ${message.text()}`); },
+        requestfailed: (request) => errors.push(`request: ${request.url()} ${request.failure()?.errorText}`),
+        response: (response) => { if (response.status() >= 400) errors.push(`HTTP ${response.status()}: ${response.url()}`); },
+      };
+      for (const [event, listener] of Object.entries(errorListeners)) page.on(event, listener);
+      try {
+        await page.addInitScript(() => {
+          const observer = new MutationObserver(() => {
+            if (document.documentElement?.dataset.heliosReady !== "1") return;
+            const play = document.querySelector("#play-button");
+            if (play?.getAttribute("aria-pressed") === "true") play.click();
+            globalThis.__heliosDeepLoadPausedAtReady = play?.getAttribute("aria-pressed") === "false";
+            observer.disconnect();
+          });
+          observer.observe(document, { attributes: true, attributeFilter: ["data-helios-ready"], subtree: true });
+        });
+        await page.goto(base, { waitUntil: "networkidle", timeout: 30_000 });
+        await page.waitForFunction(() => document.documentElement.dataset.heliosReady === "1", null, { timeout: 20_000 });
+        await page.evaluate(() => document.fonts.ready);
+        environment = await page.evaluate(() => {
+          const canvas = document.querySelector("#viewport");
+          const gl = canvas?.getContext("webgl2");
+          const debug = gl?.getExtension("WEBGL_debug_renderer_info");
+          return {
+            url: location.pathname + location.search, userAgent: navigator.userAgent,
+            devicePixelRatio, fonts: document.fonts.status,
+            clockText: document.querySelector("#clock")?.textContent,
+            scene: document.querySelector("#scene-context")?.textContent,
+            pausedAtReady: globalThis.__heliosDeepLoadPausedAtReady,
+            renderer: gl ? {
+              vendor: gl.getParameter(gl.VENDOR), renderer: gl.getParameter(gl.RENDERER),
+              unmaskedVendor: debug ? gl.getParameter(debug.UNMASKED_VENDOR_WEBGL) : null,
+              unmaskedRenderer: debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : null,
+              drawingBuffer: [gl.drawingBufferWidth, gl.drawingBufferHeight],
+            } : null,
+          };
+        });
+        assert.equal(environment.pausedAtReady, true, "deep-load probe paused through the public control at ready");
+        assert.ok(environment.renderer, "deep-load probe requires initialized WebGL");
+        assert.deepEqual(errors, [], "no startup browser errors");
+        measurement = await page.evaluate(() => new Promise((resolve) => {
+          const canvas = document.querySelector("#viewport");
+          const loading = document.querySelector("#loading");
+          const state = () => ({
+            galaxyReady: document.documentElement.dataset.galaxyReady === "1",
+            loadingElementPresent: Boolean(loading),
+            loading: loading ? !loading.hidden : null, busy: canvas?.getAttribute("aria-busy") ?? null,
+            playing: document.querySelector("#play-button")?.getAttribute("aria-pressed") ?? null,
+          });
+          const initial = state();
+          const observations = [];
+          let started = null, handlerReturnMs = null, stateAtHandlerReturn = null, galaxyReadyObservedMs = null;
+          let observer = null, timeout = null;
+          let finished = false;
+          function finish(error, readyAndIdleObservedMs = null) {
+            if (finished) return;
+            finished = true;
+            observer?.disconnect();
+            clearTimeout(timeout);
+            // Return failure evidence before the Node-side assertion throws; a
+            // rejected page Promise would discard these browser-local records.
+            resolve({ initial, handlerReturnMs, stateAtHandlerReturn, galaxyReadyObservedMs,
+              readyAndIdleObservedMs, observations, finalState: state(),
+              elapsedAtCompletionMs: started === null ? null : performance.now() - started,
+              ...(error ? { error: String(error) } : {}),
+            });
+          }
+          if (initial.galaxyReady || initial.loading || initial.busy !== "false" || initial.playing !== "false") {
+            finish(new Error(`Unexpected initial deep-load state: ${JSON.stringify(initial)}`));
+            return;
+          }
+          try {
+            observer = new MutationObserver((mutations) => {
+              const elapsedMs = performance.now() - started;
+              const current = state();
+              observations.push({ elapsedMs, state: current, attributes: [...new Set(mutations.map((item) => item.attributeName))] });
+              if (current.galaxyReady && galaxyReadyObservedMs === null) galaxyReadyObservedMs = elapsedMs;
+              if (current.galaxyReady && !current.loading && current.busy === "false") {
+                if (elapsedMs > 20_000) {
+                  finish(new Error("Deep-load readiness exceeded the existing 20-second bound"), elapsedMs);
+                  return;
+                }
+                finish(null, elapsedMs);
+              }
+            });
+            timeout = setTimeout(() => finish(new Error(`Deep-load readiness timed out: ${JSON.stringify(state())}`)), 20_000);
+            observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-galaxy-ready"] });
+            if (loading) observer.observe(loading, { attributes: true, attributeFilter: ["hidden"] });
+            observer.observe(canvas, { attributes: true, attributeFilter: ["aria-busy"] });
+            started = performance.now();
+            canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: 2_400, bubbles: true, cancelable: true }));
+            handlerReturnMs = performance.now() - started;
+            stateAtHandlerReturn = state();
+          } catch (error) {
+            finish(error);
+          }
+        }));
+        if (measurement.error) throw new Error(measurement.error);
+        // A navigation's already-fired networkidle state is not a fresh drain.
+        // Observe a new quiet window only after the measured DOM-ready interval.
+        requestDrain = await requests.drain();
+        assert.deepEqual(errors, [], "no browser errors during the deep-load probe");
+        assert.ok(measurement.readyAndIdleObservedMs >= measurement.handlerReturnMs, "observer completion follows dispatch return");
+        assert.ok(Number.isFinite(measurement.readyAndIdleObservedMs), "finite readiness observation");
+        report.samples.push({ viewport, touchEmulation: touch, sample, environment, ...measurement, requestDrain });
+        await onSample();
+      } catch (error) {
+        (report.failures ??= []).push({ viewport, touchEmulation: touch, sample, error: String(error),
+          environment, measurement, requestDrain, pendingRequests: requests.snapshot(), browserErrors: errors });
+        await onSample();
+        throw error;
+      } finally {
+        requests.dispose();
+        for (const [event, listener] of Object.entries(errorListeners)) page.off(event, listener);
+        await context.close();
+      }
+    }
+  }
+  report.summary = [false, true].map((touch) => {
+    const samples = report.samples.filter((item) => item.touchEmulation === touch);
+    const summarize = (field) => {
+      const values = samples.map((item) => item[field]).sort((a, b) => a - b);
+      return { median: values[1], minimum: values[0], maximum: values[2] };
+    };
+    return { viewport: samples[0].viewport, touchEmulation: touch, count: samples.length,
+      handlerReturnMs: summarize("handlerReturnMs"), readyAndIdleObservedMs: summarize("readyAndIdleObservedMs") };
+  });
+  await onSample();
+  return report;
+}
+
+async function ordinaryViews() {
+  await scenario("ordinary constellations and overview", ordinaryOverviewAndConstellations);
+  await ordinaryDirectViews();
+  await scenario("ordinary solar handoff", ordinaryHandoff);
+  await scenario("ordinary20 scale transitions", ordinaryTransitions);
+  await scenario("ordinary6 far-sky directions", ordinaryFarSky);
+  await scenario("ordinary June solstice", () => ordinarySolstice("earth-june-solstice", "2000-06-21"));
+  await scenario("ordinary December solstice", () => ordinarySolstice("earth-december-solstice", "2000-12-21", true));
+  await scenario("ordinary touch card and cosmology", ordinaryTouch);
+  await scenario("ordinary Triton crops", ordinaryTriton);
+  await scenario("ordinary WebGL fallback", ordinaryFallback);
+}
+
 try {
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("source server did not start")), 15_000);
@@ -865,6 +1427,13 @@ try {
     await scenario("Controlled regular Triton, overview and Milky Way references", controlledLegacyViews);
     await responsive();
     await timeRates();
+  }
+  if (["all", "ordinary"].includes(group)) {
+    await ordinaryViews();
+    manifest.deepLoadObservations = {};
+    await scenario("observational deep-load wall clock", () => observeDeepLoadWallClock({
+      browser, base, source: sourceIdentity, report: manifest.deepLoadObservations, onSample: flush,
+    }));
   }
   await captureFocusTracking();
 } catch (error) {

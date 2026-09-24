@@ -1632,6 +1632,7 @@ async function auditDeepLoadingFailure(context, prefix) {
         await page.locator("#reset-button").click();
       }
       assert.deepEqual(errors, [], `${prefix} ${failAt}: the application handles the injected failure`);
+      console.log(`deep-load failure latch ${prefix}/${failAt}: three entries, 30 continued frames each, one attempt/announcement, idle and not ready`);
     } finally {
       await page.close();
     }
