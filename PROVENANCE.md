@@ -4,7 +4,7 @@ This ledger records what Helios imports, what it transforms, and what remains
 unresolved. The repository's MIT license covers first-party code only.
 Third-party images, data, and Three.js retain their own terms and attribution.
 
-The latest source evidence recorded in this ledger is dated 2026-09-03;
+The latest source evidence recorded in this ledger is dated 2026-09-22;
 source-specific retrieval and check dates are recorded per entry when known.
 Hashes are SHA-256 of the tracked local files.
 
@@ -12,15 +12,15 @@ Hashes are SHA-256 of the tracked local files.
 
 | Area | Source snapshot | How Helios uses it |
 | --- | --- | --- |
-| Planet properties and heliocentric elements | [NASA planetary fact sheet](https://nssdc.gsfc.nasa.gov/planetary/factsheet/), NASA New Horizons' [Pluto seasons explanation](https://science.nasa.gov/blogs/new-horizons/2015/10/23/a-planet-for-all-seasons/), and published J2000 mean elements | Fixed J2000 Keplerian approximations with two-body propagation. Calendar positions are not JPL Horizons ephemerides and do not model perturbations. Ceres's stored heliocentric state is the separate Horizons snapshot below. Neptune's six orbital elements are the separate Table 1 snapshot below. Other heliocentric rows remain published J2000 mean-element approximations. Pluto's displayed retrograde obliquity is 119.6°, the angle between its PCK spin axis and this fixed orbit (consistent with NASA's approximately 119.5°); the inherited 122.53° value was not consistent with either. |
+| Planet properties and heliocentric elements | [NASA planetary fact sheet](https://nssdc.gsfc.nasa.gov/planetary/factsheet/), NASA New Horizons' [Pluto seasons explanation](https://science.nasa.gov/blogs/new-horizons/2015/10/23/a-planet-for-all-seasons/); individual orbital records and gaps are identified in the fixture below | Fixed J2000 Keplerian approximations with two-body propagation. Calendar positions are not JPL Horizons ephemerides and do not model perturbations. Ceres's stored heliocentric state is the separate Horizons snapshot below. Neptune's six orbital elements are the separate Table 1 snapshot below. Sidereal periods for Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune, and Pluto recover to dated NASA NSSDCA individual fact-sheet printings recorded below. The six Keplerian fields on the eight inherited rows remain first-party catalog literals without a recovered upstream table. Pluto's displayed retrograde obliquity is 119.6°, the angle between its PCK spin axis and this fixed orbit (consistent with NASA's approximately 119.5°); the inherited 122.53° value was not consistent with either. |
 | Ceres J2000 heliocentric state | [JPL Horizons API](https://ssd-api.jpl.nasa.gov/doc/horizons.html) retrieved 2026-08-27: target `1;`, center `500@10` (Sun / DE441), `ELEMENTS` and geometric `VECTORS`, JD `2451545.0 TDB`, Ecliptic of J2000.0, geometric, AU-days. Solution `JPL#48`. Mean radius `469.7 km` from [JPL planetary physical parameters](https://ssd.jpl.nasa.gov/planets/phys_par.html) (Park et al. 2016), matching Horizons `RAD`. | One geometric osculating-element snapshot stored in the Ceres catalog row, including `a`, `e`, `i`, `Ω`, `ω`, `M`, and `P`. Helios still propagates that frozen two-body Kepler ellipse; later dates are not a Horizons ephemeris and do not model perturbations, small perturbers, or non-osculating motion. Pole, tilt, spin, texture, focus seat, and display compression stay on their existing owners. |
-| Neptune J2000 heliocentric state | [JPL Approximate Positions of the Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html) Table 1 (Keplerian elements versus the mean ecliptic and equinox of J2000), retrieved 2026-09-03. Epoch `T=0` is JD `2451545.0`. The table states validity for 1800 AD – 2050 AD. Table-1 T=0 values: `a=30.06992276 AU`, `e=0.00859048`, `i=1.77004347°`, `L=304.87997031°` (printed as `−55.12002969°`), longitude of perihelion `ϖ=44.96476227°`, `Ω=131.78422574°`. Derived `ω = ϖ − Ω = 273.18053653°`; derived `M = L − ϖ = 259.91520804°`. | One coherent Table 1 snapshot stored in the Neptune catalog row (`a`, `e`, `i`, `Ω`, `ω`, `M`). Helios still uses the inherited `60,189 d` period and frozen two-body Kepler ellipse; later dates are not a JPL ephemeris and do not apply Table 1 rates or perturbations. Radius, spin, pole, texture, Triton, and display compression stay on their existing owners. |
-| Moon properties and mean elements | [JPL satellite physical parameters and mean elements](https://ssd.jpl.nasa.gov/sats/elem/) (`DE405/LE405`, `MAR099`, `JUP365`, `SAT441`, `NEP097`) and NASA's [tidal-locking explanation](https://science.nasa.gov/moon/tidal-locking/) | One J2000 snapshot. JPL describes the elements as a fitted precessing ellipse useful for general shape and orientation, not ephemeris computation. Helios uses `orbitDays` as the mean-anomaly clock in its frozen Kepler ellipse. For the nine cataloged synchronous moons, `rotationHours` supplies a signed display-longitude rate; the difference between those clocks advances periapsis uniformly to prevent secular longitudinal drift. This is a display correction, not propagation of the published apsidal or nodal periods. The Moon and Triton have source-registered poles and prime meridians. The other moon maps retain unverified phases and simple parent-frame axes, so they are not registered near-side models. Laplace-plane rows are transformed once into the parent-equatorial display basis. |
+| Neptune J2000 heliocentric state | [JPL Approximate Positions of the Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html) Table 1 (Keplerian elements versus the mean ecliptic and equinox of J2000), retrieved 2026-09-03. Epoch `T=0` is JD `2451545.0 TDB`; JPL equates its ephemeris time variable with JDTDB. The table states validity for 1800 AD – 2050 AD with its rates, not for Helios's frozen ellipse. The original coefficients were rechecked 2026-09-07. Table-1 T=0 values: `a=30.06992276 AU`, `e=0.00859048`, `i=1.77004347°`, `L=304.87997031°` (printed as `−55.12002969°`), longitude of perihelion `ϖ=44.96476227°`, `Ω=131.78422574°`. Derived `ω = ϖ − Ω = 273.18053653°`; derived `M = L − ϖ = 259.91520804°`. | One coherent Table 1 snapshot stored in the Neptune catalog row (`a`, `e`, `i`, `Ω`, `ω`, `M`). Helios still uses the recovered NASA fact-sheet `60,189 d` sidereal period and frozen two-body Kepler ellipse; later dates are not a JPL ephemeris and do not apply Table 1 rates or perturbations. Radius, spin, pole, texture, Triton, and display compression stay on their existing owners. |
+| Moon properties and mean elements | [JPL satellite physical parameters](https://ssd.jpl.nasa.gov/sats/phys_par/) and [mean elements](https://ssd.jpl.nasa.gov/sats/elem/) (`DE405/LE405`, `MAR099`, `JUP365`, `SAT441`, `NEP097`) and NASA's [tidal-locking explanation](https://science.nasa.gov/moon/tidal-locking/) | One J2000 snapshot. JPL describes the elements as a fitted precessing ellipse useful for general shape and orientation, not ephemeris computation. Helios uses `orbitDays` as the mean-anomaly clock in its frozen Kepler ellipse. For the nine cataloged synchronous moons, `rotationHours` supplies a signed display-longitude rate; the difference between those clocks advances periapsis uniformly to prevent secular longitudinal drift. This is a display correction, not propagation of the published apsidal or nodal periods. The Moon and Triton have source-registered poles and prime meridians. The other moon maps retain unverified phases and simple parent-frame axes, so they are not registered near-side models. Laplace-plane rows are transformed once into the parent-equatorial display basis. |
 | Body poles and prime meridians | [NAIF generic PCK `pck00011.tpc`](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc) | The Sun, planets, Ceres, Pluto, the Moon, and Triton use PCK poles evaluated at J2000; this also puts Saturn's rings and each declared parent-equatorial moon frame on the source pole. Earth uses the PCK's low-accuracy `W = 190.147°`. The Moon uses the `IAU_MOON` Mean Earth/Polar Axis pole and prime meridian with all periodic terms evaluated at J2000: `RA = 266.85773344495135°`, `Dec = 65.64110274784535°`, `W = 41.1952639807452°`. Triton likewise uses its complete periodic model at J2000: `RA = 298.4509834088894°`, `Dec = 20.302361260483217°`, `W = 297.01780353391297°`. Their W values intentionally differ from the polynomial constants. Those three verified maps use W; the other inherited maps lack a retained longitude-registration record, so Helios derives the closest phase to their previous display roll and makes no scientific prime-meridian claim for them. Poles then stay fixed and spin advances linearly from the catalog period and PCK direction; this is not the complete time-dependent PCK model. Other moon axes retain their simple catalog obliquity. |
 | Bright stars | Astronomy Nexus [HYG Database](https://github.com/astronexus/HYG-Database) archived v3 CSVs, compiling Hipparcos ESA I/239 with Yale BSC. The tracked subset is the `mag <= 6` plus constellation-line selection from **HYG v3.1, v3.2, v3.3, and v3.4**, using the first HIP row for `ra`, `dec`, `mag`, and `ci`, and the first non-empty `proper` among that HIP's rows. Those four gzip artifacts are indistinguishable on every retained Helios field (`hip`, `ra`, `dec`, `mag`, `ci`, `proper`). v3.0 is excluded: its `proper` names match only 112 of 334 Helios labels (IAU WGSN names such as Guniibuu and Copernicus are absent). v3.5 and later are excluded: they delete HIP 55203 (Alula Australis / ξ UMa), which Helios still stores as a named Ursa Major line star. The older `hygfull.csv` / `hygxyz.csv` dumps disagree on coordinates; v4.x also lack HIP 55203. License for the archived v3 series is [CC BY-SA 2.5](http://creativecommons.org/licenses/by-sa/2.5/), stored beside those CSVs as [`hyg/v3/LICENSE.html`](https://github.com/astronexus/HYG-Database/blob/main/hyg/v3/LICENSE.html); this is not inferred from the current Astronexus homepage. Canonical gzip SHA-256: v3.1 `600ce39342ee1452da5fdd9d9b7b8f51a1e1b5f7892abeace61f7c56f4382fce`; v3.2 `b39c1d6dbab932bb624965241b6a13995886370781b9a398d0f1fb36d098b325`; v3.3 `193dee77cbfef7179bf1eb6188cfdede9fd0d622760e4bc658ab775c1965c375`; v3.4 `01736aeafecb7f5082c9d2bbed1c6bb36bb9ea6bc4c9ebb3429ed2e8a3a0a4e1`. Canonical paths: `hyg/v3/hyg_v31.csv.gz` … `hyg_v34.csv.gz` on the archived GitHub repo. The original download date was not retained; `js/sky-catalog.js` entered the repository on 2026-08-20 in commit `330a92eedaba6863827efaebf15556e0f58ad7b3`. The exact one of v3.1–v3.4 is not recoverable from retained fields. Replacing this frozen subset with a later HYG release would drop HIP 55203 and needs a separate source-controlled issue; that migration is not approved here. | Equatorial J2000 RA degrees, Dec degrees, Johnson V, and B-V in `js/sky-catalog.js` (`STARS` / `STAR_NAMES`). Pipeline: walk the HYG CSV in order; keep the first row of each HIP for `ra`, `dec`, `mag`, and `ci`; if that row has an empty `proper`, take the first later duplicate's name. HIP 7751 is the only duplicate HIP in v3.1–v3.4: the first row is unnamed (`ra` 1.663169 h, `dec` -56.1964, `mag` 5.76, `ci` 0.88 → Helios `[7751, 24.94753, -56.1964, 5.76, 0.88]`); the later row is named p Eridani with different numbers and is not used for coordinates. Keep rows with `mag <= 6` or a HIP used by the IAU/MacRobert constellation paths (one extra: Mira HIP 10826 at mag 6.47); sort by HIP. The retained `ra`, `dec`, `mag`, and non-empty `ci` fields reproduce with Python binary-float rounding: `round(float(ra) * 15, 5)`, `round(float(dec), 5)`, `round(float(mag), 2)`, and `round(float(ci), 2)`. HYG decimal text is converted to an IEEE-754 binary64 value before nearest/ties-to-even rounding, so this is not exact-decimal half-even rounding. Empty `ci` for HIP 26220 and HIP 32609 is stored as `0.3`. Proper names are those merged HYG `proper` values (334 names). 5043 unique HIP rows. Tracked catalog SHA-256: `e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34`. The `STARS` / `STAR_NAMES` subset is an adaptation of HYG and remains CC BY-SA 2.5; constellation paths stay IAU CC BY 4.0; first-party code stays MIT. |
-| Constellation figures | [IAU / Alan MacRobert constellation charts](https://www.iau.org/public/themes/constellations/), CC BY 4.0 | HIP-number line paths in `js/sky-catalog.js`; these are conventional stick figures, not constellation boundaries. Major mode preserves the ten existing names. All mode makes all 88 names eligible for deterministic viewport/collision filtering. Mensa and Microscopium have no drawn paths in the tracked figure data, so their label anchors use the existing Hipparcos positions of HIP 29271 (Alpha Mensae) and HIP 102831 (Alpha Microscopii); no star coordinate is added or changed. |
+| Constellation figures | [IAU / Alan MacRobert constellation charts](https://www.iau.org/IAU/Astronomy-FAQs/Constellations.aspx), CC BY 4.0 | HIP-number line paths in `js/sky-catalog.js`; these are conventional stick figures, not constellation boundaries. Major mode preserves the ten existing names. All mode makes all 88 names eligible for deterministic viewport/collision filtering. Mensa and Microscopium have no drawn paths in the tracked figure data, so their label anchors use the existing Hipparcos positions of HIP 29271 (Alpha Mensae) and HIP 102831 (Alpha Microscopii); no star coordinate is added or changed. |
 | Galactic and Local Group values | Sources cited beside each value in `js/galaxy-catalog.js`: GRAVITY 2019, SIMBAD, NED, Pietrzyński 2019, Graczyk 2020, de Grijs & Bono 2014, McConnachie 2012, Mei 2007, and Tully 2014 | Published positions, distances, and scale references. Visible Milky Way arms and the far-field sky are deterministic illustrations, not survey reconstructions. The far field uses one camera-centered spherical shell of fixed-seed Voronoi-proximity points plus bounded round highlights; it has no cube faces, named generated objects, or claimed catalog coordinates. During the Milky Way-invisible post-Solar dive, the already-collapsed Solar display hierarchy, its fading debris roots, and their following camera move together to the temporary trail pin's small map-local offset. Relative Solar geometry, orbital calculations, the catalog Sun, scale transforms, and the final Orion-arm marker stay unchanged; the Sun and marker therefore coincide throughout their visible crossfade. Screen-fixed hierarchy labels are semantic zoom cues, not scale measurements or time evolution: the Local Group and Virgo Cluster remain distinct within the historical Local (Virgo) Supercluster, shown within the Laniakea flow-basin context. |
-| Post-Virgo galaxy distribution | NASA HEASARC [2MASS Redshift Survey catalog](https://heasarc.gsfc.nasa.gov/w3browse/all/twomassrsc.html), Huchra et al. 2012, ApJS 199, 26. [Data.gov metadata](https://catalog.data.gov/dataset/2mass-redshift-survey-2mrs-catalog) lists public access and the US government-works license link. | `scripts/build-2mrs.mjs` queried `name, lii, bii, radial_velocity, ks_mag_0`, sorted by name, and retained 42,927 of 44,599 rows with `0 < cz <= 21,900 km/s`. It quantizes galactic direction, velocity, and K magnitude into `js/2mrs-data.js`. Radius is the deliberately approximate Hubble-law mapping `D=cz/H0` with `H0=73 km/s/Mpc`, capped at 300 Mpc; peculiar velocities and redshift-space distortions are not corrected. 2MRS is K-limited (`Ks <= 11.75`), 97.6% redshift-complete within its limits, covers 91% of the sky, and retains its Zone of Avoidance (`|b| >= 5°`, or `8°` toward the bulge). The points trace the flux-limited observed galaxy distribution, not total-matter density. Rendered colors retain a bounded K-magnitude cue, while point size, additive intensity, and the uniform stage-driven point-only luminance gain are enlarged for legibility; these are display encodings, not photometrically calibrated measurements, and do not brighten the empty background. Sorted source SHA-256: `236be982e9a172c55d483d40c38ca38b36a3dc8b8af4f402a0fd045f1b87da6f`; derived payload SHA-256: `9c97c9547b88f2f6ab307b9ca733071f0ce12a9549a070cf44be0aac7863b3b9`. |
+| Post-Virgo galaxy distribution | NASA HEASARC [2MASS Redshift Survey catalog](https://heasarc.gsfc.nasa.gov/w3browse/all/twomassrsc.html), Huchra et al. 2012, ApJS 199, 26. [Data.gov metadata](https://catalog.data.gov/dataset/2mass-redshift-survey-2mrs-catalog) lists public access and the US government-works license link. | `scripts/build-2mrs.mjs` queried `name, lii, bii, radial_velocity, ks_mag_0`, sorted by name, and retained 42,927 of 44,599 rows with `0 < cz <= 21,900 km/s`. It quantizes galactic direction, velocity, and K magnitude into `js/2mrs-data.js`. Radius is the deliberately approximate Hubble-law mapping `D=cz/H0` with `H0=73 km/s/Mpc`, capped at 300 Mpc; peculiar velocities and redshift-space distortions are not corrected. 2MRS is K-limited (`Ks <= 11.75`), 97.6% redshift-complete within its limits, covers 91% of the sky, and retains its Zone of Avoidance (`|b| >= 5°`, or `8°` toward the bulge). The points trace the flux-limited observed galaxy distribution, not total-matter density. Rendered colors retain a bounded K-magnitude cue, while point size, additive intensity, and the uniform stage-driven point-only luminance gain are enlarged for legibility; these are display encodings, not photometrically calibrated measurements, and do not brighten the empty background. Sorted source SHA-256: `236be982e9a172c55d483d40c38ca38b36a3dc8b8af4f402a0fd045f1b87da6f`; derived payload SHA-256: `9c97c9547b88f2f6ab307b9ca733071f0ce12a9549a070cf44be0aac7863b3b9`. The independent integrity pin is `tests/fixtures/2mrs-integrity.json`; regenerating `js/2mrs-data.js` does not update it. |
 | Post-Virgo cluster anchors | Lambert et al. 2020, MNRAS 497, 2954, [doi:10.1093/mnras/staa1946](https://doi.org/10.1093/mnras/staa1946), Table 1 | Seven named groups beyond Virgo and within about 100 Mpc are hand-transcribed as a small factual subset in `POST_VIRGO_CLUSTERS`; no bulk 2MRS group-catalog artifact is redistributed. Positions are the table's mean J2000 / galactic coordinates and distances are its comoving `Dc` values for `H0=73`, `OmegaM=0.3`, `OmegaLambda=0.7`. Generated points never receive catalog names. |
 | Beyond the 2MRS range | First-party `js/cosmic-web.js`, informed by the Voronoi-foam hierarchy described by van de Weygaert & Icke 1989, A&A 213, 1 | A fixed-seed 7,000-point Voronoi-proximity density illustration occupies a non-overlapping shell outside the 300 Mpc 2MRS display boundary and supplies continuity toward the CMB. The cool-wall, violet-filament, and warm-node palette is deliberately false color. Enlarged point size, additive brightness, and overlapping exposure crossfades preserve legibility between finite display volumes; they do not add objects or connections. The illustration is not observed galaxies, a survey reconstruction, a named structure map, a cosmological simulation, a photometric measurement, or a measured matter-density field. The two density point draws contain 42,927 2MRS samples plus 7,000 illustrative samples (49,927 total), plus one separate seven-point cluster-anchor draw (49,934 plotted positions including anchors). |
 | Outer cosmological scale | [Planck 2018 VI](https://arxiv.org/abs/1807.06209) | The particle-horizon display uses about 46.5 Gly / 14.25 Gpc. The physical last-scattering surface is distinct; the illustrative CMB sphere is deliberately co-located with the outer display radius. Seeing that sphere “from outside” is a camera/scale metaphor. The untinted, normally alpha-blended CMB texture begins only once that front-facing display sphere is visible and receives a bounded five-percent opacity lift at the final seat for readability; it is not a literal observable-universe edge or a photometric measurement. |
@@ -52,21 +52,180 @@ planetary emission or calibrated photometric brightness. The Sun still supplies
 the terminator; no scientific data, scene lights, other globes, or Saturn ring
 materials are changed by this fill.
 
+Saturn's ring material carries one bounded transmitted-light term owned by
+`CONFIG.ringTransmission`. Sunlight arriving from behind the visible ring face
+reuses the Sun's Lambert term, scaled by that share and by the square root of
+the ring map's transparency (`sqrt(1 - alpha)`), so the unlit face keeps its
+bands, divisions, and gaps readable instead of collapsing into a black halo.
+Treating the map's alpha as `1 - exp(-tau)`, that square root stays below the
+isotropic single-scattering transmission of a slab of optical depth `tau`
+across the map's range, so the unlit face remains dimmer than the sunlit face
+band for band. This is a display-only thin-slab approximation of transmitted
+and forward-scattered light, not radiative transfer, ring photometry, or a
+shadow model. The sunlit face, ring radii, geometry, UVs, pole, texture asset,
+scene lights, exposure, and every other material are unchanged.
+
+## Orbital row ledger
+
+The test-only [orbital provenance fixture](tests/fixtures/orbital-provenance.json)
+owns the exact record for every `BODIES` row: source URI/table/version, epoch
+and time scale, center, frame, element type, units, conversions, validity and
+explicit gaps. `reference` retains published source columns; `catalog` freezes
+all current scientific fields, including radii, spin and pole/frame metadata.
+The latter is a preservation lock, not a new upstream attribution for physical
+properties. Their existing owners remain in the scientific table above. The
+fixture is never imported by the runtime.
+
+| Catalog rows | Orbital source and verification |
+| --- | --- |
+| Sun | First-party fixed-origin convention; zero orbit fields are sentinels, not a solar barycentric solution. |
+| Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Pluto | Exact Keplerian literals from the [initial catalog](https://github.com/XenoVoyage/Helios/blob/d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0/js/bodies.js), unchanged through this audit. Sidereal periods recover to the NASA NSSDCA individual fact-sheet **Sidereal orbit period (days)** printings in the fixture. The six fields `orbitAu`, `eccentricity`, `inclinationDeg`, `nodeDeg`, `periDeg`, and `meanAnomalyDeg` still have no recovered upstream table, epoch/time scale, center, frame, or element type; that residual gap is recorded in [#119](https://github.com/XenoVoyage/Helios/issues/119). |
+| Ceres | Retained JPL#48 / DE441 geometric osculating snapshot from [#52](https://github.com/XenoVoyage/Helios/issues/52); exact query parameters and original `A`, `EC`, `IN`, `OM`, `W`, `MA`, `PR` are in the fixture. A future Horizons query must be checked for solution identity before comparing numbers. |
+| Neptune | Table 1's original six coefficients, checked 2026-09-07, reproduce the corrected [#53](https://github.com/XenoVoyage/Helios/issues/53) row. JPL describes these as a best fit, **not mean elements**; “mean” in the frame name describes the ecliptic/equinox. The `60,189 d` period is the dated NASA Neptune fact-sheet sidereal printing `60,189.`, not a Table 1 value. |
+| Moon | JPL mean-elements row 301, DE405/LE405; Earth center, ecliptic plane. The table does not separately declare an ecliptic equinox or supply a source bibliography for this row. |
+| Phobos, Deimos | JPL rows 401, 402, MAR099; Mars center, individual local Laplace planes. |
+| Io, Europa, Ganymede, Callisto | JPL rows 501–504, JUP365; Jupiter center, individual local Laplace planes. |
+| Titan | JPL row 606, SAT441; Saturn center, local Laplace plane. |
+| Triton | JPL row 801, NEP097; Neptune center, local Laplace plane. |
+
+The nine [JPL moon rows](https://ssd.jpl.nasa.gov/sats/elem/) were checked
+2026-09-07. Their source epoch is **2000-01-01.5 TDB (JD 2451545.0)**.
+The fixture preserves the printed decimal strings: `a` maps to `orbitKm`, `e`
+to `eccentricity`, `i` to `inclinationDeg`, node to `nodeDeg`, ω to `periDeg`,
+M to `meanAnomalyDeg`, and P to `orbitDays`. Angles are degrees, distance is km,
+eccentricity is dimensionless and P is days. No derived angles or extra rounding
+are applied; trailing zeros disappear only when parsed as numbers. Published
+zero eccentricities are rounded source entries, not claims of exact physical
+circularity. Triton's P remains positive; its inclination carries retrograde
+geometry. JPL labels P **sidereal period**, whereas Helios uses it as the
+mean-anomaly clock described above.
+
+Laplace-pole RA/Dec are ICRF degrees; node zero is the reference plane's node
+on the ICRF equator. The existing runtime converts each Laplace basis once to
+its fixed parent-equatorial basis. Those parent poles come from
+`pck00011.tpc` at J2000 TDB, including periodic terms, rounded to ten decimal
+places where necessary. The Moon instead attaches directly to Helios's
+ecliptic scene. Source plane tilt is not the body's `tiltDeg` and is not imported
+as obliquity. Source nodal and apsidal periods are not propagated.
+
+The satellite table gives no fit interval or error guarantee for these frozen
+ellipses. Linked ephemeris-file coverage is not their validity interval.
+Likewise, Neptune's Table 1 1800–2050 interval applies to its coefficients
+**with rates**, not to Helios's frozen ellipse and recovered fact-sheet period.
+Runtime elapsed days and UTC-based calendar labels are schematic; they do not
+perform a precision TDB/UTC conversion.
+
+### Inherited heliocentric recovery ([#119](https://github.com/XenoVoyage/Helios/issues/119))
+
+The original catalog comment and README attributed heliocentric values to
+NASA / JPL and the [planetary fact sheet](https://nssdc.gsfc.nasa.gov/planetary/factsheet/)
+without a per-row table, version, or transcription record. [#54](https://github.com/XenoVoyage/Helios/issues/54)
+could not recover an authoritative sheet because the live index was in
+maintenance. The individual Williams/NSSDCA sheets were reachable on
+2026-09-22.
+
+**Recovered.** Sidereal periods for Mercury, Venus, Earth, Mars, Jupiter,
+Saturn, Uranus, Neptune, and Pluto match the named-body fact-sheet
+**Sidereal orbit period (days)** printings in the [Wayback 20240111 identity
+capture](https://web.archive.org/web/20240111000000/https://nssdc.gsfc.nasa.gov/planetary/factsheet/)
+of those pages (Mars last updated 5 December 2023; Venus and Uranus 22 May
+2023; the others 11 January 2024). Printed literals and the documented comma /
+trailing-zero parse are in the fixture. Helios uses those numbers as the
+frozen mean-anomaly clock; this is not a claim that the two-body ellipse is
+valid over that period.
+
+**Still unknown.** For the eight inherited rows, `orbitAu`, `eccentricity`,
+`inclinationDeg`, `nodeDeg`, `periDeg`, and `meanAnomalyDeg` have no recovered
+upstream table/version, epoch/time scale, center, frame, element type, or
+rounding rule. J2000 and the heliocentric ecliptic basis remain Helios's
+interpretation, not recovered source metadata. Any justified scientific data
+migration needs a separate issue.
+
+**Compared and not adopted as the Keplerian source.** A demonstrated field
+match is not lineage.
+
+- NASA **Mean Orbital Elements (J2000)** blocks print `a`, `e`, `i`, `Ω`, `ϖ`,
+  and `L`, not Helios's ω and M. Converting `ω = ϖ − Ω` and `M = L − ϖ` does
+  not reproduce the catalog angles as a complete set. Earth `i`, rounded `Ω`,
+  rounded `ω`, and rounded `M` match that conversion; Earth's `e` does not
+  (`0.0167086` versus `0.01671022`). Venus `i = 3.39471` matches the mean-element
+  inclination exactly, but Venus `ω`/`M` do not. Mercury, Mars, Jupiter,
+  Saturn, Uranus, and Pluto derived `ω`/`M` disagree. Several `a` values are
+  truncated or rounded mean-element coefficients; that is not a recovered
+  six-field row.
+- [JPL Approximate Positions Table 1](https://ssd.jpl.nasa.gov/planets/approx_pos.html)
+  remains a non-source for these inherited fields. The #119 example stands:
+  inherited Venus `M = 50.115°` versus Table 1 at T=0
+  `M = 181.97909950 − 131.60246718 = 50.37663232°`. JPL calls those
+  coefficients a best fit, not mean elements, and its Earth row is the
+  Earth/Moon barycenter.
+- The metric comparison-table **Orbital Period (days)** row is tropical
+  (Mercury `88.0`, Neptune `59,800`) per the [fact-sheet notes](https://nssdc.gsfc.nasa.gov/planetary/factsheet/planetfact_notes.html).
+  It is not the recovered sidereal column.
+- Live sheets retrieved 2026-09-22 still parse to the catalog for Mercury,
+  Venus, Earth, Mars, Jupiter, Uranus, and Pluto. Later revisions changed
+  Saturn to `10,755.699` (sheet updated 18 March 2025) and Neptune to
+  `60,189.018` (updated 3 October 2024). Those later digits are not the
+  stored catalog values.
+- Wikipedia planet infoboxes match some Helios angles exactly (Mercury
+  `ω = 29.124°`, `M = 174.796°`) and disagree on others (current Earth
+  `M = 358.617°` versus Helios `357.517°`; Venus `i = 3.39458°` versus
+  `3.39471°`). Wikipedia is a secondary compilation; those matches are not
+  recovered lineage.
+
+Tests compare all scientific fields to the preservation record and
+independently reproduce the verified source columns, including Neptune's
+longitude-to-argument/anomaly conversions and the recovered sidereal-period
+printings.
+
 ## Image assets
 
-| Files | Origin, terms, projection, and transformations | Local SHA-256 |
+The test-only [image-asset digest fixture](tests/fixtures/asset-digest-manifest.json)
+owns every tracked image path, family membership, individual SHA-256, and
+family-manifest digest for the files below. Tests recompute those values from
+the tracked bytes and fail if a listed file is added, removed, renamed, or
+byte-changed without reviewing the fixture and this ledger together. The
+fixture is never imported by the runtime. 2MRS source and payload pinning
+stays in [tests/fixtures/2mrs-integrity.json](tests/fixtures/2mrs-integrity.json).
+
+| Files | Origin, terms, projection, and transformations | Digest family |
 | --- | --- | --- |
-| `assets/textures/sun.jpg`, `mercury.jpg`, `venus.jpg`, `earth.jpg`, `moon.jpg`, `mars.jpg`, `jupiter.jpg`, `saturn.jpg`, `uranus.jpg`, `neptune.jpg`, `ceres.jpg`, `saturn-ring.png` | [Solar System Scope textures](https://www.solarsystemscope.com/textures/), CC BY 4.0. Equirectangular color maps and a radial ring strip were resized/compressed before import; the exact upstream revision and transformation chain were not retained. The publisher discloses saturation and fictional gap filling; its Ceres map is categorized as fictional. | Family manifest: `f566beedf75afa2fd1b7ae0536423ab77bfec59ae2413ba2cf5262fe01231ae7` |
-| `assets/textures/phobos.jpg`, `deimos.jpg`, `io.jpg`, `europa.jpg`, `ganymede.jpg`, `callisto.jpg`, `titan.jpg`, `pluto.jpg` | [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources), subject to [NASA media guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/). Imported as 2:1 atlases and JPEG-compressed; exact upstream commits and prior resize settings were not retained. Phobos and Deimos are approximate atlases displayed on spheres. Io has limited polar coverage. | Family manifest: `6ecc31814ef1d61922ba9ee827be7ba0cdaada38e07e18b61e8ccd457569586b` |
-| `assets/textures/triton.jpg` | [LPI full-resolution cylindrical mosaic underlying JPL PIA18668](https://www.lpi.usra.edu/icy_moons/neptune/triton/), produced by Dr. Paul Schenk (Lunar and Planetary Institute). Image selection, radiometric calibration, geographic registration, photometric correction, and final mosaic assembly were performed by Schenk; image data are from Voyager 2 (NASA/JPL). The producer's [public-use note](https://stereomoons.blogspot.com/2014/08/triton-at-25.html) states that the Triton maps are public domain and free to use, and requests credit to Dr. P. Schenk/LPI. Voyager coverage is incomplete. Full `14138×7069` source, no crop; observed coverage retained, connected black no-data region replaced by uniform `#8f9480`, then Lanczos-resized to `2048×1024`, JPEG 4:2:0 progressive quality 88. Source hash: `ff533af3163f53cc5560cd983cfe0f06b1c2cd0f3db36518d4c5cc5f5ddfeabb`. No inpainting or synthetic terrain. | `7962d4997fc8c8f47e7f54304174a565f59d3cc01e5de119329f59673c684ba9` |
-| `assets/sky/milky-way.jpg` | [ESA Gaia DR2 all-sky colour](https://sci.esa.int/web/gaia/-/60196-gaia-s-sky-in-colour-equirectangular-projection), ESA/Gaia/DPAC, CC BY-SA 3.0 IGO. Equirectangular galactic projection, resized/compressed to `2000×1000`; exact prior settings were not retained. | `95bca25ca3f2001b883e11e8317b5cda728b24ff80137ef749941d0fd4cbf899` |
-| `assets/sky/andromeda.png` | NASA/JPL-Caltech [Spitzer PIA04921](https://images.nasa.gov/details/PIA04921), subject to NASA media guidelines. Cropped to a transparent `384×348` sprite; the exact crop/matte recipe was not retained. | `f620a22e3f70db72a0c4a4a144a80e1d84106da716ad82a6d3088dafec7e9f8f` |
-| `assets/sky/cmb.jpg` | First-party `1536×768` Planck-style illustration. It contains no claimed Planck mission pixels or scientific map values. The original generator settings were not retained. | `59c0e76f91b8d81f67e06a61671d116a9456ef51b9e335a84c341ecd6ae58b3a` |
-| `docs/assets/*.webp` | Current Helios screenshots for repository documentation. Thirteen previews are derived without resizing from the `1440×900` PNG evidence for exact runtime tree `4244250ff5c2394cd17f5c4b0f1c255278697589` in [Audit #160](https://github.com/XenoVoyage/Helios/actions/runs/32756244378). `helios-titan-rings.webp` is a centered `1440×900` crop of the owner's approved `2048×1181` physical-Mac capture of that runtime. All fourteen were converted to lossy VP8 WebP with ImageMagick/libwebp (`quality 82`, method 6). | Family manifest: `872d58b3bda6be63d37fb3e2009367bea8261209decc606f60667defa6049dc4` |
-| `docs/issues/saturn-ring-backface.webp` | Owner-supplied `2048×1182` physical-Mac reproduction of the deferred Saturn ring back-face visibility defect on runtime tree `4244250ff5c2394cd17f5c4b0f1c255278697589`. Converted without resizing to lossy VP8 WebP with ImageMagick/libwebp (`quality 90`, method 6); retained as issue evidence until the defect is resolved. | SHA-256 `a3ade073cb69b33424abeb5ce14c9b79540559eabc7e53b87ccf14276aef63c3` |
+| `assets/textures/sun.jpg`, `mercury.jpg`, `venus.jpg`, `earth.jpg`, `moon.jpg`, `mars.jpg`, `jupiter.jpg`, `saturn.jpg`, `uranus.jpg`, `neptune.jpg`, `ceres.jpg`, `saturn-ring.png` | [Solar System Scope 2k textures](https://www.solarsystemscope.com/textures/), CC BY 4.0. Checked 2026-09-22, every tracked file is byte-identical to the currently published 2k download (`2k_sun.jpg`, `2k_mercury.jpg`, `2k_venus_atmosphere.jpg`, `2k_earth_daymap.jpg`, `2k_moon.jpg`, `2k_mars.jpg`, `2k_jupiter.jpg`, `2k_saturn.jpg`, `2k_uranus.jpg`, `2k_neptune.jpg`, `2k_ceres_fictional.jpg`, `2k_saturn_ring_alpha.png`). Equirectangular globes are `2048×1024`; the ring strip is a `2048×125` radial alpha PNG. Helios applied no crop, resample, recompress, color, fill, or longitude operation. The original fetch date was not retained; SHA-256 identity with those 2026-09-22 publisher files is the version pin. The publisher discloses saturation and fictional gap filling; Venus is the atmosphere map, not `2k_venus_surface.jpg`; Ceres is categorized as fictional. | `solar-system-scope-2k` |
+| `assets/textures/phobos.jpg`, `deimos.jpg`, `io.jpg`, `europa.jpg`, `ganymede.jpg`, `callisto.jpg`, `titan.jpg`, `pluto.jpg` | [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources) JPEGs at commit [`11ebb4ee043715aefbba6aeec8a61746fad67fa7`](https://github.com/nasa/NASA-3D-Resources/commit/11ebb4ee043715aefbba6aeec8a61746fad67fa7), subject to [NASA media guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/). Checked 2026-09-22, every tracked file is byte-identical to that commit's published JPEG. Helios applied no additional JPEG compression, crop, or resize; companion TIFFs exist upstream and are not tracked. Io is `Jupiter - Io (A).jpg`, not Io (B). Phobos and Deimos are approximate atlases displayed on spheres. Io has limited polar coverage. Longitude registration is unverified. | `nasa-3d-resources-jpeg` |
+| `assets/textures/triton.jpg` | [LPI full-resolution cylindrical mosaic underlying JPL PIA18668](https://www.lpi.usra.edu/icy_moons/neptune/triton/), produced by Dr. Paul Schenk (Lunar and Planetary Institute). Image selection, radiometric calibration, geographic registration, photometric correction, and final mosaic assembly were performed by Schenk; image data are from Voyager 2 (NASA/JPL). The producer's [public-use note](https://stereomoons.blogspot.com/2014/08/triton-at-25.html) states that the Triton maps are public domain and free to use, and requests credit to Dr. P. Schenk/LPI. Voyager coverage is incomplete. Full `14138×7069` source, no crop; observed coverage retained, connected black no-data region replaced by uniform `#8f9480`, then Lanczos-resized to `2048×1024`, JPEG 4:2:0 progressive quality 88. Source hash: `ff533af3163f53cc5560cd983cfe0f06b1c2cd0f3db36518d4c5cc5f5ddfeabb`. No inpainting or synthetic terrain. | `lpi-triton-mosaic` |
+| `assets/sky/milky-way.jpg` | [ESA Gaia DR2 all-sky colour](https://sci.esa.int/web/gaia/-/60196-gaia-s-sky-in-colour-equirectangular-projection), ESA/Gaia/DPAC, CC BY-SA 3.0 IGO. Equirectangular galactic projection, resized/compressed to `2000×1000`; exact prior settings were not retained. | `esa-gaia-milky-way` |
+| `assets/sky/andromeda.png` | NASA/JPL-Caltech [Spitzer PIA04921](https://images.nasa.gov/details/PIA04921), subject to NASA media guidelines. Cropped to a transparent `384×348` sprite; the exact crop/matte recipe was not retained. | `nasa-spitzer-andromeda` |
+| `assets/sky/cmb.jpg` | First-party `1536×768` Planck-style illustration. It contains no claimed Planck mission pixels or scientific map values. The original generator settings were not retained. | `cmb-illustration` |
+| `docs/assets/*.webp` | Current Helios screenshots for repository documentation. Thirteen previews are derived without resizing from the `1440×900` PNG evidence for exact runtime tree `4244250ff5c2394cd17f5c4b0f1c255278697589` in [Audit #160](https://github.com/XenoVoyage/Helios/actions/runs/32756244378). `helios-titan-rings.webp` is a centered `1440×900` crop of the owner's approved `2048×1181` physical-Mac capture of that runtime. All fourteen were converted to lossy VP8 WebP with ImageMagick/libwebp (`quality 82`, method 6). | `documentation-screenshots` |
+| `docs/issues/saturn-ring-backface.webp` | Owner-supplied `2048×1182` physical-Mac reproduction of the deferred Saturn ring back-face visibility defect on runtime tree `4244250ff5c2394cd17f5c4b0f1c255278697589`. Converted without resizing to lossy VP8 WebP with ImageMagick/libwebp (`quality 90`, method 6); retained as issue evidence until the defect is resolved. | `saturn-ring-backface-evidence` |
 
 For a family manifest, its listed paths are bytewise-sorted, hashed individually
-with `sha256sum`, and that textual manifest is hashed once with `sha256sum`.
+with `sha256sum`, and that textual manifest is hashed once with `sha256sum`. The
+digest fixture stores both the individual file digests and those family-manifest
+digests.
+
+## Body texture ledger
+
+The test-only [texture provenance fixture](tests/fixtures/texture-provenance.json)
+owns the exact record for every catalog globe and Saturn's ring strip: upstream
+URL/version, license, source digest, tracked digest, projection, dimensions, and
+Helios-side crop/resample/color/fill/longitude operations. The fixture is never
+imported by the runtime. Tracked file digests in that fixture must match the
+[image-asset digest fixture](tests/fixtures/asset-digest-manifest.json), which
+owns family-manifest digest enforcement across all image assets.
+
+| Catalog files | Recovered Helios-side record |
+| --- | --- |
+| Solar System Scope 2k globes and `saturn-ring.png` | Identity copies of the published 2k downloads checked 2026-09-22. No Helios crop, resample, recompress, color, fill, or longitude operation. Venus is `2k_venus_atmosphere.jpg`. Ceres is `2k_ceres_fictional.jpg`. |
+| NASA 3D Resources moon and Pluto JPEGs | Identity copies of the JPEGs at NASA-3D-Resources `11ebb4ee043715aefbba6aeec8a61746fad67fa7`. No Helios JPEG recompress, crop, or resize. Io is the Io (A) JPEG. |
+| Triton | Already recorded: LPI cylindrical mosaic, no-data fill `#8f9480`, Lanczos to `2048×1024`, JPEG quality 88. |
+
+Sky, Andromeda, and CMB transformation settings stay unresolved in the image-asset
+table above. Those gaps are not closed by matching body-map bytes. No replacement
+issue is opened: the tracked sky assets remain the approved runtime pixels.
+
+Longitude registration of inherited maps other than Earth, Moon, and Triton stays
+the existing orientation caveat; it is not a recovered texture-pixel operation.
 
 ## Vendored code
 
@@ -81,8 +240,16 @@ dependency used only by the browser/WebGL smoke test. It is not deployed.
 ## Provenance contributions to adoption status
 
 `AGENTS.md` is the sole owner of Helios's Repository Standard status. The
-provenance blockers contributing to its `adopting` state are the inherited image
-transformation records that were not retained. The HYG bright-star subset is
-identified above as the v3.1–v3.4 equivalence class under CC BY-SA 2.5; the
-former unidentified-HYG blocker is closed. Unknown provenance is stated here
-rather than guessed; non-provenance blockers stay with their canonical owners.
+provenance blockers contributing to its `adopting` state include the unresolved
+inherited sky-image transformation records (Gaia Milky Way resize/compression
+settings, the Andromeda crop/matte recipe, and CMB generator settings) and the
+still-unrecovered six Keplerian fields on the eight inherited heliocentric
+rows recorded in [#119](https://github.com/XenoVoyage/Helios/issues/119). The
+sidereal periods for those rows and for Neptune are now recovered to dated
+NASA NSSDCA fact-sheet printings. Solar System Scope 2k and
+NASA 3D Resources JPEG body maps now have recovered source identity: tracked
+bytes match the published upstream files, so Helios did not retain a separate
+resize/recompress chain for them. The HYG bright-star subset is identified above
+as the v3.1–v3.4 equivalence class under CC BY-SA 2.5; the former
+unidentified-HYG blocker is closed. Unknown provenance is stated here rather
+than guessed; non-provenance blockers stay with their canonical owners.

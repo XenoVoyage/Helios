@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BODIES } from "../js/bodies.js";
 import { CONFIG } from "../js/config.js";
+import { publishPaths } from "../scripts/stage-site.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const remote = /cdn\.|jsdelivr|unpkg|googleapis|cloudflare|fastly|analytics|gtag|telemetry/i;
@@ -105,7 +106,7 @@ assert.match(agents, /`\[SEVERITY\]\[Area\] Imperative outcome`/);
 for (const severity of ["CRITICAL", "HIGH", "MEDIUM", "LOW"]) {
   assert.match(agents, new RegExp(`\\b${severity}\\b`));
 }
-assert.match(agents, /Node 22 baseline/);
+assert.match(agents, /Node 24 baseline/);
 assert.match(agents, /Issue #44 exclusively owns Saturn's back-facing ring-shading correction/);
 assert.match(readme, /\[Repository Standard\]\(REPOSITORY_STANDARD\.md\)/);
 assert.match(provenance, /`AGENTS\.md` is the sole owner of Helios's Repository Standard status/);
@@ -119,7 +120,7 @@ assert.match(provenance, /p Eridani/);
 assert.match(provenance, /first non-empty `proper`/);
 assert.match(
   provenance,
-  /^The latest source evidence recorded in this ledger is dated 2026-09-03;\nsource-specific retrieval and check dates are recorded per entry when known\./m,
+  /^The latest source evidence recorded in this ledger is dated 2026-09-22;\nsource-specific retrieval and check dates are recorded per entry when known\./m,
 );
 assert.match(provenance, /`round\(float\(ra\) \* 15, 5\)`/);
 assert.match(provenance, /`round\(float\(dec\), 5\)`/);
@@ -134,12 +135,40 @@ assert.match(provenance, /b39c1d6dbab932bb624965241b6a13995886370781b9a398d0f1fb
 assert.match(provenance, /193dee77cbfef7179bf1eb6188cfdede9fd0d622760e4bc658ab775c1965c375/);
 assert.match(provenance, /01736aeafecb7f5082c9d2bbed1c6bb36bb9ea6bc4c9ebb3429ed2e8a3a0a4e1/);
 assert.match(provenance, /e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34/);
-assert.match(provenance, /inherited image\s+transformation records/);
+assert.match(provenance, /unresolved\s+inherited sky-image\s+transformation records/);
+assert.match(provenance, /tests\/fixtures\/texture-provenance\.json/);
+assert.match(provenance, /tests\/fixtures\/asset-digest-manifest\.json/);
+assert.match(provenance, /2k_venus_atmosphere\.jpg/);
+assert.match(provenance, /2k_ceres_fictional\.jpg/);
+assert.match(provenance, /2k_saturn_ring_alpha\.png/);
+assert.match(provenance, /11ebb4ee043715aefbba6aeec8a61746fad67fa7/);
+assert.match(provenance, /Jupiter - Io \(A\)\.jpg/);
+assert.doesNotMatch(provenance, /resized\/compressed before import/);
+assert.doesNotMatch(
+  provenance,
+  /Imported as 2:1 atlases and JPEG-compressed; exact upstream commits/,
+);
 assert.doesNotMatch(
   provenance,
   /exact upstream HYG release and its matching license version were not retained/,
 );
 assert.match(readme, /v3\.1–v3\.4 \(CC BY-SA 2\.5\)/);
+{
+  const iauConstellationsUrl = "https://www.iau.org/IAU/Astronomy-FAQs/Constellations.aspx";
+  const retiredIauConstellationsPath = /https?:\/\/(?:www\.)?iau\.org\/public\/themes\/constellations\/?/i;
+  assert.ok(readme.includes(iauConstellationsUrl), "README cites the current IAU constellation page");
+  assert.ok(provenance.includes(iauConstellationsUrl), "PROVENANCE cites the current IAU constellation page");
+  for (const relative of await firstPartyFiles()) {
+    if (relative === "tests/static-check.mjs") continue;
+    const content = await read(relative);
+    assert.doesNotMatch(
+      content,
+      retiredIauConstellationsPath,
+      `${relative} still cites the retired IAU constellation route`,
+    );
+  }
+}
+assert.match(readme, /Venus uses that publisher's atmosphere map/);
 assert.match(readme, /Ceres's stored heliocentric state is one Horizons/);
 assert.match(readme, /Neptune's six orbital elements are one JPL Approximate Positions Table 1/);
 assert.doesNotMatch(readme, /not JPL Horizons or a perturbation ephemeris/);
@@ -179,9 +208,13 @@ const activeStandardFiles = [
 assert.doesNotMatch(activeStandardFiles, /\bv1\.[01]\b/i);
 assert.doesNotMatch(activeStandardFiles, /issue-74-standard-v1-1/i);
 assert.doesNotMatch(activeStandardFiles, /authorized bootstrap|bootstrap exception/i);
-assert.equal(packageJson.engines.node, "22.x");
+assert.equal(packageJson.engines.node, "24.x");
+assert.equal(packageLock.packages[""].engines.node, "24.x");
 assert.equal(packageJson.devDependencies.playwright, "1.62.1");
 assert.equal(packageLock.packages[""].devDependencies.playwright, "1.62.1");
+assert.equal((auditWorkflow.match(/node-version:\s*24\b/g) || []).length, 3);
+assert.equal((pagesWorkflow.match(/node-version:\s*24\b/g) || []).length, 1);
+assert.doesNotMatch(`${auditWorkflow}\n${pagesWorkflow}`, /node-version:\s*(?:22|26)\b/);
 for (const workflow of [auditWorkflow, pagesWorkflow]) {
   for (const action of workflow.matchAll(/uses:\s*[^@\s]+@([^\s]+)/g)) {
     assert.match(action[1], /^[0-9a-f]{40}$/, action[0]);
@@ -238,8 +271,11 @@ assert.match(pullRequestTemplate, /issue branch → develop/);
 assert.match(pullRequestTemplate, /develop → main release/);
 assert.match(pullRequestTemplate, /hotfix\/\* → main/);
 assert.match(pullRequestTemplate, /Candidate commit and tree/);
-assert.match(pagesWorkflow, /cp index\.html styles\.css \.nojekyll LICENSE PROVENANCE\.md _site\//);
-assert.match(pagesWorkflow, /cp -R assets js vendor _site\//);
+assert.deepEqual(publishPaths, [
+  "index.html", "styles.css", ".nojekyll", "LICENSE", "PROVENANCE.md",
+  "assets/", "js/", "vendor/",
+]);
+assert.match(pagesWorkflow, /run: node scripts\/stage-site\.mjs/);
 assert.match(pagesWorkflow, /path: _site/);
 assert.match(pagesWorkflow, /actions\/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9/);
 assert.match(pagesWorkflow, /include-hidden-files: true/);
@@ -275,6 +311,21 @@ assert.match(html, /id="helper-spin"/);
 assert.match(app, /kuiperInnerAu/);
 assert.match(app, /selectedId/);
 assert.match(app, /visualBodyRadius/);
+assert.match(app, /addEventListener\("pointerup", onPointerUp\)/);
+assert.match(app, /addEventListener\("pointercancel", onPointerAbort\)/);
+assert.match(app, /addEventListener\("lostpointercapture", onPointerAbort\)/);
+assert.doesNotMatch(app, /addEventListener\("pointercancel", onPointerUp\)/);
+assert.doesNotMatch(app, /addEventListener\("lostpointercapture", onPointerUp\)/);
+{
+  const abortFn = app.match(/function onPointerAbort\(event\) \{[\s\S]*?\n\}\n\nfunction /);
+  assert.ok(abortFn, "canceled pointers use a dedicated abort handler");
+  assert.doesNotMatch(
+    abortFn[0],
+    /pickAt|selectBody|clearSelection|paintCard/,
+    "pointer abort must not run tap-selection or card/focus updates",
+  );
+  assert.match(abortFn[0], /releasePointerCapture/);
+}
 assert.match(
   app,
   /node\.tilt\.quaternion\.premultiply\(parentNode\.tilt\.quaternion\.clone\(\)\.invert\(\)\)/,
@@ -316,19 +367,53 @@ assert.match(
   "author CSS must preserve native hidden semantics for 44px body-label buttons",
 );
 assert.match(css, /--dock-clearance/);
+assert.equal((html.match(/id="clock"/g) || []).length, 1, "exactly one #clock node");
+{
+  const topbarMarkup = html.match(/<header class="topbar">[\s\S]*?<\/header>/)?.[0];
+  assert.ok(topbarMarkup, "topbar markup is present");
+  assert.doesNotMatch(topbarMarkup, /id="clock"/, "simulation date is not in the top-left brand area");
+  assert.match(topbarMarkup, /id="brand-label"/);
+  assert.match(topbarMarkup, /<h1>Helios<\/h1>/);
+}
 assert.match(
+  html,
+  /id="speed-readout">1 h \/ sec<\/span>\s*<p id="clock" class="clock">2000-01-01<\/p>\s*<\/div>/,
+  "the single clock sits in the dock immediately after the rate readout",
+);
+assert.match(
+  html,
+  /<footer id="dock"[\s\S]*id="clock"[\s\S]*<\/footer>/,
+  "the single clock is inside the time-control dock",
+);
+assert.doesNotMatch(
   css,
   /@media \(orientation: landscape\) and \(max-height: 500px\) and \(max-width: 720px\)[\s\S]*grid-template-areas:\s*"eyebrow eyebrow"\s*"title clock"/,
-  "compact landscape keeps the date under the brand word so a longer chrome label cannot overlap the card",
+  "compact landscape no longer reserves a blank topbar date cell",
+);
+assert.match(
+  css,
+  /#clock\s*\{[^}]*pointer-events:\s*none/,
+  "simulation date does not intercept pointer or touch",
 );
 assert.doesNotMatch(css, /\.speed-group\s*\{[^}]*overflow:\s*hidden/);
+assert.match(
+  css,
+  /\.speed-group\s*\{[^}]*flex:\s*1 1 280px/,
+  "speed group basis keeps the date with the rate by wrapping as one unit",
+);
+assert.match(
+  css,
+  /@media \(orientation: landscape\) and \(max-height: 500px\)[\s\S]*\.speed-group\s*\{[^}]*flex:\s*1 1 220px/,
+  "compact landscape keeps a one-row dock so body labels stay hit-testable",
+);
 assert.doesNotMatch(css, /:hover\s*\{[^}]*display:\s*block/);
 assert.doesNotMatch(css, /--gold|#e8c872/i);
 assert.match(css, /--cyan:\s*#66f7ff/);
 assert.match(css, /--void:\s*#02050c/);
 assert.match(css, /--magenta:\s*#ff57d8/);
 assert.equal(CONFIG.defaultDaysPerSecond, 1 / 24);
-assert.equal(CONFIG.minDaysPerSecond, 1 / 24);
+assert.equal(CONFIG.minDaysPerSecond, 1 / 86400);
+assert.equal(CONFIG.maxDaysPerSecond, 400);
 assert.match(html, /1 h \/ sec/);
 assert.doesNotMatch(html, /8 d \/ sec/);
 assert.match(app, /PointLight/);
@@ -356,6 +441,16 @@ assert.match(app, /orreryScale/);
 assert.match(app, /orbitLineOpacity/);
 assert.match(app, /solarDebrisOpacity/);
 assert.match(app, /ensureGalaxyLayer/);
+assert.match(app, /startGalaxyLayer/);
+assert.match(app, /function yieldToPaint/);
+assert.match(app, /function prepareGalaxyLayer/);
+assert.match(
+  app,
+  /state\.distance = next;\s*if \(next > CONFIG\.solarMaxDistance\) ensureGalaxyLayer\(\);/,
+  "boundary zoom commits the new distance before staging so loading tracks the real target",
+);
+assert.equal(CONFIG.inputFrameBudgetMs, 16);
+assert.match(configSource, /inputFrameBudgetMs:\s*16/);
 assert.doesNotMatch(app, /warmExtraZoom|renderer\.compile/);
 assert.match(app, /paintConstellations/);
 assert.match(app, /ui\.skyControl\.hidden = !available/);
@@ -387,6 +482,21 @@ assert.match(provenance, /CONFIG\.nightSideInspectionFill/);
 assert.match(provenance, /not physical\nplanetary emission or calibrated photometric brightness/);
 assert.match(app, /new THREE\.AmbientLight\(0x24334a, 0\.21\)/,
   "inspection fill does not change shared ambient lighting or Saturn's rings");
+// Issue #44: the unlit ring face receives one bounded transmitted-light term
+// owned by the ring material; scene lights and other materials are untouched.
+assert.ok(
+  Number.isFinite(CONFIG.ringTransmission) && CONFIG.ringTransmission > 0 && CONFIG.ringTransmission <= 1,
+  "ring transmission stays a bounded display-only share of the Sun's Lambert term",
+);
+assert.match(app, /shader\.uniforms\.ringTransmission = \{ value: CONFIG\.ringTransmission \}/);
+assert.match(app, /saturate\( - dot\( geometryNormal, ringBackLight\.direction \) \)/,
+  "ring transmission responds only to sunlight arriving from behind the visible ring face");
+assert.match(app, /float ringPass = sqrt\( 1\.0 - diffuseColor\.a \);/,
+  "ring transmission scales with the square root of the map's transparency, so dense bands stay dimmer than thin ones and gaps stay gaps");
+assert.match(provenance, /`sqrt\(1 - alpha\)`/);
+assert.equal((app.match(/onBeforeCompile/g) ?? []).length, 1, "only the ring material patches its shader");
+assert.doesNotMatch(app, /emissiveMap: ringMap/, "the rings gain no view-independent emissive glow");
+assert.match(provenance, /CONFIG\.ringTransmission/);
 assert.match(configSource, /minimumFocusDistance/);
 assert.match(configSource, /focusSurfaceClearance/);
 assert.match(configSource, /parentGlobeClearance/);
@@ -399,6 +509,31 @@ assert.match(app, /function showUnsupported/);
 assert.match(app, /ui\.version\.hidden = true/);
 assert.match(app, /ui\.stage\.inert = true/);
 assert.match(app, /ResizeObserver/);
+{
+  const capFn = app.match(/function cappedPixelRatio\(\) \{\s*return Math\.min\(window\.devicePixelRatio \|\| 1, 2\);\s*\}/);
+  assert.ok(capFn, "DPR cap stays min(devicePixelRatio, 2) in one helper");
+  assert.equal(
+    [...app.matchAll(/Math\.min\(window\.devicePixelRatio \|\| 1, 2\)/g)].length,
+    1,
+    "the DPR cap has one owner",
+  );
+  assert.match(app, /renderer\.setPixelRatio\(cappedPixelRatio\(\)\)/);
+  const resizeFn = app.match(/function resize\(\) \{[\s\S]*?\n\}\n\nfunction /);
+  assert.ok(resizeFn, "resize owns CSS size, aspect, and capped pixel ratio");
+  assert.match(
+    resizeFn[0],
+    /if \(renderer\.getPixelRatio\(\) !== pixelRatio\) \{\s*renderer\.setPixelRatio\(pixelRatio\);\s*\}/,
+    "resize calls setPixelRatio only when the capped ratio changes",
+  );
+  assert.match(resizeFn[0], /cappedPixelRatio\(\)/);
+  assert.match(resizeFn[0], /renderer\.setSize\(width, height, false\)/);
+  assert.match(resizeFn[0], /camera\.aspect = width \/ Math\.max\(1, height\)/);
+  assert.doesNotMatch(
+    resizeFn[0],
+    /setPixelRatio\([^)]*3/,
+    "resize must not raise the DPR cap",
+  );
+}
 assert.match(app, /hidePlanets = scaleLayer\(state\.distance\) !== "solar"/);
 assert.match(app, /camera\.updateMatrixWorld\(true\);[\s\S]*updateConstellationLabels/);
 assert.ok(
@@ -414,10 +549,21 @@ for (const rootName of ["sun.pivot", "asteroidBelt", "kuiperBelt", "orbitLines"]
 assert.match(html, /id="card-close"/);
 assert.match(html, /aria-label="Close"/);
 assert.match(html, /id="viewport"[^>]*role="img"[^>]*aria-label="Helios scene"/);
-assert.match(html, /aria-describedby="scene-context"/);
+assert.match(html, /id="viewport"[^>]*aria-describedby="scene-context camera-help"/);
+assert.match(html, /id="camera-help"/);
 assert.doesNotMatch(html, /Interactive solar system/);
 assert.match(html, /id="scene-context"[^>]*class="visually-hidden"/);
 assert.match(html, /id="status-live"[^>]*aria-live="polite"/);
+assert.match(html, /id="loading"[^>]*class="loading"[^>]*aria-hidden="true"/);
+assert.match(html, /class="loading-status"/);
+assert.match(css, /\.loading\[hidden\]\s*\{[^}]*display:\s*none/);
+assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+assert.match(css, /\.loading\s*\{[^}]*pointer-events:\s*none/);
+assert.match(app, /LOADING_STATUS/);
+assert.match(galaxy, /export function startGalaxyLayer/);
+assert.match(galaxy, /startCosmicDensityJob/);
+assert.match(cosmicWeb, /startTwoMrsSampleJob/);
+assert.match(cosmicWeb, /startCosmicDensityJob/);
 assert.match(app, /sceneHierarchyId/);
 assert.match(app, /paintSceneSemantics/);
 assert.match(app, /ui\.sceneContext/);
@@ -486,6 +632,7 @@ assert.match(galaxy, /cmb-shell|cmb\.jpg/);
 assert.match(galaxy, /cosmic-web/);
 assert.match(galaxy, /far-galaxy-sky/);
 assert.match(galaxy, /generateFarGalaxySkySamples/);
+assert.match(galaxy, /startFarGalaxySkySampleJob/);
 assert.match(galaxy, /far-galaxy-density/);
 assert.doesNotMatch(galaxy, /CubeTexture|samplerCube|textureCube/);
 assert.doesNotMatch(galaxy, /deep-field/);
@@ -590,10 +737,6 @@ for (const entry of [threeMetadata.module, threeMetadata.core]) {
   assert.equal((await stat(path.join(root, entry.path))).size, entry.bytes);
   assert.equal(await sha256(entry.path), entry.sha256);
 }
-assert.equal(
-  await sha256("assets/textures/triton.jpg"),
-  "7962d4997fc8c8f47e7f54304174a565f59d3cc01e5de119329f59673c684ba9",
-);
 
 const required = [
   "sun",

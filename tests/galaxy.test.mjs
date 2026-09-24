@@ -65,6 +65,7 @@ import {
   extraZoomCameraNear,
   farGalaxySkyRadius,
   generateFarGalaxySkySamples,
+  startFarGalaxySkySampleJob,
   galaxyOpacity,
   heliocentricGalactic,
   localWebOpacity,
@@ -1140,6 +1141,18 @@ test("far-galaxy backdrop is deterministic spherical density without cube faces"
   assert.match(source, /far-galaxy-density/);
   assert.match(source, /far-galaxy-cluster-cores/);
   assert.match(source, /sizeAttenuation:\s*attenuation/);
+
+  const pumped = startFarGalaxySkySampleJob(radius);
+  let pumps = 0;
+  while (!pumped.done) {
+    pumps += 1;
+    pumped.pump(0);
+    assert.ok(pumps < 50_000, "far-galaxy pumping stays bounded");
+  }
+  assert.ok(pumps > 1, "far-galaxy samples can yield between budgeted pumps");
+  assert.deepEqual(pumped.result().positions, first.positions);
+  assert.deepEqual(pumped.result().colors, first.colors);
+  assert.deepEqual(pumped.result().corePositions, first.corePositions);
 });
 
 test("far-galaxy sky remains camera-attached and tolerates an absent layer", () => {
@@ -3057,6 +3070,72 @@ test("moon camera continuity ignores axial jitter and releases without a snap", 
   assert.deepEqual(continuity, { key: null, active: false });
 });
 
+test("wheel normalization preserves recorded pixel-mode zoom values exactly", () => {
+  // Recorded from the develop-base curve, including tiny trackpad and audit deltas.
+  const pixels = [
+    [-10_000, 1.1253517471925912e-7],
+    [-1000, 0.20189651799465538],
+    [-800, 0.27803730045319414],
+    [-120, 0.8253068684916824],
+    [-48, 0.9260750500962484],
+    [-3, 0.9952115015900972],
+    [-0.125, 0.9998000199986667],
+    [0, 1],
+    [0.125, 1.0002000200013335],
+    [3, 1.0048115384541396],
+    [48, 1.0798260895767233],
+    [120, 1.2116705169649005],
+    [800, 3.5966397255692817],
+    [1000, 4.953032424395115],
+    [10_000, 8886110.520507872],
+  ];
+  for (const [delta, expected] of pixels) {
+    assert.equal(wheelZoomMultiplier(delta), expected, `legacy pixel delta ${delta}`);
+    assert.equal(wheelZoomMultiplier(delta, 0, Number.NaN), expected);
+  }
+  assert.equal(wheelZoomMultiplier(-0), 1);
+});
+
+test("wheel line and page units produce equivalent pixel zoom", () => {
+  // Application convention: 16 CSS pixels per line; one page is the canvas height.
+  assert.equal(wheelZoomMultiplier(3, 1), 1.0798260895767233);
+  assert.equal(wheelZoomMultiplier(-3, 1), 0.9260750500962484);
+  for (const height of [320, 568, 768, 844, 900]) {
+    for (const pixels of [-900, -48, -0.125, 0, 0.125, 48, 900]) {
+      const expected = wheelZoomMultiplier(pixels);
+      for (const actual of [
+        wheelZoomMultiplier(pixels / 16, 1, Number.NaN),
+        wheelZoomMultiplier(pixels / height, 2, height),
+      ]) assert.ok(Math.abs(actual / expected - 1) <= 1e-12);
+    }
+    assert.equal(wheelZoomMultiplier(1, 2, height), wheelZoomMultiplier(height));
+  }
+});
+
+test("wheel extremes stay finite and invalid input has no zoom effect", () => {
+  const outward = wheelZoomMultiplier(10_000);
+  const inward = wheelZoomMultiplier(-10_000);
+  // Saturation cannot change any reachable unsaturated pixel-mode camera target.
+  assert.ok(CONFIG.minDistance * outward > CONFIG.maxDistance);
+  assert.ok(CONFIG.maxDistance * inward < CONFIG.minDistance);
+  for (const mode of [0, 1, 2]) {
+    for (const delta of [Number.NaN, Infinity, -Infinity]) {
+      assert.equal(wheelZoomMultiplier(delta, mode, 900), 1);
+    }
+    assert.equal(wheelZoomMultiplier(0, mode, 900), 1);
+    assert.equal(wheelZoomMultiplier(Number.MAX_VALUE, mode, 900), outward);
+    assert.equal(wheelZoomMultiplier(-Number.MAX_VALUE, mode, 900), inward);
+  }
+  assert.equal(wheelZoomMultiplier(2, 2, Number.MAX_VALUE), outward);
+  assert.equal(wheelZoomMultiplier(-2, 2, Number.MAX_VALUE), inward);
+  for (const height of [0, -1, Number.NaN, Infinity, -Infinity]) {
+    assert.equal(wheelZoomMultiplier(1, 2, height), 1);
+  }
+  for (const mode of [-1, 3, Number.NaN, Infinity]) {
+    assert.equal(wheelZoomMultiplier(48, mode, 900), 1);
+  }
+});
+
 test("pinch direction, wheel direction, and shortcut targets follow native behavior", () => {
   assert.ok(pinchZoomDistance(1000, 40, 80) < 1000, "pinch-out decreases camera distance");
   assert.ok(pinchZoomDistance(1000, 40, 20) > 1000, "pinch-in increases camera distance");
@@ -3256,7 +3335,9 @@ test("post-Virgo map uses measured cluster anchors and no invented web links", a
   assert.match(galaxySource, /quietAndromedaMap|andromeda\.png/);
   assert.match(galaxySource, /cameraFar \* 0\.42/);
   assert.match(galaxySource, /generateFarGalaxySkySamples/);
-  assert.match(galaxySource, /generateCosmicDensity/);
+  assert.match(galaxySource, /startFarGalaxySkySampleJob/);
+  assert.match(galaxySource, /startCosmicDensityJob/);
+  assert.match(galaxySource, /startGalaxyLayer/);
   assert.match(galaxySource, /far-galaxy-density/);
   assert.match(galaxySource, /far-galaxy-cluster-cores/);
   assert.doesNotMatch(galaxySource, /CubeTexture|samplerCube|textureCube/);
@@ -3273,7 +3354,7 @@ test("post-Virgo map uses measured cluster anchors and no invented web links", a
   );
   assert.doesNotMatch(galaxySource, /farGalaxySkyRadius\(\) \* 0\.045/);
   assert.doesNotMatch(galaxySource, /t: 0\.16/);
-  assert.match(galaxySource, /createFarGalaxySky\(THREE, group\)/);
+  assert.match(galaxySource, /createFarGalaxySky\(THREE, group/);
   assert.doesNotMatch(galaxySource, /far-galaxy-shell/);
   assert.doesNotMatch(galaxySource, /far-galaxy-blobs/);
   assert.match(galaxySource, /brightenLoadedMap/);
@@ -3374,6 +3455,38 @@ test("post-Virgo map uses measured cluster anchors and no invented web links", a
   });
   assert.ok(Math.abs(Math.hypot(virgoHub.x, virgoHub.y, virgoHub.z) - visualWeb(16.5)) < 1e-6);
   assert.notEqual(visualWeb(16.5), visualVirgo(16500));
+});
+
+test("M31 disposes the generated placeholder only after a successful image replacement", async () => {
+  const galaxySource = await readFile(path.join(root, "js/galaxy.js"), "utf8");
+  const neighbors = galaxySource.slice(
+    galaxySource.indexOf("function createNeighbors"),
+    galaxySource.indexOf("function createMilkyWayMarks"),
+  );
+  const replacement = neighbors.slice(
+    neighbors.indexOf('if (neighbor.id === "m31")'),
+    neighbors.indexOf("const label = neighbor.messier"),
+  );
+  assert.match(replacement, /new THREE\.TextureLoader\(\)\.load\(SKY_ASSETS\.andromeda/);
+  assert.match(replacement, /const previous = sprite\.material\.map/);
+  assert.match(replacement, /const next = brightenLoadedMap\(THREE, loaded, 2\.15\)/);
+  assert.match(replacement, /sprite\.material\.map = next/);
+  assert.match(replacement, /previous\.dispose\(\)/);
+  assert.ok(
+    replacement.indexOf("sprite.material.map = next") < replacement.indexOf("previous.dispose()"),
+    "the placeholder is unreferenced before dispose",
+  );
+  assert.ok(
+    replacement.indexOf("if (previous && previous !== next)") < replacement.indexOf("previous.dispose()"),
+    "dispose runs only when a distinct replacement map owns the slot",
+  );
+  assert.doesNotMatch(replacement, /loaded\.dispose\(/);
+  assert.equal((replacement.match(/\.dispose\(/g) ?? []).length, 1, "one placeholder dispose on the success path");
+  assert.match(
+    replacement,
+    /new THREE\.TextureLoader\(\)\.load\(SKY_ASSETS\.andromeda, \(loaded\) => \{/,
+    "TextureLoader.load takes only the success callback, so a failed fetch cannot dispose the visible fallback",
+  );
 });
 
 test("particle horizon and the artistically co-located CMB shell stay distinct", () => {

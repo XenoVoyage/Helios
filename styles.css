@@ -59,6 +59,58 @@ body {
   touch-action: none;
 }
 
+.loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.loading[hidden] {
+  display: none;
+}
+
+.loading-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 0;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 600 12px/1.3 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.loading-mark {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(102, 247, 255, 0.28);
+  border-top-color: var(--cyan);
+  border-radius: 50%;
+  animation: loading-spin 0.8s linear infinite;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-mark {
+    animation: none;
+    border-color: var(--cyan);
+  }
+}
+
 .labels {
   position: absolute;
   inset: 0;
@@ -234,6 +286,59 @@ h2 {
   transform: translateX(-50%);
 }
 
+.camera-controls {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: calc(var(--dock-clearance) + max(24px, env(safe-area-inset-bottom)));
+  z-index: 5;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: start;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+}
+
+#camera-toggle,
+.camera-panel {
+  background: var(--chrome-backing);
+  box-shadow: 0 0 0 6px var(--chrome-backing);
+}
+
+.camera-panel {
+  width: 280px;
+  max-width: 100%;
+  max-height: calc(100dvh - var(--dock-clearance) - 96px);
+  overflow: auto;
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.camera-panel[hidden] {
+  display: none;
+}
+
+.camera-controls[hidden] {
+  display: none;
+}
+
+.camera-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.camera-buttons button {
+  min-width: 44px;
+  padding: 0 4px;
+  line-height: 1.2;
+}
+
+#camera-help {
+  margin: 10px 0 0;
+  color: var(--ink);
+  font: 13px/1.4 ui-sans-serif, system-ui, sans-serif;
+}
+
 button,
 input[type="range"],
 select {
@@ -271,6 +376,19 @@ select {
   min-width: 108px;
 }
 
+#play-button[aria-pressed="true"] {
+  border-color: var(--cyan);
+  background: rgba(102, 247, 255, 0.2);
+}
+
+#slower-button:disabled,
+#faster-button:disabled {
+  border-style: dashed;
+  color: var(--ink);
+  background: transparent;
+  cursor: default;
+}
+
 .constellation-control {
   flex-shrink: 0;
 }
@@ -288,10 +406,10 @@ select:focus-visible,
   position: relative;
   z-index: 1;
   display: flex;
-  flex: 1 1 220px;
+  flex: 1 1 280px;
   gap: 8px;
   align-items: center;
-  min-width: 0;
+  min-width: min-content;
   max-width: 100%;
 }
 
@@ -299,7 +417,8 @@ select:focus-visible,
   display: flex;
   flex: 1;
   align-items: center;
-  min-width: 0;
+  /* Reserve the slider's 44px target plus its native side margins. */
+  min-width: 48px;
 }
 
 input[type="range"] {
@@ -316,6 +435,18 @@ input[type="range"] {
 #speed-readout {
   min-width: 5.5rem;
   text-align: right;
+  white-space: nowrap;
+}
+
+#clock {
+  pointer-events: none;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-left: 4px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 
 .unsupported {
@@ -397,6 +528,62 @@ input[type="range"] {
   }
 }
 
+@media (max-width: 720px) and (orientation: portrait),
+  (orientation: landscape) and (max-height: 500px) and (max-width: 840px) {
+  /* Keep the date inside the existing control row so cards retain their clearance. */
+  .speed-group {
+    display: grid;
+    flex-basis: 220px;
+    grid-template-columns: 44px minmax(48px, 1fr) 44px max-content;
+    grid-template-rows: repeat(2, 24px);
+    column-gap: 2px;
+    row-gap: 0;
+  }
+
+  #slower-button,
+  .speed-label,
+  #faster-button {
+    grid-row: 1 / 3;
+  }
+
+  #speed-readout,
+  #clock {
+    grid-column: 4;
+    text-align: right;
+  }
+
+  #speed-readout {
+    grid-row: 1;
+  }
+
+  #clock {
+    grid-row: 2;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 720px) and (orientation: portrait) {
+  #stage:has(#camera-controls:not([hidden])) .card {
+    --camera-card-gap: 24px;
+    --camera-card-top: 52px;
+    bottom: calc(max(168px, var(--dock-clearance) + var(--camera-clearance) + var(--camera-card-gap)) + env(safe-area-inset-bottom));
+    max-height: calc(100dvh - max(168px, var(--dock-clearance) + var(--camera-clearance) + var(--camera-card-gap)) - var(--camera-card-top) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow: auto;
+  }
+
+  #stage:has(#camera-panel:not([hidden])) .card {
+    --camera-card-gap: 40px;
+    --camera-card-top: 72px;
+  }
+}
+
+@media (orientation: portrait) and (max-height: 680px) and (max-width: 360px) {
+  #stage:has(#camera-controls:not([hidden])):has(#camera-panel[hidden]) .card {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}
+
 @media (orientation: landscape) and (max-height: 500px) {
   h1 {
     font-size: 16px;
@@ -404,6 +591,21 @@ input[type="range"] {
 
   .dock {
     width: min(920px, calc(100vw - 16px));
+  }
+
+  .speed-group {
+    flex: 1 1 220px;
+    column-gap: 4px;
+  }
+
+  #speed-readout {
+    min-width: 4.5rem;
+    letter-spacing: 0;
+  }
+
+  #clock {
+    margin-left: 0;
+    letter-spacing: 0;
   }
 
   .card {
@@ -420,36 +622,45 @@ input[type="range"] {
   }
 }
 
-@media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
-  /* Keep the date under the brand word so a longer chrome label cannot
-     push the topbar into the right-side card. */
-  .topbar {
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 840px) {
+  .speed-group {
+    grid-template-rows: repeat(2, 22px);
+    column-gap: 0;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 720px),
+  (orientation: portrait) and (max-height: 680px) and (max-width: 360px) {
+  .camera-controls:has(#camera-panel:not([hidden])) {
     display: grid;
-    grid-template-columns: auto auto;
-    grid-template-areas:
-      "eyebrow eyebrow"
-      "title clock";
-    column-gap: 10px;
-    row-gap: 0;
-    align-items: baseline;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    width: 208px;
+    background: var(--chrome-backing);
+    box-shadow: 0 0 0 6px var(--chrome-backing);
   }
 
-  .topbar .brand {
+  #camera-panel:not([hidden]),
+  .camera-buttons {
     display: contents;
   }
 
-  .topbar .eyebrow {
-    grid-area: eyebrow;
+  #camera-toggle {
+    min-width: 44px;
+    padding: 0 2px;
+    font-size: 12px;
   }
 
-  .topbar h1 {
-    grid-area: title;
+  #camera-help {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
   }
+}
 
-  .topbar .clock {
-    grid-area: clock;
-  }
-
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
   .card {
     width: min(324px, calc(100vw - 24px));
     max-height: calc(

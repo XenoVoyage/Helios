@@ -1,0 +1,659 @@
+{
+  "checkedAt": "2026-09-22",
+  "scope": "Body-texture source identity and Helios-side transformations for every catalog globe and Saturn's ring strip. Family-manifest digest enforcement for all image assets is owned by tests/fixtures/asset-digest-manifest.json.",
+  "note": "Live upstream bytes were compared on 2026-09-22. Tests freeze the resulting record against tracked files only; they do not fetch upstream.",
+  "families": {
+    "solar-system-scope-2k": {
+      "origin": "https://www.solarsystemscope.com/textures/",
+      "license": "CC BY 4.0",
+      "licenseUri": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Solar System Scope",
+      "versionPin": "SHA-256 identity with the published 2k downloads checked 2026-09-22. The original Helios fetch date was not retained; the publisher does not expose a separate revision id on those URLs.",
+      "projection": "equirectangular color maps and one radial ring strip",
+      "heliosTransformSummary": "identity; no Helios crop, resample, recompress, color, fill, or longitude operation"
+    },
+    "nasa-3d-resources-jpeg": {
+      "origin": "https://github.com/nasa/NASA-3D-Resources",
+      "license": "NASA 3D Resources states the assets are free and without copyright; use remains subject to NASA media guidelines",
+      "licenseUri": "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+      "attribution": "NASA 3D Resources",
+      "versionPin": "GitHub commit 11ebb4ee043715aefbba6aeec8a61746fad67fa7, default-branch HEAD when checked 2026-09-22",
+      "projection": "equirectangular / 2:1 JPEG atlases as published",
+      "heliosTransformSummary": "identity copies of the published JPEGs; Helios did not recompress, crop, or resize them. Companion TIFFs exist upstream and are not tracked."
+    },
+    "lpi-triton-mosaic": {
+      "origin": "https://www.lpi.usra.edu/icy_moons/neptune/triton/",
+      "license": "Producer states the Triton maps are public domain and free to use; credit Dr. P. Schenk/LPI",
+      "licenseUri": "https://stereomoons.blogspot.com/2014/08/triton-at-25.html",
+      "attribution": "Dr. P. Schenk/LPI; Voyager 2 image data NASA/JPL",
+      "versionPin": "source SHA-256 ff533af3163f53cc5560cd983cfe0f06b1c2cd0f3db36518d4c5cc5f5ddfeabb",
+      "projection": "cylindrical mosaic mapped as equirectangular",
+      "heliosTransformSummary": "documented fill and Lanczos resize; see the Triton file record"
+    }
+  },
+  "files": [
+    {
+      "id": "sun",
+      "path": "assets/textures/sun.jpg",
+      "family": "solar-system-scope-2k",
+      "upstreamUri": "https://www.solarsystemscope.com/textures/download/2k_sun.jpg",
+      "upstreamName": "2k_sun.jpg",
+      "upstreamVersion": "published 2k download checked 2026-09-22; no separate pack revision id is published at that URL",
+      "sourceDigest": "ff0f076ba65e03b5ab518451bc96699325be38e3ccbdd5869ee1c00f3a0c8816",
+      "trackedDigest": "ff0f076ba65e03b5ab518451bc96699325be38e3ccbdd5869ee1c00f3a0c8816",
+      "bytes": 822427,
+      "width": 2048,
+      "height": 1024,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "publisher pack discloses saturation and fictional gap filling"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "mercury",
+      "path": "assets/textures/mercury.jpg",
+      "family": "solar-system-scope-2k",
+      "upstreamUri": "https://www.solarsystemscope.com/textures/download/2k_mercury.jpg",
+      "upstreamName": "2k_mercury.jpg",
+      "upstreamVersion": "published 2k download checked 2026-09-22; no separate pack revision id is published at that URL",
+      "sourceDigest": "5a5c80607f643496bac9a631e71957def35ed788895f18b678ac849c2b38e48a",
+      "trackedDigest": "5a5c80607f643496bac9a631e71957def35ed788895f18b678ac849c2b38e48a",
+      "bytes": 872555,
+      "width": 2048,
+      "height": 1024,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "publisher pack discloses saturation and fictional gap filling"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "venus",
+      "path": "assets/textures/venus.jpg",
+      "family": "solar-system-scope-2k",
+      "upstreamUri": "https://www.solarsystemscope.com/textures/download/2k_venus_atmosphere.jpg",
+      "upstreamName": "2k_venus_atmosphere.jpg",
+      "upstreamVersion": "published 2k download checked 2026-09-22; no separate pack revision id is published at that URL",
+      "sourceDigest": "225012ad4911730605c4e189ca2a3bf674fce50cc48aab4102b936b47d6991ac",
+      "trackedDigest": "225012ad4911730605c4e189ca2a3bf674fce50cc48aab4102b936b47d6991ac",
+      "bytes": 229696,
+      "width": 2048,
+      "height": 1024,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "this is the publisher's atmosphere map, not 2k_venus_surface.jpg",
+        "publisher pack discloses saturation and fictional gap filling"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "earth",
+      "path": "assets/textures/earth.jpg",
+      "family": "solar-system-scope-2k",
+      "upstreamUri": "https://www.solarsystemscope.com/textures/download/2k_earth_daymap.jpg",
+      "upstreamName": "2k_earth_daymap.jpg",
+      "upstreamVersion": "published 2k download checked 2026-09-22; no separate pack revision id is published at that URL",
+      "sourceDigest": "767ee1dc6eb3802699bfccf6f264880f8acd0b80de3191cd24984fe279b07b7c",
+      "trackedDigest": "767ee1dc6eb3802699bfccf6f264880f8acd0b80de3191cd24984fe279b07b7c",
+      "bytes": 463087,
+      "width": 2048,
+      "height": 1024,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "publisher pack discloses saturation and fictional gap filling"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "moon",
+      "path": "assets/textures/moon.jpg",
+      "family": "solar-system-scope-2k",
+      "upstreamUri": "https://www.solarsystemscope.com/textures/download/2k_moon.jpg",
+      "upstreamName": "2k_moon.jpg",
+      "upstreamVersion": "published 2k download checked 2026-09-22; no separate pack revision id is published at that URL",
+      "sourceDigest": "2764ba6535ea0481a062846ee033cc7a909dae05b31a8fd13f3e98f3a7fd92bd",
+      "trackedDigest": "2764ba6535ea0481a062846ee033cc7a909dae05b31a8fd13f3e98f3a7fd92bd",
+      "bytes": 1053869,
+      "width": 2048,
+      "height": 1024,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "publisher pack discloses saturation and fictional gap filling"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "mars",
+      "path": "assets/textures/mars.jpg",
+      "family": "solar-system-scope-2k",
+      "upstreamUri": "https://www.solarsystemscope.com/textures/download/2k_mars.jpg",
+      "upstreamName": "2k_mars.jpg",
+      "upstreamVersion": "published 2k download checked 2026-09-22; no separate pack revision id is published at that URL",
+      "sourceDigest": "2d187f3e77a98eaa8cea5f4cc722f633c122ef170b9e94ace6b5fb6cbc3f8e01",
+      "trackedDigest": "2d187f3e77a98eaa8cea5f4cc722f633c122ef170b9e94ace6b5fb6cbc3f8e01",
+      "bytes": 750547,
+      "width": 2048,
+      "height": 1024,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "publisher pack discloses saturation and fictional gap filling"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "phobos",
+      "path": "assets/textures/phobos.jpg",
+      "family": "nasa-3d-resources-jpeg",
+      "upstreamUri": "https://github.com/nasa/NASA-3D-Resources/blob/11ebb4ee043715aefbba6aeec8a61746fad67fa7/Images%20and%20Textures/Mars%20-%20Phobos/Mars%20-%20Phobos.jpg",
+      "upstreamPath": "Images and Textures/Mars - Phobos/Mars - Phobos.jpg",
+      "upstreamName": "Mars - Phobos.jpg",
+      "upstreamVersion": "11ebb4ee043715aefbba6aeec8a61746fad67fa7",
+      "sourceDigest": "8ec807b353eb28f44b5aa24b8a887935ee5563f5b63bde2430a9988220f71463",
+      "trackedDigest": "8ec807b353eb28f44b5aa24b8a887935ee5563f5b63bde2430a9988220f71463",
+      "bytes": 601584,
+      "width": 1440,
+      "height": 720,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d1d684b7ee493568bca42ee9227b653daa0c421f",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "approximate atlas displayed on a sphere",
+        "unverified longitude registration"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "deimos",
+      "path": "assets/textures/deimos.jpg",
+      "family": "nasa-3d-resources-jpeg",
+      "upstreamUri": "https://github.com/nasa/NASA-3D-Resources/blob/11ebb4ee043715aefbba6aeec8a61746fad67fa7/Images%20and%20Textures/Mars%20-%20Deimos/Mars%20-%20Deimos.jpg",
+      "upstreamPath": "Images and Textures/Mars - Deimos/Mars - Deimos.jpg",
+      "upstreamName": "Mars - Deimos.jpg",
+      "upstreamVersion": "11ebb4ee043715aefbba6aeec8a61746fad67fa7",
+      "sourceDigest": "204e89cc7dc128e9fa6ae5f14cc23dc7917a4a8ccab9feff1a9544d22b354dce",
+      "trackedDigest": "204e89cc7dc128e9fa6ae5f14cc23dc7917a4a8ccab9feff1a9544d22b354dce",
+      "bytes": 480429,
+      "width": 1440,
+      "height": 720,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d1d684b7ee493568bca42ee9227b653daa0c421f",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "approximate atlas displayed on a sphere",
+        "unverified longitude registration"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "ceres",
+      "path": "assets/textures/ceres.jpg",
+      "family": "solar-system-scope-2k",
+      "upstreamUri": "https://www.solarsystemscope.com/textures/download/2k_ceres_fictional.jpg",
+      "upstreamName": "2k_ceres_fictional.jpg",
+      "upstreamVersion": "published 2k download checked 2026-09-22; no separate pack revision id is published at that URL",
+      "sourceDigest": "ee59b2c7aa399dfdc810078c723373670133fe8505e439601dff4ce6f3cc5ad8",
+      "trackedDigest": "ee59b2c7aa399dfdc810078c723373670133fe8505e439601dff4ce6f3cc5ad8",
+      "bytes": 1127678,
+      "width": 2048,
+      "height": 1024,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "publisher categorizes this Ceres map as fictional"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "jupiter",
+      "path": "assets/textures/jupiter.jpg",
+      "family": "solar-system-scope-2k",
+      "upstreamUri": "https://www.solarsystemscope.com/textures/download/2k_jupiter.jpg",
+      "upstreamName": "2k_jupiter.jpg",
+      "upstreamVersion": "published 2k download checked 2026-09-22; no separate pack revision id is published at that URL",
+      "sourceDigest": "b0f04d005350252636b0e3396fc592548cbd9e9126b269d32d5c6abd4b0e4f2b",
+      "trackedDigest": "b0f04d005350252636b0e3396fc592548cbd9e9126b269d32d5c6abd4b0e4f2b",
+      "bytes": 498976,
+      "width": 2048,
+      "height": 1024,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "publisher pack discloses saturation and fictional gap filling"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "io",
+      "path": "assets/textures/io.jpg",
+      "family": "nasa-3d-resources-jpeg",
+      "upstreamUri": "https://github.com/nasa/NASA-3D-Resources/blob/11ebb4ee043715aefbba6aeec8a61746fad67fa7/Images%20and%20Textures/Jupiter%20-%20Io%20(A)/Jupiter%20-%20Io%20(A).jpg",
+      "upstreamPath": "Images and Textures/Jupiter - Io (A)/Jupiter - Io (A).jpg",
+      "upstreamName": "Jupiter - Io (A).jpg",
+      "upstreamVersion": "11ebb4ee043715aefbba6aeec8a61746fad67fa7",
+      "sourceDigest": "fdd79a58331864ec1f93035b3ebb92767b01715d2ce75d5b73cf8537b6af3382",
+      "trackedDigest": "fdd79a58331864ec1f93035b3ebb92767b01715d2ce75d5b73cf8537b6af3382",
+      "bytes": 702001,
+      "width": 1440,
+      "height": 720,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "this is Jupiter - Io (A).jpg, not Jupiter - Io (B).jpg",
+        "limited polar coverage",
+        "unverified longitude registration"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "europa",
+      "path": "assets/textures/europa.jpg",
+      "family": "nasa-3d-resources-jpeg",
+      "upstreamUri": "https://github.com/nasa/NASA-3D-Resources/blob/11ebb4ee043715aefbba6aeec8a61746fad67fa7/Images%20and%20Textures/Jupiter%20-%20Europa/Jupiter%20-%20Europa.jpg",
+      "upstreamPath": "Images and Textures/Jupiter - Europa/Jupiter - Europa.jpg",
+      "upstreamName": "Jupiter - Europa.jpg",
+      "upstreamVersion": "11ebb4ee043715aefbba6aeec8a61746fad67fa7",
+      "sourceDigest": "50d01ca5c01352d1c507bb17fefd1c46ba11260305656250062c6cdac89c8ebf",
+      "trackedDigest": "50d01ca5c01352d1c507bb17fefd1c46ba11260305656250062c6cdac89c8ebf",
+      "bytes": 610862,
+      "width": 1440,
+      "height": 720,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "unverified longitude registration"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "ganymede",
+      "path": "assets/textures/ganymede.jpg",
+      "family": "nasa-3d-resources-jpeg",
+      "upstreamUri": "https://github.com/nasa/NASA-3D-Resources/blob/11ebb4ee043715aefbba6aeec8a61746fad67fa7/Images%20and%20Textures/Jupiter%20-%20Ganymede/Jupiter%20-%20Ganymede.jpg",
+      "upstreamPath": "Images and Textures/Jupiter - Ganymede/Jupiter - Ganymede.jpg",
+      "upstreamName": "Jupiter - Ganymede.jpg",
+      "upstreamVersion": "11ebb4ee043715aefbba6aeec8a61746fad67fa7",
+      "sourceDigest": "1aa9d5a6f20e72230c13ce3d78592fc056e22f1e1ee39ea7acfa7e08d09fe173",
+      "trackedDigest": "1aa9d5a6f20e72230c13ce3d78592fc056e22f1e1ee39ea7acfa7e08d09fe173",
+      "bytes": 710923,
+      "width": 1440,
+      "height": 720,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "unverified longitude registration"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "callisto",
+      "path": "assets/textures/callisto.jpg",
+      "family": "nasa-3d-resources-jpeg",
+      "upstreamUri": "https://github.com/nasa/NASA-3D-Resources/blob/11ebb4ee043715aefbba6aeec8a61746fad67fa7/Images%20and%20Textures/Jupiter%20-%20Callisto/Jupiter%20-%20Callisto.jpg",
+      "upstreamPath": "Images and Textures/Jupiter - Callisto/Jupiter - Callisto.jpg",
+      "upstreamName": "Jupiter - Callisto.jpg",
+      "upstreamVersion": "11ebb4ee043715aefbba6aeec8a61746fad67fa7",
+      "sourceDigest": "b9f4fa5db94debabd12814853fd132db3449889646a490b6f95a897b2c47b121",
+      "trackedDigest": "b9f4fa5db94debabd12814853fd132db3449889646a490b6f95a897b2c47b121",
+      "bytes": 783405,
+      "width": 1440,
+      "height": 720,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "unverified longitude registration"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "saturn",
+      "path": "assets/textures/saturn.jpg",
+      "family": "solar-system-scope-2k",
+      "upstreamUri": "https://www.solarsystemscope.com/textures/download/2k_saturn.jpg",
+      "upstreamName": "2k_saturn.jpg",
+      "upstreamVersion": "published 2k download checked 2026-09-22; no separate pack revision id is published at that URL",
+      "sourceDigest": "54a900ca9bf7ab62e70f862852759abdf342e6d6436a95a2fe9ebdb6bcd3bbac",
+      "trackedDigest": "54a900ca9bf7ab62e70f862852759abdf342e6d6436a95a2fe9ebdb6bcd3bbac",
+      "bytes": 199916,
+      "width": 2048,
+      "height": 1024,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "publisher pack discloses saturation and fictional gap filling"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "saturn-ring",
+      "path": "assets/textures/saturn-ring.png",
+      "family": "solar-system-scope-2k",
+      "upstreamUri": "https://www.solarsystemscope.com/textures/download/2k_saturn_ring_alpha.png",
+      "upstreamName": "2k_saturn_ring_alpha.png",
+      "upstreamVersion": "published 2k download checked 2026-09-22; no separate pack revision id is published at that URL",
+      "sourceDigest": "4b0644b2f3ef259fd0bfaedd9dc52f9e7d9738f65f50363e8c4dd19f650d7334",
+      "trackedDigest": "4b0644b2f3ef259fd0bfaedd9dc52f9e7d9738f65f50363e8c4dd19f650d7334",
+      "bytes": 12119,
+      "width": 2048,
+      "height": 125,
+      "format": "png",
+      "projection": "radial ring strip",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "publisher alpha strip; Helios does not record a further crop or color operation"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "titan",
+      "path": "assets/textures/titan.jpg",
+      "family": "nasa-3d-resources-jpeg",
+      "upstreamUri": "https://github.com/nasa/NASA-3D-Resources/blob/11ebb4ee043715aefbba6aeec8a61746fad67fa7/Images%20and%20Textures/Saturn%20-%20Titan/Saturn%20-%20Titan.jpg",
+      "upstreamPath": "Images and Textures/Saturn - Titan/Saturn - Titan.jpg",
+      "upstreamName": "Saturn - Titan.jpg",
+      "upstreamVersion": "11ebb4ee043715aefbba6aeec8a61746fad67fa7",
+      "sourceDigest": "a213516e3ccbe46bfbdb576963859c82c75799612ccab775ec3cf24b451feca0",
+      "trackedDigest": "a213516e3ccbe46bfbdb576963859c82c75799612ccab775ec3cf24b451feca0",
+      "bytes": 49233,
+      "width": 720,
+      "height": 360,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "unverified longitude registration"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "uranus",
+      "path": "assets/textures/uranus.jpg",
+      "family": "solar-system-scope-2k",
+      "upstreamUri": "https://www.solarsystemscope.com/textures/download/2k_uranus.jpg",
+      "upstreamName": "2k_uranus.jpg",
+      "upstreamVersion": "published 2k download checked 2026-09-22; no separate pack revision id is published at that URL",
+      "sourceDigest": "d15239d46f82d3ea13d2b260b5b29b2a382f42f2916dae0694d0387b1204a09d",
+      "trackedDigest": "d15239d46f82d3ea13d2b260b5b29b2a382f42f2916dae0694d0387b1204a09d",
+      "bytes": 77751,
+      "width": 2048,
+      "height": 1024,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "publisher pack discloses saturation and fictional gap filling"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "neptune",
+      "path": "assets/textures/neptune.jpg",
+      "family": "solar-system-scope-2k",
+      "upstreamUri": "https://www.solarsystemscope.com/textures/download/2k_neptune.jpg",
+      "upstreamName": "2k_neptune.jpg",
+      "upstreamVersion": "published 2k download checked 2026-09-22; no separate pack revision id is published at that URL",
+      "sourceDigest": "cb42ea82709741d28b0af44d8b283cbc6dbd0c521a7f0e1e1e010ade00977df6",
+      "trackedDigest": "cb42ea82709741d28b0af44d8b283cbc6dbd0c521a7f0e1e1e010ade00977df6",
+      "bytes": 241580,
+      "width": 2048,
+      "height": 1024,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "publisher pack discloses saturation and fictional gap filling"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "triton",
+      "path": "assets/textures/triton.jpg",
+      "family": "lpi-triton-mosaic",
+      "upstreamUri": "https://www.lpi.usra.edu/icy_moons/neptune/triton/",
+      "upstreamName": "LPI full-resolution cylindrical mosaic underlying JPL PIA18668",
+      "upstreamVersion": "source SHA-256 ff533af3163f53cc5560cd983cfe0f06b1c2cd0f3db36518d4c5cc5f5ddfeabb",
+      "sourceDigest": "ff533af3163f53cc5560cd983cfe0f06b1c2cd0f3db36518d4c5cc5f5ddfeabb",
+      "trackedDigest": "7962d4997fc8c8f47e7f54304174a565f59d3cc01e5de119329f59673c684ba9",
+      "bytes": 238822,
+      "width": 2048,
+      "height": 1024,
+      "format": "jpeg",
+      "projection": "equirectangular / cylindrical",
+      "heliosEntered": "fce17875f53459f1525a29857435456f60fed517",
+      "transformation": {
+        "kind": "documented",
+        "crop": false,
+        "resample": true,
+        "color": false,
+        "fill": true,
+        "longitudeShift": false,
+        "record": "Full 14138x7069 source, no crop; observed coverage retained, connected black no-data region replaced by uniform #8f9480, then Lanczos-resized to 2048x1024, JPEG 4:2:0 progressive quality 88. No inpainting or synthetic terrain."
+      },
+      "caveats": [
+        "Voyager coverage is incomplete",
+        "credit Dr. P. Schenk/LPI; Voyager 2 image data NASA/JPL"
+      ],
+      "unresolved": null
+    },
+    {
+      "id": "pluto",
+      "path": "assets/textures/pluto.jpg",
+      "family": "nasa-3d-resources-jpeg",
+      "upstreamUri": "https://github.com/nasa/NASA-3D-Resources/blob/11ebb4ee043715aefbba6aeec8a61746fad67fa7/Images%20and%20Textures/Pluto/Pluto.jpg",
+      "upstreamPath": "Images and Textures/Pluto/Pluto.jpg",
+      "upstreamName": "Pluto.jpg",
+      "upstreamVersion": "11ebb4ee043715aefbba6aeec8a61746fad67fa7",
+      "sourceDigest": "a921387426a506b6f6ae8fd24872eeab59b81f963cd9c010b59d825059b29c64",
+      "trackedDigest": "a921387426a506b6f6ae8fd24872eeab59b81f963cd9c010b59d825059b29c64",
+      "bytes": 351885,
+      "width": 720,
+      "height": 360,
+      "format": "jpeg",
+      "projection": "equirectangular",
+      "heliosEntered": "d6b4bf01da34abc6f2ad34be9f2ae751a77c33a0",
+      "transformation": {
+        "kind": "identity",
+        "crop": false,
+        "resample": false,
+        "color": false,
+        "fill": false,
+        "longitudeShift": false,
+        "record": "Tracked bytes equal the published upstream file. Helios applied no crop, resample, color, fill, or longitude operation."
+      },
+      "caveats": [
+        "unverified longitude registration"
+      ],
+      "unresolved": null
+    }
+  ]
+}

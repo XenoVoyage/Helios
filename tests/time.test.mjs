@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { describeDaysPerSecond } from "../js/config.js";
+import {
+  CONFIG,
+  describeDaysPerSecond,
+  formatDaysPerSecond,
+  sliderFromSpeed,
+  speedFromSlider,
+} from "../js/config.js";
 import {
   MAX_SIMULATION_DAYS,
   advanceSimulationDays,
@@ -20,8 +26,75 @@ function runFrames(fps, seconds, rate) {
 }
 
 test("simulation time is frame-rate independent", () => {
-  for (const fps of [10, 20, 60]) {
-    assert.ok(Math.abs(runFrames(fps, 10, 8) - 80) < 1e-10, `${fps} FPS`);
+  for (const rate of [CONFIG.minDaysPerSecond, CONFIG.defaultDaysPerSecond, 8, CONFIG.maxDaysPerSecond]) {
+    const expected = 10 * rate;
+    for (const fps of [10, 20, 60, 120]) {
+      assert.ok(Math.abs(runFrames(fps, 10, rate) - expected)
+        <= Number.EPSILON * 512 * expected, `${fps} FPS at ${rate} days/sec`);
+    }
+  }
+});
+
+test("real-time minimum advances exactly one simulated second per elapsed second", () => {
+  const rate = speedFromSlider(0);
+  assert.equal(rate, 1 / 86400);
+  const days = advanceSimulationDays(0, elapsedSeconds(1000, 0), rate, true);
+  assert.equal(days * 86400, 1);
+  assert.equal(advanceSimulationDays(0, 1, rate, false), 0);
+  assert.equal(advanceSimulationDays(days, elapsedSeconds(1000, 1000), rate, true), days);
+  assert.equal(simulationDateLabel(days), "2000-01-01");
+});
+
+test("logarithmic time control has exact clamped endpoints and monotonic round trips", () => {
+  for (const unit of [-1, 0]) assert.equal(speedFromSlider(unit), CONFIG.minDaysPerSecond);
+  for (const unit of [1, 2]) assert.equal(speedFromSlider(unit), CONFIG.maxDaysPerSecond);
+  assert.equal(sliderFromSpeed(0), 0);
+  assert.equal(sliderFromSpeed(CONFIG.minDaysPerSecond), 0);
+  assert.equal(sliderFromSpeed(CONFIG.maxDaysPerSecond), 1);
+  assert.equal(sliderFromSpeed(800), 1);
+  let previous = speedFromSlider(0);
+  for (let step = 1; step <= 100; step += 1) {
+    const unit = step / 100;
+    const rate = speedFromSlider(unit);
+    assert.ok(rate > previous, `slider step ${step} increases the rate`);
+    assert.ok(Math.abs(sliderFromSpeed(rate) - unit) < 1e-14, `slider step ${step} round trip`);
+    previous = rate;
+  }
+  for (const rate of [1 / 86400, 1 / 1440, 1 / 24, 1, 8, 30, 365, 400]) {
+    assert.ok(Math.abs(speedFromSlider(sliderFromSpeed(rate)) - rate) <= rate * 1e-14,
+      `${rate} days/sec is preserved by the continuous mapping`);
+  }
+  assert.equal(CONFIG.defaultDaysPerSecond, 1 / 24);
+  assert.ok(sliderFromSpeed(CONFIG.defaultDaysPerSecond) > 0);
+});
+
+test("rate labels distinguish seconds and minutes while preserving all higher units", () => {
+  for (const [rate, compact, accessible] of [
+    [1 / 86400, "1 s", "1 second per second"],
+    [1.2 / 86400, "1.2 s", "1.2 seconds per second"],
+    [9.9 / 86400, "9.9 s", "9.9 seconds per second"],
+    [30 / 86400, "30 s", "30 seconds per second"],
+    [59 / 86400, "59 s", "59 seconds per second"],
+    [1 / 1440, "1 min", "1 minute per second"],
+    [1.5 / 1440, "1.5 min", "1.5 minutes per second"],
+    [9.9 / 1440, "9.9 min", "9.9 minutes per second"],
+    [30 / 1440, "30 min", "30 minutes per second"],
+    [59 / 1440, "59 min", "59 minutes per second"],
+    [1 / 24, "1 h", "1 hour per second"],
+    [0.25, "6 h", "6 hours per second"],
+    [1, "1.0 d", "1 day per second"],
+    [8, "8.0 d", "8 days per second"],
+    [30, "1.0 mo", "1 month per second"],
+    [365.25, "1.0 yr", "1 year per second"],
+    [400, "1.1 yr", "1.1 years per second"],
+  ]) {
+    assert.equal(formatDaysPerSecond(rate), compact);
+    assert.equal(describeDaysPerSecond(rate), accessible);
+  }
+  for (let step = 0; step <= 100; step += 1) {
+    const rate = speedFromSlider(step / 100);
+    assert.doesNotMatch(formatDaysPerSecond(rate), /^0(?:\s|\.0\s)/);
+    assert.doesNotMatch(describeDaysPerSecond(rate), /^0\s/);
   }
 });
 

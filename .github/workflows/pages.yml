@@ -31,7 +31,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Verify static release
         run: npm run test:static
@@ -42,10 +42,7 @@ jobs:
           enablement: true
 
       - name: Stage static site
-        run: |
-          mkdir _site
-          cp index.html styles.css .nojekyll LICENSE PROVENANCE.md _site/
-          cp -R assets js vendor _site/
+        run: node scripts/stage-site.mjs
 
       - name: Upload static site
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

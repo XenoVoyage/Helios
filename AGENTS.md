@@ -40,6 +40,7 @@ alone.
 | Presentation | `styles.css` |
 | Public product version | `VERSION.txt` (`CONFIG.VERSION` and README badge must match) |
 | Scientific and asset provenance | `PROVENANCE.md` |
+| Tracked image membership and SHA-256 | `tests/fixtures/asset-digest-manifest.json` |
 | Reusable contributor policy | `REPOSITORY_STANDARD.md` |
 | Helios-specific contributor contract | `AGENTS.md` |
 | Human introduction | `README.md` |
@@ -47,7 +48,9 @@ alone.
 `js/2mrs-data.js` is a generated, hash-verified payload. Read its metadata
 header—not the base64 body—unless the task specifically owns catalog
 regeneration or data integrity. `scripts/build-2mrs.mjs` is its canonical
-generator.
+generator. The independent payload pin is `tests/fixtures/2mrs-integrity.json`.
+`tests/fixtures/asset-digest-manifest.json` owns tracked image-file membership
+and SHA-256 values recorded in `PROVENANCE.md`.
 
 Every issue PR landing on `develop` increments the public product version in
 all three mirrors together: canonical `VERSION.txt`, `CONFIG.VERSION` in
@@ -157,7 +160,7 @@ or physical verification.
   missing scientific data or imagery.
 - The diff is the smallest complete fix, contains no unrelated redesign, and
   accounts for every changed, added, generated, and deleted file.
-- `npm test` passes from a clean checkout on the Node 22 baseline declared in
+- `npm test` passes from a clean checkout on the Node 24 baseline declared in
   `package.json` and the workflows, including browser/WebGL checks. CI on the
   exact candidate is authoritative.
 - Documentation, provenance, product-version mirrors, tests, templates,

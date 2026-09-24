@@ -18,8 +18,8 @@
 import { CONFIG } from "./config.js";
 import {
   COSMIC_WEB_MODEL,
-  createTwoMrsSamples,
-  generateCosmicDensity,
+  startCosmicDensityJob,
+  startTwoMrsSampleJob,
 } from "./cosmic-web.js";
 import {
   CELESTIAL_RENDER_THRESHOLD,
@@ -1574,10 +1574,16 @@ function createNeighbors(THREE, group, maps) {
       new THREE.TextureLoader().load(SKY_ASSETS.andromeda, (loaded) => {
         loaded.colorSpace = THREE.SRGBColorSpace;
         loaded.anisotropy = 4;
-        sprite.material.map = brightenLoadedMap(THREE, loaded, 2.15);
+        const previous = sprite.material.map;
+        const next = brightenLoadedMap(THREE, loaded, 2.15);
+        sprite.material.map = next;
         sprite.material.color.set(0xfff4e8);
         sprite.material.blending = THREE.AdditiveBlending;
         sprite.material.needsUpdate = true;
+        // The generated placeholder is a one-off for this singleton sprite.
+        // Dispose it only after the real map owns the slot; load failure
+        // never reaches here, so the visible fallback stays intact.
+        if (previous && previous !== next) previous.dispose();
       });
     }
     const label = neighbor.messier ? `${neighbor.name} (${neighbor.messier})` : neighbor.name;
@@ -1810,10 +1816,9 @@ function createVirgoCluster(THREE, group, maps) {
 }
 
 /** Public 2MRS galaxies, not connected hubs or a reconstructed matter field. */
-function createMeasuredWeb(THREE, group) {
+function createMeasuredWeb(THREE, group, samples) {
   const web = new THREE.Group();
   web.name = "cosmic-web";
-  const samples = createTwoMrsSamples(webHubMapPosition);
   addPoints(
     THREE,
     web,
@@ -1856,13 +1861,17 @@ function createHomeMark(THREE, group) {
   group.add(mark);
 }
 
+function outerDensityRadii() {
+  return {
+    innerRadius: visualWeb(CONFIG.webRadiusMpc),
+    outerRadius: visualUniverse(PARTICLE_HORIZON.comovingRadiusGpc) * 0.92,
+  };
+}
+
 /** Beyond 2MRS: bounded first-party density illustration, never named data. */
-function createOuterDensity(THREE, group) {
+function createOuterDensity(THREE, group, samples) {
   const shell = new THREE.Group();
   shell.name = "universe";
-  const innerRadius = visualWeb(CONFIG.webRadiusMpc);
-  const outerRadius = visualUniverse(PARTICLE_HORIZON.comovingRadiusGpc) * 0.92;
-  const samples = generateCosmicDensity(COSMIC_WEB_MODEL.outer, innerRadius, outerRadius);
   addPoints(
     THREE,
     shell,
@@ -1906,13 +1915,7 @@ export function farGalaxySkyRadius() {
  * This is first-party visual context, not a measured catalog or a claim that
  * a named cluster occupies any generated point.
  */
-export function generateFarGalaxySkySamples(radius = farGalaxySkyRadius()) {
-  if (!(radius > 0)) throw new RangeError("far-galaxy sky radius must be positive");
-  const density = generateCosmicDensity(
-    FAR_GALAXY_SKY_MODEL,
-    radius * 0.985,
-    radius,
-  );
+function finishFarGalaxySkySamples(density) {
   const corePositions = new Float32Array(FAR_GALAXY_SKY_MODEL.coreCount * 3);
   const coreColors = new Float32Array(FAR_GALAXY_SKY_MODEL.coreCount * 3);
   for (let core = 0; core < FAR_GALAXY_SKY_MODEL.coreCount; core += 1) {
@@ -1936,12 +1939,39 @@ export function generateFarGalaxySkySamples(radius = farGalaxySkyRadius()) {
   };
 }
 
-function createFarGalaxySky(THREE, group) {
+export function startFarGalaxySkySampleJob(radius = farGalaxySkyRadius()) {
+  if (!(radius > 0)) throw new RangeError("far-galaxy sky radius must be positive");
+  const densityJob = startCosmicDensityJob(
+    FAR_GALAXY_SKY_MODEL,
+    radius * 0.985,
+    radius,
+  );
+  let samples = null;
+  return {
+    get done() { return samples != null; },
+    pump(budgetMs = Number.POSITIVE_INFINITY) {
+      if (samples) return true;
+      if (!densityJob.pump(budgetMs)) return false;
+      samples = finishFarGalaxySkySamples(densityJob.result());
+      return true;
+    },
+    result() {
+      if (!samples) throw new Error("far-galaxy sky sample job is incomplete");
+      return samples;
+    },
+  };
+}
+
+export function generateFarGalaxySkySamples(radius = farGalaxySkyRadius()) {
+  const job = startFarGalaxySkySampleJob(radius);
+  job.pump(Number.POSITIVE_INFINITY);
+  return job.result();
+}
+
+function createFarGalaxySky(THREE, group, samples) {
   const sky = new THREE.Group();
   sky.name = "far-galaxy-sky";
   orientMapFrame(THREE, sky);
-  const radius = farGalaxySkyRadius();
-  const samples = generateFarGalaxySkySamples(radius);
   const density = addPoints(
     THREE,
     sky,
@@ -2015,41 +2045,122 @@ function createVisibilityCache(group) {
   return { nodes, groups, materials, opacity: null, distance: null };
 }
 
-export function createGalaxyLayer(THREE) {
+/**
+ * Build the canonical extra-zoom layer in budgeted steps. Direct routes still
+ * finish this synchronously before `heliosReady`; later boundary entry pumps
+ * the same steps so input can return within CONFIG.inputFrameBudgetMs.
+ */
+export function startGalaxyLayer(THREE) {
   const group = new THREE.Group();
   group.name = "galaxy-layer";
   group.visible = false;
-  const maps = {
-    spiral: galaxySprite(THREE, "spiral", 1),
-    elliptical: galaxySprite(THREE, "elliptical", 2),
-    irregular: galaxySprite(THREE, "irregular", 3),
-    lmc: galaxySprite(THREE, "lmc", 4),
+  const work = {
+    maps: null,
+    farJob: null,
+    farSamples: null,
+    map: null,
+    twoMrsJob: null,
+    twoMrsSamples: null,
+    outerJob: null,
+    outerSamples: null,
   };
-  createFarGalaxySky(THREE, group);
-  createScaleLabels(THREE, group);
-  const map = new THREE.Group();
-  map.name = "galactic-frame";
-  orientMapFrame(THREE, map);
-  group.add(map);
-  const milkyway = new THREE.Group();
-  milkyway.name = "milkyway";
-  createDiskGlow(THREE, milkyway);
-  createSpiralStars(THREE, milkyway);
-  createHalo(THREE, milkyway);
-  createBulge(THREE, milkyway);
-  map.add(milkyway);
-  createMilkyWayMarks(THREE, map);
-  createNeighbors(THREE, map, maps);
-  createLocalGroupMembers(THREE, map, maps);
-  createLocalGroupLabel(THREE, map);
-  createPostVirgoClusters(THREE, map);
-  createVirgoCluster(THREE, map, maps);
-  createMeasuredWeb(THREE, map);
-  createHomeMark(THREE, map);
-  createOuterDensity(THREE, map);
-  createCmbShell(THREE, map);
-  group.userData.visibilityCache = createVisibilityCache(group);
-  return group;
+  const steps = [
+    function sprites() {
+      work.maps = {
+        spiral: galaxySprite(THREE, "spiral", 1),
+        elliptical: galaxySprite(THREE, "elliptical", 2),
+        irregular: galaxySprite(THREE, "irregular", 3),
+        lmc: galaxySprite(THREE, "lmc", 4),
+      };
+    },
+    function farSkySamples(budgetMs) {
+      if (!work.farJob) work.farJob = startFarGalaxySkySampleJob();
+      if (!work.farJob.pump(budgetMs)) return false;
+      work.farSamples = work.farJob.result();
+      work.farJob = null;
+      return true;
+    },
+    function farSky() {
+      createFarGalaxySky(THREE, group, work.farSamples);
+      createScaleLabels(THREE, group);
+    },
+    function galacticFrame() {
+      const map = new THREE.Group();
+      map.name = "galactic-frame";
+      orientMapFrame(THREE, map);
+      group.add(map);
+      work.map = map;
+    },
+    function milkyWayGlow() {
+      const milkyway = new THREE.Group();
+      milkyway.name = "milkyway";
+      createDiskGlow(THREE, milkyway);
+      work.map.add(milkyway);
+      work.milkyway = milkyway;
+    },
+    function milkyWayStars() {
+      createSpiralStars(THREE, work.milkyway);
+      createHalo(THREE, work.milkyway);
+      createBulge(THREE, work.milkyway);
+    },
+    function catalogNeighbors() {
+      createMilkyWayMarks(THREE, work.map);
+      createNeighbors(THREE, work.map, work.maps);
+      createLocalGroupMembers(THREE, work.map, work.maps);
+      createLocalGroupLabel(THREE, work.map);
+      createPostVirgoClusters(THREE, work.map);
+      createVirgoCluster(THREE, work.map, work.maps);
+    },
+    function measuredWebSamples(budgetMs) {
+      if (!work.twoMrsJob) work.twoMrsJob = startTwoMrsSampleJob(webHubMapPosition);
+      if (!work.twoMrsJob.pump(budgetMs)) return false;
+      work.twoMrsSamples = work.twoMrsJob.result();
+      work.twoMrsJob = null;
+      return true;
+    },
+    function measuredWeb() {
+      createMeasuredWeb(THREE, work.map, work.twoMrsSamples);
+    },
+    function outerDensitySamples(budgetMs) {
+      if (!work.outerJob) {
+        const { innerRadius, outerRadius } = outerDensityRadii();
+        work.outerJob = startCosmicDensityJob(COSMIC_WEB_MODEL.outer, innerRadius, outerRadius);
+      }
+      if (!work.outerJob.pump(budgetMs)) return false;
+      work.outerSamples = work.outerJob.result();
+      work.outerJob = null;
+      return true;
+    },
+    function outerWorld() {
+      createHomeMark(THREE, work.map);
+      createOuterDensity(THREE, work.map, work.outerSamples);
+      createCmbShell(THREE, work.map);
+      group.userData.visibilityCache = createVisibilityCache(group);
+    },
+  ];
+  let index = 0;
+  return {
+    group,
+    get done() { return index >= steps.length; },
+    advance(budgetMs = Number.POSITIVE_INFINITY) {
+      const startedAt = performance.now();
+      while (index < steps.length) {
+        const remaining = Number.isFinite(budgetMs)
+          ? budgetMs - (performance.now() - startedAt)
+          : Number.POSITIVE_INFINITY;
+        if (Number.isFinite(budgetMs) && remaining <= 0 && index > 0) return;
+        const done = steps[index](remaining);
+        if (done === false) return;
+        index += 1;
+      }
+    },
+  };
+}
+
+export function createGalaxyLayer(THREE) {
+  const session = startGalaxyLayer(THREE);
+  session.advance(Number.POSITIVE_INFINITY);
+  return session.group;
 }
 
 function fadeNamedGroup(cache, name, opacity, shown) {

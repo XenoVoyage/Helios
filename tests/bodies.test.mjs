@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import * as THREE from "../vendor/three.module.min.js";
 import { CONFIG, formatDaysPerSecond } from "../js/config.js";
 import {
@@ -25,6 +27,293 @@ import {
 } from "../js/bodies.js";
 import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
+
+const orbitalProvenance = JSON.parse(await readFile(
+  new URL("./fixtures/orbital-provenance.json", import.meta.url), "utf8",
+));
+const textureProvenance = JSON.parse(await readFile(
+  new URL("./fixtures/texture-provenance.json", import.meta.url), "utf8",
+));
+const assetDigestManifest = JSON.parse(await readFile(
+  new URL("./fixtures/asset-digest-manifest.json", import.meta.url), "utf8",
+));
+
+function sha256Bytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function rasterSize(bytes) {
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) {
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  }
+  let offset = 2;
+  while (offset < bytes.length - 8) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = bytes[offset + 1];
+    if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
+      return { width: bytes.readUInt16BE(offset + 7), height: bytes.readUInt16BE(offset + 5) };
+    }
+    if (marker === 0xda) break;
+    if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+      offset += 2;
+      continue;
+    }
+    offset += 2 + bytes.readUInt16BE(offset + 2);
+  }
+  throw new Error("raster size not found");
+}
+
+test("every scientific catalog row has a complete preservation and provenance record", () => {
+  const expectedSources = {
+    sun: "fixed-sun",
+    mercury: "legacy-heliocentric",
+    venus: "legacy-heliocentric",
+    earth: "legacy-heliocentric",
+    moon: "satellite-de405-le405",
+    mars: "legacy-heliocentric",
+    phobos: "satellite-mar099",
+    deimos: "satellite-mar099",
+    ceres: "ceres-horizons",
+    jupiter: "legacy-heliocentric",
+    io: "satellite-jup365",
+    europa: "satellite-jup365",
+    ganymede: "satellite-jup365",
+    callisto: "satellite-jup365",
+    saturn: "legacy-heliocentric",
+    titan: "satellite-sat441",
+    uranus: "legacy-heliocentric",
+    neptune: "neptune-table-1",
+    triton: "satellite-nep097",
+    pluto: "legacy-heliocentric",
+  };
+  assert.deepEqual(Object.keys(expectedSources), BODIES.map((body) => body.id));
+  assert.deepEqual(orbitalProvenance.rows.map((row) => row.id), BODIES.map((body) => body.id));
+  for (const body of BODIES) {
+    const row = orbitalProvenance.rows.find((entry) => entry.id === body.id);
+    // Omit only presentation metadata; new scientific fields require a ledger update.
+    const { id, name, kind, texture, color, ring, ...scientific } = body;
+    assert.deepEqual(scientific, row.catalog, `${id}: update the source record with any scientific change`);
+    assert.equal(row.record, name);
+    assert.equal(row.source, expectedSources[id], `${id}: retain the independently verified source classification`);
+    for (const sourceId of [row.source, row.periodSource].filter(Boolean)) {
+      const source = orbitalProvenance.sources[sourceId];
+      assert.ok(source, `${id}: source ${sourceId} exists`);
+      for (const field of ["uri", "table", "version", "epoch", "timeScale", "center", "frame", "elementType", "units", "derivation", "validity"]) {
+        assert.equal(typeof source[field], "string", `${id}: ${field} is documented`);
+        assert.ok(source[field].trim(), `${id}: ${field} is not empty`);
+      }
+      assert.equal(new URL(source.uri).protocol, "https:");
+      if (sourceId === "legacy-heliocentric") {
+        assert.equal(source.upstreamUri, null, "unrecovered Keplerian-angle provenance is explicit");
+        assert.equal(source.upstreamTable, null);
+        assert.equal(source.upstreamVersion, null);
+        assert.ok(source.gap.startsWith("https://github.com/XenoVoyage/Helios/issues/"));
+        assert.match(source.gap.slice("https://github.com/XenoVoyage/Helios/issues/".length), /^\d+$/);
+      } else if (sourceId === "nasa-nssdc-sidereal-period") {
+        assert.match(source.table, /Sidereal orbit period \(days\)/, `${id}: period source is the fact-sheet sidereal column`);
+        assert.match(source.derivation, /tropical/i, `${id}: tropical comparison-table row is excluded`);
+        assert.equal(source.epoch, "not applicable to a period scalar");
+        assert.equal(source.timeScale, "not applicable");
+      } else if (sourceId !== "fixed-sun") {
+        assert.match(source.timeScale, /^TDB\b/, `${id}: verified epoch time scale is TDB`);
+        assert.match(source.epoch, /\bJD 2451545\.0\b/, `${id}: verified source epoch is JD 2451545.0`);
+      }
+    }
+  }
+});
+
+test("published orbital source columns and derived angles reproduce their catalog rows", () => {
+  const wrapDegrees = (degrees) => ((degrees % 360) + 360) % 360;
+  for (const row of orbitalProvenance.rows) {
+    const body = findBody(row.id);
+    const ref = row.reference;
+    let expected;
+    if (row.source === "ceres-horizons") {
+      assert.ok(ref, "Ceres has its retained Horizons source fields");
+      expected = { orbitAu: ref.A, eccentricity: ref.EC, inclinationDeg: ref.IN, nodeDeg: ref.OM, periDeg: ref.W, meanAnomalyDeg: ref.MA, orbitDays: ref.PR };
+    } else if (row.source === "neptune-table-1") {
+      assert.ok(ref, "Neptune has all six original Table 1 coefficients");
+      expected = { orbitAu: ref.a, eccentricity: ref.e, inclinationDeg: ref.I, nodeDeg: ref.longNode };
+      assert.ok(Math.abs(body.periDeg - wrapDegrees(ref.longPeri - ref.longNode)) < 1e-10);
+      assert.ok(Math.abs(body.meanAnomalyDeg - wrapDegrees(ref.L - ref.longPeri)) < 1e-10);
+      assert.equal(row.periodSource, "nasa-nssdc-sidereal-period", "Table 1 does not own the recovered fact-sheet period");
+    } else if (row.source.startsWith("satellite-")) {
+      assert.ok(ref, `${row.id}: published moon row is retained`);
+      assert.equal(body.kind, "moon");
+      const source = orbitalProvenance.sources[row.source];
+      assert.equal(source.center, `${findBody(body.parent).name} (planet center)`, `${row.id}: source center matches the parent`);
+      const fields = ["a", "e", "i", "node", "w", "M", "P"];
+      if (row.id !== "moon") fields.push("poleRA", "poleDec");
+      for (const field of fields) {
+        assert.equal(typeof ref[field], "string", `${row.id}: ${field} retains source decimal text`);
+        assert.match(ref[field], /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/, `${row.id}: ${field} is nonempty decimal text`);
+      }
+      expected = { orbitKm: Number(ref.a), eccentricity: Number(ref.e), inclinationDeg: Number(ref.i), nodeDeg: Number(ref.node), periDeg: Number(ref.w), meanAnomalyDeg: Number(ref.M), orbitDays: Number(ref.P) };
+      if (row.id === "moon") {
+        assert.match(source.frame, /^ecliptic(?:;|$)/);
+        assert.equal(ref.poleRA, null);
+        assert.equal(ref.poleDec, null);
+        assert.deepEqual(body.orbitFrame, { kind: "ecliptic" });
+      } else {
+        assert.match(source.frame, /^local Laplace plane(?:;|$)/);
+        assert.equal(body.orbitFrame.kind, "laplace");
+        assert.equal(body.orbitFrame.poleRaDeg, Number(ref.poleRA));
+        assert.equal(body.orbitFrame.poleDecDeg, Number(ref.poleDec));
+        const parent = findBody(body.parent).orientationJ2000;
+        assert.deepEqual(body.orbitFrame.parentPole, { raDeg: parent.poleRaDeg, decDeg: parent.poleDecDeg });
+      }
+    } else {
+      assert.ok(["fixed-sun", "legacy-heliocentric"].includes(row.source));
+      assert.equal(ref, undefined, `${row.id}: do not fabricate authoritative Keplerian reference columns`);
+      continue;
+    }
+    assert.deepEqual(Object.fromEntries(Object.keys(expected).map((key) => [key, body[key]])), expected, `${row.id}: published orbital fields`);
+  }
+});
+
+test("dated NASA fact-sheet sidereal periods reproduce the inherited orbitDays literals", () => {
+  const expectedPrintings = {
+    mercury: "87.969",
+    venus: "224.701",
+    earth: "365.256",
+    mars: "686.980",
+    jupiter: "4,332.589",
+    saturn: "10,759.22",
+    uranus: "30,685.4",
+    neptune: "60,189.",
+    pluto: "90,560",
+  };
+  for (const [id, printed] of Object.entries(expectedPrintings)) {
+    const row = orbitalProvenance.rows.find((entry) => entry.id === id);
+    const body = findBody(id);
+    assert.equal(row.periodSource, "nasa-nssdc-sidereal-period", `${id}: period owner is the dated fact sheet`);
+    assert.equal(row.periodReference.P, printed, `${id}: retain the printed sidereal-period text`);
+    assert.equal(Number(printed.replaceAll(",", "")), body.orbitDays, `${id}: printed period parses to the catalog`);
+    assert.equal(row.catalog.orbitDays, body.orbitDays);
+  }
+  assert.equal(orbitalProvenance.sources["legacy-heliocentric"].upstreamUri, null);
+  assert.equal(
+    orbitalProvenance.rows.filter((row) => row.source === "legacy-heliocentric").length,
+    8,
+    "eight inherited Keplerian-angle rows remain unrecovered",
+  );
+});
+
+test("every body texture has a complete source and transformation record", async () => {
+  const requiredFamilies = {
+    sun: "solar-system-scope-2k",
+    mercury: "solar-system-scope-2k",
+    venus: "solar-system-scope-2k",
+    earth: "solar-system-scope-2k",
+    moon: "solar-system-scope-2k",
+    mars: "solar-system-scope-2k",
+    phobos: "nasa-3d-resources-jpeg",
+    deimos: "nasa-3d-resources-jpeg",
+    ceres: "solar-system-scope-2k",
+    jupiter: "solar-system-scope-2k",
+    io: "nasa-3d-resources-jpeg",
+    europa: "nasa-3d-resources-jpeg",
+    ganymede: "nasa-3d-resources-jpeg",
+    callisto: "nasa-3d-resources-jpeg",
+    saturn: "solar-system-scope-2k",
+    "saturn-ring": "solar-system-scope-2k",
+    titan: "nasa-3d-resources-jpeg",
+    uranus: "solar-system-scope-2k",
+    neptune: "solar-system-scope-2k",
+    triton: "lpi-triton-mosaic",
+    pluto: "nasa-3d-resources-jpeg",
+  };
+  const expectedIds = [];
+  for (const body of BODIES) {
+    expectedIds.push(body.id);
+    if (body.ring) expectedIds.push("saturn-ring");
+  }
+  assert.deepEqual(Object.keys(requiredFamilies), expectedIds);
+  assert.deepEqual(textureProvenance.files.map((row) => row.id), expectedIds);
+  assert.equal(findBody("saturn").ring, "assets/textures/saturn-ring.png");
+
+  for (const [familyId, family] of Object.entries(textureProvenance.families)) {
+    for (const field of ["origin", "license", "licenseUri", "attribution", "versionPin", "projection", "heliosTransformSummary"]) {
+      assert.equal(typeof family[field], "string", `${familyId}: ${field} is documented`);
+      assert.ok(family[field].trim(), `${familyId}: ${field} is not empty`);
+    }
+    assert.equal(new URL(family.origin).protocol, "https:");
+    assert.equal(new URL(family.licenseUri).protocol, "https:");
+  }
+
+  for (const body of BODIES) {
+    const row = textureProvenance.files.find((entry) => entry.id === body.id);
+    assert.equal(row.path, body.texture, `${body.id}: fixture path matches the catalog texture`);
+  }
+
+  for (const row of textureProvenance.files) {
+    const bytes = await readFile(new URL(`../${row.path}`, import.meta.url));
+    const family = textureProvenance.families[row.family];
+    assert.ok(family, `${row.id}: family ${row.family} exists`);
+    assert.equal(row.family, requiredFamilies[row.id], `${row.id}: retain the recovered family classification`);
+    assert.equal(sha256Bytes(bytes), row.trackedDigest, `${row.id}: tracked digest matches the file`);
+    assert.equal(bytes.length, row.bytes, `${row.id}: recorded byte length matches the file`);
+    const size = rasterSize(bytes);
+    assert.equal(size.width, row.width, `${row.id}: recorded width matches the file`);
+    assert.equal(size.height, row.height, `${row.id}: recorded height matches the file`);
+    assert.equal(new URL(row.upstreamUri).protocol, "https:");
+    assert.equal(typeof row.upstreamName, "string");
+    assert.ok(row.upstreamName.trim());
+    assert.equal(typeof row.upstreamVersion, "string");
+    assert.ok(row.upstreamVersion.trim());
+    assert.match(row.heliosEntered, /^[0-9a-f]{40}$/);
+    assert.equal(typeof row.projection, "string");
+    assert.ok(Array.isArray(row.caveats));
+    assert.ok(row.caveats.length > 0, `${row.id}: retained caveats are explicit`);
+    assert.equal(row.unresolved, null, `${row.id}: recovered body textures must not hide an unresolved pixel transform`);
+
+    const transform = row.transformation;
+    for (const flag of ["crop", "resample", "color", "fill", "longitudeShift"]) {
+      assert.equal(typeof transform[flag], "boolean", `${row.id}: ${flag} is explicit`);
+    }
+    assert.equal(typeof transform.record, "string");
+    assert.ok(transform.record.trim());
+
+    if (transform.kind === "identity") {
+      assert.equal(row.sourceDigest, row.trackedDigest, `${row.id}: identity records require equal source and tracked digests`);
+      assert.equal(transform.crop, false);
+      assert.equal(transform.resample, false);
+      assert.equal(transform.color, false);
+      assert.equal(transform.fill, false);
+      assert.equal(transform.longitudeShift, false);
+      assert.match(transform.record, /no crop, resample, color, fill, or longitude operation/i);
+    } else {
+      assert.equal(transform.kind, "documented", `${row.id}: non-identity history must be documented, not guessed`);
+      assert.notEqual(row.sourceDigest, row.trackedDigest, `${row.id}: documented transforms retain a distinct source digest`);
+      assert.match(row.sourceDigest, /^[0-9a-f]{64}$/);
+    }
+  }
+
+  const venus = textureProvenance.files.find((row) => row.id === "venus");
+  assert.equal(venus.upstreamName, "2k_venus_atmosphere.jpg");
+  assert.doesNotMatch(venus.upstreamName, /surface/);
+  const ceres = textureProvenance.files.find((row) => row.id === "ceres");
+  assert.equal(ceres.upstreamName, "2k_ceres_fictional.jpg");
+  const ring = textureProvenance.files.find((row) => row.id === "saturn-ring");
+  assert.equal(ring.upstreamName, "2k_saturn_ring_alpha.png");
+  const io = textureProvenance.files.find((row) => row.id === "io");
+  assert.equal(io.upstreamName, "Jupiter - Io (A).jpg");
+  assert.doesNotMatch(io.upstreamPath, /Io \(B\)/);
+  const triton = textureProvenance.files.find((row) => row.id === "triton");
+  assert.equal(triton.transformation.kind, "documented");
+  assert.equal(triton.transformation.fill, true);
+  assert.equal(triton.transformation.resample, true);
+  assert.match(textureProvenance.scope, /asset-digest-manifest\.json/);
+  for (const row of textureProvenance.files) {
+    const digestRow = assetDigestManifest.files.find((entry) => entry.path === row.path);
+    assert.ok(digestRow, `${row.id}: image-asset digest fixture owns this path`);
+    assert.equal(row.trackedDigest, digestRow.sha256, `${row.id}: tracked digest matches the image-asset digest fixture`);
+    assert.equal(row.family, digestRow.family, `${row.id}: family membership matches the image-asset digest fixture`);
+  }
+});
 
 const required = [
   "sun",
@@ -668,10 +957,11 @@ test("retrograde spin is not reversed twice by period and obliquity", () => {
   }
 });
 
-test("time floor is one simulated hour per real second", () => {
+test("time floor is real time while startup remains one hour per second", () => {
   assert.equal(CONFIG.defaultDaysPerSecond, 1 / 24);
-  assert.equal(CONFIG.minDaysPerSecond, 1 / 24);
-  assert.ok(CONFIG.maxDaysPerSecond > CONFIG.defaultDaysPerSecond);
+  assert.equal(CONFIG.minDaysPerSecond, 1 / 86400);
+  assert.equal(CONFIG.maxDaysPerSecond, 400);
+  assert.equal(formatDaysPerSecond(CONFIG.minDaysPerSecond), "1 s");
   assert.equal(formatDaysPerSecond(CONFIG.defaultDaysPerSecond), "1 h");
   assert.equal(formatDaysPerSecond(8), "8.0 d");
   assert.equal(formatDaysPerSecond(0.25), "6 h");

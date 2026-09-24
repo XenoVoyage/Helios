@@ -15,7 +15,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.9.6b",
+  VERSION: "v2026.9.24",
   BRAND: "MarinsVoyage",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
@@ -41,8 +41,15 @@ export const CONFIG = Object.freeze({
   // not physical emission. Neptune's darker source map needs a larger factor.
   // All other globes, scene lights, and Saturn's rings retain their treatment.
   nightSideInspectionFill: Object.freeze({ uranus: 0.03, neptune: 0.25 }),
+  // Share of the Sun's Lambert term that Saturn's ring passes through to its
+  // unlit face, further scaled by the square root of the ring map's
+  // transparency, sqrt(1 - alpha). Display-only thin-slab approximation of
+  // transmitted / forward-scattered light; 1 keeps a thin band no brighter
+  // than its front-lit look. Not photometric; the sunlit face and every other
+  // material are untouched.
+  ringTransmission: 1,
   defaultDaysPerSecond: 1 / 24,
-  minDaysPerSecond: 1 / 24,
+  minDaysPerSecond: 1 / 86400,
   maxDaysPerSecond: 400,
   // Debris fields: sparse point clouds, not rock catalogs. One owner for both.
   beltCount: 2400,
@@ -112,7 +119,16 @@ export const CONFIG = Object.freeze({
   cameraFar: 7000000,
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
+  cameraOrbitStep: 0.12,
+  cameraZoomFactor: 1.25,
+  // Canvas wheel convention: one text line is 16 CSS pixels; a page uses its height.
+  wheelLinePixels: 16,
+  // Beyond this delta every legal camera distance already reaches a zoom limit.
+  wheelMaxDeltaPixels: 10_000,
   focusLerp: 6,
+  // Wheel, pinch, and key zoom must return within this many milliseconds so
+  // the first truthful loading paint can commit before remaining galaxy work.
+  inputFrameBudgetMs: 16,
   // Parent-safe moon focus flight rates; log radius is scale-independent.
   moonFocusRadialLogRatePerSecond: 2.5,
   moonFocusAngularRateRadiansPerSecond: 3.5,
@@ -129,8 +145,17 @@ export function pinchZoomDistance(startDistance, startGap, gap) {
 }
 
 /** Mouse wheel and browser pinch both follow the platform's delivered direction. */
-export function wheelZoomMultiplier(deltaY) {
-  return Math.exp(deltaY * 0.0016);
+export function wheelZoomMultiplier(deltaY, deltaMode = 0, pageHeight = 0) {
+  if (!Number.isFinite(deltaY)) return 1;
+  const unit = deltaMode === 0 ? 1
+    : deltaMode === 1 ? CONFIG.wheelLinePixels
+      : deltaMode === 2 && Number.isFinite(pageHeight) && pageHeight > 0 ? pageHeight : 0;
+  if (!unit) return 1;
+  const pixels = Math.max(
+    -CONFIG.wheelMaxDeltaPixels,
+    Math.min(CONFIG.wheelMaxDeltaPixels, deltaY * unit),
+  );
+  return Math.exp(pixels * 0.0016);
 }
 
 /** Camera floor for the currently focused rendered globe. */
@@ -873,12 +898,35 @@ export function isShortcutTargetInteractive(target) {
   return false;
 }
 
-/** Honest clock-rate label. Hours below 1 day/sec; days, months, years above. */
+/** Logarithmic time control with exact, clamped endpoints. */
+export function speedFromSlider(unit) {
+  if (unit <= 0) return CONFIG.minDaysPerSecond;
+  if (unit >= 1) return CONFIG.maxDaysPerSecond;
+  const min = Math.log(CONFIG.minDaysPerSecond);
+  const max = Math.log(CONFIG.maxDaysPerSecond);
+  return Math.exp(min + (max - min) * unit);
+}
+
+export function sliderFromSpeed(daysPerSecond) {
+  if (daysPerSecond <= CONFIG.minDaysPerSecond) return 0;
+  if (daysPerSecond >= CONFIG.maxDaysPerSecond) return 1;
+  const min = Math.log(CONFIG.minDaysPerSecond);
+  const max = Math.log(CONFIG.maxDaysPerSecond);
+  return (Math.log(daysPerSecond) - min) / (max - min);
+}
+
+/** Compact clock-rate label, from real-time seconds through years. */
 export function formatDaysPerSecond(daysPerSecond) {
   if (daysPerSecond >= 365) return `${(daysPerSecond / 365.25).toFixed(1)} yr`;
   if (daysPerSecond >= 30) return `${(daysPerSecond / 30.437).toFixed(1)} mo`;
   if (daysPerSecond >= 1) return `${daysPerSecond.toFixed(daysPerSecond >= 10 ? 0 : 1)} d`;
-  return `${(daysPerSecond * 24).toFixed(0)} h`;
+  if (daysPerSecond >= 1 / 24) return `${(daysPerSecond * 24).toFixed(0)} h`;
+  if (daysPerSecond >= 1 / 1440) {
+    const minutes = daysPerSecond * 1440;
+    return `${Number(minutes.toFixed(minutes < 10 ? 1 : 0))} min`;
+  }
+  const seconds = daysPerSecond * 86400;
+  return `${Number(seconds.toFixed(seconds < 10 ? 1 : 0))} s`;
 }
 
 export function describeDaysPerSecond(daysPerSecond) {
@@ -893,9 +941,17 @@ export function describeDaysPerSecond(daysPerSecond) {
   } else if (daysPerSecond >= 1) {
     value = Number(daysPerSecond.toFixed(daysPerSecond >= 10 ? 0 : 1));
     unit = "day";
-  } else {
+  } else if (daysPerSecond >= 1 / 24) {
     value = Number((daysPerSecond * 24).toFixed(0));
     unit = "hour";
+  } else if (daysPerSecond >= 1 / 1440) {
+    const minutes = daysPerSecond * 1440;
+    value = Number(minutes.toFixed(minutes < 10 ? 1 : 0));
+    unit = "minute";
+  } else {
+    const seconds = daysPerSecond * 86400;
+    value = Number(seconds.toFixed(seconds < 10 ? 1 : 0));
+    unit = "second";
   }
   return `${value} ${unit}${value === 1 ? "" : "s"} per second`;
 }

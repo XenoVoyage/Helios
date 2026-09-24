@@ -12,6 +12,8 @@ import {
   pinchZoomDistance,
   resetParentGlobeContinuity,
   resolveParentGlobePoint,
+  sliderFromSpeed,
+  speedFromSlider,
   wheelZoomMultiplier,
 } from "./config.js";
 import { advanceSimulationDays, elapsedSeconds, simulationDateLabel } from "./time.js";
@@ -52,6 +54,7 @@ import {
   celestialSkyOpacity,
   constellationsAvailable,
   createGalaxyLayer,
+  startGalaxyLayer,
   galaxyOpacity,
   localGroupCameraAim,
   extraZoomCameraDistance,
@@ -85,6 +88,7 @@ const world = new THREE.Vector3();
 const projected = new THREE.Vector3();
 const focusPoint = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
+const previousFocusTarget = new THREE.Vector3();
 const parentPoint = new THREE.Vector3();
 const transitionStartOffset = new THREE.Vector3();
 const transitionTargetOffset = new THREE.Vector3();
@@ -148,6 +152,11 @@ let lastStamp = 0;
 let lastClockLabel = "";
 let bodyLabelLayoutDirty = true;
 const earthSkyLook = wantsEarthSkyLook();
+const LOADING_STATUS = "Loading";
+const DEEP_PREP_FAILURE = "Deep sky unavailable.";
+let galaxyBuild = null;
+let galaxyPreparing = false;
+let readyAnnounced = false;
 
 function $(id) {
   return document.getElementById(id);
@@ -157,15 +166,89 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function wantsDeepLayer() {
+  return state.distance > CONFIG.solarMaxDistance;
+}
+
+function loadingVisible() {
+  return Boolean(ui.loading) && !ui.loading.hidden;
+}
+
 function syncViewportBusy() {
   if (!ui.viewport) return;
   const busy = String(Boolean(
     moonFocusTransition.active
-      || (parentGlobeContinuity.active && !parentGlobeContinuity.settled),
+      || (parentGlobeContinuity.active && !parentGlobeContinuity.settled)
+      || loadingVisible()
+      || (galaxyPreparing && wantsDeepLayer()),
   ));
   if (ui.viewport.getAttribute("aria-busy") !== busy) {
     ui.viewport.setAttribute("aria-busy", busy);
   }
+}
+
+function setLoadingVisible(visible, announce = false) {
+  if (!ui.loading) return;
+  const shown = !ui.loading.hidden;
+  if (visible !== shown) {
+    ui.loading.hidden = !visible;
+    document.documentElement.dataset.heliosLoading = visible ? "1" : "";
+    if (visible && announce) say(LOADING_STATUS);
+    else if (!visible && ui.status?.textContent === LOADING_STATUS) {
+      if (wantsDeepLayer()) ui.status.textContent = "";
+      else {
+        const { announcement } = sceneSemantics();
+        if (announcement) say(announcement);
+      }
+    }
+  }
+  syncViewportBusy();
+}
+
+function yieldToPaint() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(resolve);
+    });
+  });
+}
+
+function attachGalaxyLayer(group) {
+  galaxy = group;
+  scene.add(galaxy);
+  document.documentElement.dataset.galaxyReady = "1";
+}
+
+function announceHeliosReady() {
+  if (readyAnnounced || !ui.status) return;
+  readyAnnounced = true;
+  say("Helios is ready. Drag to orbit, pinch or scroll to zoom, tap a world to focus.");
+}
+
+async function prepareGalaxyLayer() {
+  const afterStartup = document.documentElement.dataset.heliosReady === "1";
+  galaxyPreparing = true;
+  if (wantsDeepLayer()) setLoadingVisible(true, afterStartup);
+  if (afterStartup) await yieldToPaint();
+  try {
+    const session = startGalaxyLayer(THREE);
+    while (!session.done) {
+      session.advance(CONFIG.inputFrameBudgetMs);
+      if (session.done) break;
+      setLoadingVisible(wantsDeepLayer(), afterStartup && wantsDeepLayer() && !loadingVisible());
+      await yieldToPaint();
+    }
+    attachGalaxyLayer(session.group);
+  } catch {
+    // Keep the settled build promise as a failure latch for later scale paints.
+    if (afterStartup) say(DEEP_PREP_FAILURE);
+  } finally {
+    galaxyPreparing = false;
+    setLoadingVisible(false);
+    if (galaxy) paintScaleLayer();
+    syncViewportBusy();
+  }
+  return galaxy;
 }
 
 function setMoonFocusTransition(active) {
@@ -224,12 +307,22 @@ function boot() {
   ui.helperAxis = $("helper-axis");
   ui.helperSpin = $("helper-spin");
   ui.status = $("status-live");
+  ui.timeStatus = $("time-status");
   ui.sceneContext = $("scene-context");
   ui.unsupported = $("unsupported");
   ui.version = $("version-label");
   ui.brand = $("brand-label");
   ui.dock = $("dock");
   ui.skip = $("skip-link");
+  ui.cameraControls = $("camera-controls");
+  ui.cameraToggle = $("camera-toggle");
+  ui.cameraPanel = $("camera-panel");
+  ui.loading = $("loading");
+  if (earthSkyLook) {
+    ui.cameraControls.hidden = true;
+    ui.viewport.setAttribute("aria-describedby", "scene-context");
+    ui.viewport.removeAttribute("aria-keyshortcuts");
+  }
   setMoonFocusTransition(false);
 
   ui.version.textContent = CONFIG.VERSION;
@@ -415,16 +508,21 @@ function boot() {
   paintScaleLayer();
   lastStamp = performance.now();
   requestAnimationFrame(tick);
-  say("Helios is ready. Drag to orbit, pinch or scroll to zoom, tap a world to focus.");
+  announceHeliosReady();
 }
 
 function showUnsupported() {
+  setLoadingVisible(false);
   ui.stage.hidden = true;
   ui.stage.inert = true;
   ui.skip.hidden = true;
   ui.version.hidden = true;
   ui.unsupported.hidden = false;
   ui.unsupported.focus({ preventScroll: true });
+}
+
+function cappedPixelRatio() {
+  return Math.min(window.devicePixelRatio || 1, 2);
 }
 
 function createRenderer() {
@@ -442,7 +540,7 @@ function createRenderer() {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(cappedPixelRatio());
   return true;
 }
 
@@ -555,6 +653,29 @@ function createBodyNode(body) {
   };
 }
 
+// Lambert shading clamps dot(N, L) at zero, so the double-sided ring face the
+// Sun does not reach gets only ambient fill and reads as a black halo. A ring
+// is a thin particle slab: sunlight from behind is transmitted and forward-
+// scattered, most where the ring is optically thin. Reuse the Sun's Lambert
+// term with the back-facing incidence, scaled by the square root of the map's
+// transparency: sqrt(1 - alpha) stays below the isotropic single-scattering
+// transmission of a slab with optical depth -ln(1 - alpha) across the map's
+// range, so dense bands stay dimmer than thin ones, divisions stay dark,
+// and gaps stay gaps. Bounded display behavior, not radiative transfer.
+const RING_TRANSMISSION_FRAGMENT = `#include <lights_fragment_end>
+#if NUM_POINT_LIGHTS > 0
+  float ringPass = sqrt( 1.0 - diffuseColor.a );
+  IncidentLight ringBackLight;
+  #pragma unroll_loop_start
+  for ( int i = 0; i < NUM_POINT_LIGHTS; i ++ ) {
+    getPointLightInfo( pointLights[ i ], geometryPosition, ringBackLight );
+    reflectedLight.directDiffuse += saturate( - dot( geometryNormal, ringBackLight.direction ) )
+      * ringTransmission * ringPass * ringBackLight.color
+      * BRDF_Lambert( material.diffuseContribution );
+  }
+  #pragma unroll_loop_end
+#endif`;
+
 function createRing(body) {
   const inner = visualRingRadius(body, body.ringInnerKm);
   const outer = visualRingRadius(body, body.ringOuterKm);
@@ -567,18 +688,22 @@ function createRing(body) {
   }
   uv.needsUpdate = true;
   const ringMap = loadMap(body.ring);
-  const ring = new THREE.Mesh(
-    ringGeo,
-    new THREE.MeshStandardMaterial({
-      map: ringMap,
-      transparent: true,
-      alphaTest: 0.08,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      roughness: 0.58,
-      metalness: 0.12,
-    }),
-  );
+  const material = new THREE.MeshStandardMaterial({
+    map: ringMap,
+    transparent: true,
+    alphaTest: 0.08,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    roughness: 0.58,
+    metalness: 0.12,
+  });
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.ringTransmission = { value: CONFIG.ringTransmission };
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform float ringTransmission;")
+      .replace("#include <lights_fragment_end>", RING_TRANSMISSION_FRAGMENT);
+  };
+  const ring = new THREE.Mesh(ringGeo, material);
   ring.rotation.x = -Math.PI / 2;
   return ring;
 }
@@ -638,12 +763,24 @@ function createGlowMap() {
 }
 
 function bindInput() {
+  ui.cameraToggle.addEventListener("click", () => {
+    ui.cameraPanel.hidden = !ui.cameraPanel.hidden;
+    ui.cameraToggle.setAttribute("aria-expanded", String(!ui.cameraPanel.hidden));
+    bodyLabelLayoutDirty = true;
+  });
+  $("orbit-left").addEventListener("click", () => orbitBy(-CONFIG.cameraOrbitStep, 0));
+  $("orbit-right").addEventListener("click", () => orbitBy(CONFIG.cameraOrbitStep, 0));
+  $("orbit-up").addEventListener("click", () => orbitBy(0, CONFIG.cameraOrbitStep));
+  $("orbit-down").addEventListener("click", () => orbitBy(0, -CONFIG.cameraOrbitStep));
+  $("zoom-in").addEventListener("click", () => zoomTo(state.distance / CONFIG.cameraZoomFactor));
+  $("zoom-out").addEventListener("click", () => zoomTo(state.distance * CONFIG.cameraZoomFactor));
   ui.play.addEventListener("click", togglePlay);
   ui.slower.addEventListener("click", () => scaleSpeed(0.5));
   ui.faster.addEventListener("click", () => scaleSpeed(2));
+  // Keep native rate feedback and subsequent keys on the touched control.
+  ui.speed.addEventListener("pointerdown", () => ui.speed.focus({ preventScroll: true }));
   ui.speed.addEventListener("input", () => {
-    state.daysPerSecond = speedFromSlider(Number(ui.speed.value));
-    paintSpeed();
+    setTimeSpeed(speedFromSlider(Number(ui.speed.value)), ui.speed);
   });
   ui.reset.addEventListener("click", resetView);
   ui.cardClose.addEventListener("click", clearSelection);
@@ -660,8 +797,8 @@ function bindInput() {
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
-  canvas.addEventListener("pointercancel", onPointerUp);
-  canvas.addEventListener("lostpointercapture", onPointerUp);
+  canvas.addEventListener("pointercancel", onPointerAbort);
+  canvas.addEventListener("lostpointercapture", onPointerAbort);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
@@ -671,7 +808,11 @@ function bindInput() {
 
 function onPointerDown(event) {
   canvasFocus();
-  ui.viewport.setPointerCapture(event.pointerId);
+  try {
+    ui.viewport.setPointerCapture(event.pointerId);
+  } catch {
+    // The pointer may already have been canceled before capture could stick.
+  }
   pointerIds.set(event.pointerId, { x: event.clientX, y: event.clientY });
   state.tap = { x: event.clientX, y: event.clientY, moved: 0 };
   if (pointerIds.size === 2) {
@@ -701,16 +842,19 @@ function onPointerMove(event) {
     state.tap.moved += Math.hypot(dx, dy);
   }
   if (!state.tap || state.tap.moved >= CONFIG.tapMovePx) {
-    state.azimuth -= dx * 0.005;
-    // A parent guard can finish just beyond the normal input latitude. Keep
-    // the first horizontal drag exact and only let out-of-range seats move
-    // back toward the standard orbit band instead of snapping into it.
-    state.elevation = clamp(
-      state.elevation + dy * 0.004,
-      Math.min(-1.2, state.elevation),
-      Math.max(1.2, state.elevation),
-    );
+    orbitBy(-dx * 0.005, dy * 0.004);
   }
+}
+
+function orbitBy(azimuth, elevation) {
+  state.azimuth += azimuth;
+  // A parent guard can finish beyond the normal input latitude. Preserve
+  // horizontal movement and let vertical input return without snapping.
+  state.elevation = clamp(
+    state.elevation + elevation,
+    Math.min(-1.2, state.elevation),
+    Math.max(1.2, state.elevation),
+  );
 }
 
 function onPointerUp(event) {
@@ -725,13 +869,55 @@ function onPointerUp(event) {
   }
 }
 
+// Canceled gestures and lost capture must not run tap-to-pick.
+function onPointerAbort(event) {
+  pointerIds.delete(event.pointerId);
+  if (pointerIds.size < 2) state.pinching = false;
+  if (pointerIds.size === 0) state.tap = null;
+  try {
+    if (ui.viewport.hasPointerCapture(event.pointerId)) {
+      ui.viewport.releasePointerCapture(event.pointerId);
+    }
+  } catch {
+    // Capture was already released with the canceled pointer.
+  }
+}
+
 function onWheel(event) {
   event.preventDefault();
   if (state.pinching) return;
-  zoomTo(state.distance * wheelZoomMultiplier(event.deltaY));
+  const deltaMode = event.deltaMode;
+  zoomTo(state.distance * wheelZoomMultiplier(
+    event.deltaY,
+    deltaMode,
+    deltaMode === 2 ? ui.viewport.clientHeight : 0,
+  ));
 }
 
 function onKey(event) {
+  if (
+    event.target === ui.viewport && !earthSkyLook && !event.isComposing
+    && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+  ) {
+    const step = CONFIG.cameraOrbitStep;
+    switch (event.key) {
+      case "ArrowLeft": orbitBy(-step, 0); break;
+      case "ArrowRight": orbitBy(step, 0); break;
+      case "ArrowUp": orbitBy(0, step); break;
+      case "ArrowDown": orbitBy(0, -step); break;
+      case "I":
+      case "i": zoomTo(state.distance / CONFIG.cameraZoomFactor); break;
+      case "O":
+      case "o": zoomTo(state.distance * CONFIG.cameraZoomFactor); break;
+      default: return onTimeKey(event);
+    }
+    event.preventDefault();
+    return;
+  }
+  onTimeKey(event);
+}
+
+function onTimeKey(event) {
   if (event.repeat || isShortcutTargetInteractive(event.target)) return;
   if (event.code === "Space") {
     event.preventDefault();
@@ -786,7 +972,6 @@ function zoomTo(distance) {
   const focusedRadius = nodes.get(state.focusedId)?.radius ?? 0;
   const next = clamp(distance, minimumFocusDistance(focusedRadius), CONFIG.maxDistance);
   const focused = nodes.get(state.focusedId);
-  if (next > CONFIG.solarMaxDistance) ensureGalaxyLayer();
   if (next > CONFIG.solarMaxDistance && state.distance <= CONFIG.solarMaxDistance) {
     resetParentGlobeContinuity(parentGlobeContinuity);
     setMoonFocusTransition(false);
@@ -813,6 +998,10 @@ function zoomTo(distance) {
     }
   }
   state.distance = next;
+  if (next > CONFIG.solarMaxDistance) ensureGalaxyLayer();
+  if (galaxyPreparing) {
+    setLoadingVisible(wantsDeepLayer(), wantsDeepLayer() && !loadingVisible());
+  }
   paintConstellations();
 }
 
@@ -896,6 +1085,7 @@ function resetView() {
   state.azimuth = CONFIG.cameraAzimuth;
   state.elevation = CONFIG.cameraElevation;
   state.distance = CONFIG.cameraDistance;
+  if (galaxyPreparing) setLoadingVisible(false);
   paintCard();
   paintConstellations();
   paintSceneSemantics();
@@ -933,35 +1123,42 @@ function bindSelectionHelpers() {
 function togglePlay() {
   state.playing = !state.playing;
   paintSpeed();
-  say(state.playing ? "Time is running" : "Time is paused");
+  announceTime(ui.play);
 }
 
 function scaleSpeed(factor) {
-  state.daysPerSecond = clamp(
+  setTimeSpeed(clamp(
     state.daysPerSecond * factor,
     CONFIG.minDaysPerSecond,
     CONFIG.maxDaysPerSecond,
-  );
+  ));
+}
+
+function setTimeSpeed(daysPerSecond, nativeControl) {
+  if (daysPerSecond === state.daysPerSecond) return;
+  state.daysPerSecond = daysPerSecond;
   paintSpeed();
+  announceTime(nativeControl);
 }
 
-function speedFromSlider(unit) {
-  const min = Math.log(CONFIG.minDaysPerSecond);
-  const max = Math.log(CONFIG.maxDaysPerSecond);
-  return Math.exp(min + (max - min) * unit);
-}
-
-function sliderFromSpeed(daysPerSecond) {
-  const min = Math.log(CONFIG.minDaysPerSecond);
-  const max = Math.log(CONFIG.maxDaysPerSecond);
-  return (Math.log(daysPerSecond) - min) / (max - min);
+function announceTime(nativeControl) {
+  // Direct range input owns native value feedback; focused toggles own state
+  // feedback. Clear earlier fallback text instead of duplicating it.
+  const message = nativeControl === ui.speed || document.activeElement === nativeControl ? ""
+    : `Time ${state.playing ? "running" : "paused"}, ${describeDaysPerSecond(state.daysPerSecond)}.`;
+  if (message || ui.timeStatus.textContent) ui.timeStatus.textContent = message;
 }
 
 function paintSpeed() {
-  ui.play.textContent = state.playing ? "Pause" : "Play";
-  ui.play.setAttribute("aria-pressed", String(state.playing));
+  const playing = String(state.playing);
+  if (ui.play.getAttribute("aria-pressed") !== playing) ui.play.setAttribute("aria-pressed", playing);
+  const slowest = state.daysPerSecond === CONFIG.minDaysPerSecond;
+  const fastest = state.daysPerSecond === CONFIG.maxDaysPerSecond;
+  if (ui.slower.disabled !== slowest) ui.slower.disabled = slowest;
+  if (ui.faster.disabled !== fastest) ui.faster.disabled = fastest;
   ui.speed.value = String(sliderFromSpeed(state.daysPerSecond));
-  ui.speed.setAttribute("aria-valuetext", describeDaysPerSecond(state.daysPerSecond));
+  const rate = describeDaysPerSecond(state.daysPerSecond);
+  if (ui.speed.getAttribute("aria-valuetext") !== rate) ui.speed.setAttribute("aria-valuetext", rate);
   ui.speedReadout.textContent = `${formatDaysPerSecond(state.daysPerSecond)} / sec`;
   bodyLabelLayoutDirty = true;
 }
@@ -1081,6 +1278,7 @@ function paintSceneSemantics() {
   if (ui.sceneContext.textContent !== description) {
     ui.sceneContext.textContent = description;
   }
+  if (loadingVisible() || (galaxyPreparing && wantsDeepLayer())) return;
   if (lastHierarchyId !== null && id !== lastHierarchyId && announcement) {
     say(announcement);
   }
@@ -1092,6 +1290,12 @@ function resize() {
   const height = window.innerHeight;
   camera.aspect = width / Math.max(1, height);
   camera.updateProjectionMatrix();
+  const pixelRatio = cappedPixelRatio();
+  // Browser zoom and mixed-DPI moves change devicePixelRatio after boot.
+  // Three.js keeps the last ratio until setPixelRatio runs; skip no-ops.
+  if (renderer.getPixelRatio() !== pixelRatio) {
+    renderer.setPixelRatio(pixelRatio);
+  }
   renderer.setSize(width, height, false);
   paintDockClearance();
   bodyLabelLayoutDirty = true;
@@ -1108,28 +1312,54 @@ function paintDockClearance() {
 
 function observeDock() {
   paintDockClearance();
+  const paintCameraClearance = () => {
+    document.documentElement.style.setProperty(
+      "--camera-clearance",
+      `${Math.ceil(ui.cameraControls.getBoundingClientRect().height)}px`,
+    );
+  };
+  paintCameraClearance();
   if (!("ResizeObserver" in window)) return;
   chromeObserver = new ResizeObserver((entries) => {
     bodyLabelLayoutDirty = true;
     if (entries.some((entry) => entry.target === ui.dock)) paintDockClearance();
+    if (entries.some((entry) => entry.target === ui.cameraControls)) paintCameraClearance();
   });
   chromeObserver.observe(ui.dock);
   chromeObserver.observe(ui.topbar);
   chromeObserver.observe(ui.card);
   chromeObserver.observe(ui.version);
+  chromeObserver.observe(ui.cameraControls);
 }
 
 function tick(now) {
   const elapsed = elapsedSeconds(now, lastStamp);
   const cameraDt = Math.min(0.05, elapsed);
   lastStamp = now;
-  state.days = advanceSimulationDays(
+  const nextDays = advanceSimulationDays(
     state.days,
     elapsed,
     state.daysPerSecond,
     state.playing,
   );
+  const movingFocus = nextDays !== state.days
+    && !earthSkyLook
+    && state.focusedId !== "sun"
+    && scaleLayer(state.distance) === "solar"
+    ? nodes.get(state.focusedId) : null;
+  if (movingFocus) {
+    movingFocus.mesh.getWorldPosition(previousFocusTarget);
+    // Exclude the display-root handoff translation, which updateBodies resets.
+    previousFocusTarget.sub(nodes.get("sun").pivot.position);
+  }
+  state.days = nextDays;
   updateBodies();
+  if (movingFocus) {
+    movingFocus.mesh.getWorldPosition(desiredTarget);
+    desiredTarget.sub(nodes.get("sun").pivot.position);
+    // Carry orbital motion before applying the unchanged selection easing.
+    focusPoint.add(desiredTarget.sub(previousFocusTarget));
+  }
   asteroidBelt.rotation.y = state.days * (Math.PI * 2) / 1682;
   kuiperBelt.rotation.y = state.days * (Math.PI * 2) / 90560;
   paintScaleLayer();
@@ -1455,16 +1685,21 @@ let lastHierarchyId = null;
 
 function ensureGalaxyLayer() {
   if (galaxy || !scene || earthSkyLook) return galaxy;
-  galaxy = createGalaxyLayer(THREE);
-  scene.add(galaxy);
-  document.documentElement.dataset.galaxyReady = "1";
+  if (document.documentElement.dataset.heliosReady !== "1") {
+    attachGalaxyLayer(createGalaxyLayer(THREE));
+    return galaxy;
+  }
+  if (!galaxyBuild) galaxyBuild = prepareGalaxyLayer();
   return galaxy;
 }
 
 function paintScaleLayer() {
   if (earthSkyLook) {
     paintSceneSemantics();
-    document.documentElement.dataset.heliosReady = "1";
+    if (!document.documentElement.dataset.heliosReady) {
+      document.documentElement.dataset.heliosReady = "1";
+      setLoadingVisible(false);
+    }
     return;
   }
   const solar = solarOpacity(state.distance);
@@ -1501,7 +1736,10 @@ function paintScaleLayer() {
     setHelperVisibility(helpers, { selected: false, orbit: false, axis: false, spin: false });
   }
   paintSceneSemantics();
-  document.documentElement.dataset.heliosReady = "1";
+  if (!document.documentElement.dataset.heliosReady) {
+    document.documentElement.dataset.heliosReady = "1";
+    setLoadingVisible(false);
+  }
 }
 
 function measureBodyLabels() {
@@ -1524,7 +1762,7 @@ function measureBodyLabels() {
 
 function paintBodyLabelObstacles() {
   bodyLabelObstacles.length = 0;
-  for (const element of [ui.topbar, ui.card, ui.dock, ui.version]) {
+  for (const element of [ui.topbar, ui.card, ui.dock, ui.version, ui.cameraControls]) {
     if (!element || element.hidden || element.getClientRects().length === 0) continue;
     const box = element.getBoundingClientRect();
     bodyLabelObstacles.push({
