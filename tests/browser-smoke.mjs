@@ -1583,7 +1583,64 @@ async function dispatchBoundaryWheel(page, deltaY) {
   }, deltaY);
 }
 
+async function auditDeepLoadingFailure(context, prefix) {
+  const source = await readFile(path.join(root, "js/galaxy.js"), "utf8");
+  const entry = "export function startGalaxyLayer(THREE) {";
+  assert.equal(source.split(entry).length, 2, "one deferred layer entry for fault injection");
+  for (const failAt of ["start", "advance"]) {
+    const page = await context.newPage();
+    const errors = captureErrors(page);
+    try {
+      await page.route("**/js/galaxy.js", (route) => route.fulfill({
+        contentType: "text/javascript",
+        body: source.replace(entry, `${entry}
+          globalThis.__heliosBuildFailure.attempts += 1;
+          if (${JSON.stringify(failAt)} === "start") throw new Error("Injected layer start failure");
+          return { done: false, advance() { throw new Error("Injected layer advance failure"); } };
+        `),
+      }));
+      await openReady(page);
+      await page.locator("#play-button").click();
+      await page.evaluate(() => {
+        const status = document.querySelector("#status-live");
+        globalThis.__heliosBuildFailure = { attempts: 0, announcements: 0 };
+        new MutationObserver(() => {
+          if (status.textContent === "Deep sky unavailable.") {
+            globalThis.__heliosBuildFailure.announcements += 1;
+          }
+        }).observe(status, { childList: true, characterData: true, subtree: true });
+      });
+      for (let entryCount = 0; entryCount < 3; entryCount += 1) {
+        await dispatchBoundaryWheel(page, 2_400);
+        if (entryCount === 0) {
+          await page.waitForFunction(() => globalThis.__heliosBuildFailure.announcements > 0);
+        }
+        await page.evaluate(() => new Promise((resolve) => {
+          let frames = 0;
+          const tick = () => { if (++frames === 30) resolve(); else requestAnimationFrame(tick); };
+          requestAnimationFrame(tick);
+        }));
+        const result = await page.evaluate(() => ({
+          ...globalThis.__heliosBuildFailure,
+          loading: !document.querySelector("#loading").hidden,
+          busy: document.querySelector("#viewport").getAttribute("aria-busy"),
+          galaxyReady: document.documentElement.dataset.galaxyReady === "1",
+        }));
+        assert.deepEqual(result, {
+          attempts: 1, announcements: 1, loading: false, busy: "false", galaxyReady: false,
+        }, `${prefix} ${failAt}: failure stays latched after entry ${entryCount + 1}`);
+        await page.locator("#reset-button").click();
+      }
+      assert.deepEqual(errors, [], `${prefix} ${failAt}: the application handles the injected failure`);
+      console.log(`deep-load failure latch ${prefix}/${failAt}: three entries, 30 continued frames each, one attempt/announcement, idle and not ready`);
+    } finally {
+      await page.close();
+    }
+  }
+}
+
 async function auditStagedDeepLoading(context, prefix, touch = false) {
+  await auditDeepLoadingFailure(context, prefix);
   const page = await context.newPage();
   const errors = captureErrors(page);
   await openReady(page);

@@ -211,7 +211,7 @@ const manifest = {
   node: process.version,
   playwright: JSON.parse(await readFile(path.join(harnessRoot, "node_modules/playwright/package.json"), "utf8")).version,
   rendering: "Headless Chromium; ANGLE SwiftShader; deviceScaleFactor 1; screenshots are full viewport originals except the explicitly named time-rate dock and ordinary Triton crops, whose source view and exact clip are recorded; observed renderer and font metadata are retained per capture",
-  clockPolicy: "Playwright clock installed before navigation. A ready observer uses the public playback toggle; a thin requestAnimationFrame wrapper additionally verifies and, if necessary, pauses through that control immediately before the first application tick callback. The first-tick record is asserted on every supported WebGL page; intentional fallback records its separate failure contract. The wrapper preserves timestamps and callback execution. After loading, browser time is paused and advanced with runFor. No simulation-time or camera-state hook is injected. Matching labels alone do not prove matching camera/time.",
+  clockPolicy: "For deterministic PNG captures only: Playwright clock installed before navigation. A ready observer uses the public playback toggle; a thin requestAnimationFrame wrapper additionally verifies and, if necessary, pauses through that control immediately before the first application tick callback. The first-tick record is asserted on every supported WebGL page; intentional fallback records its separate failure contract. The wrapper preserves timestamps and callback execution. After loading, browser time is paused and advanced with runFor. No simulation-time or camera-state hook is injected. Matching labels alone do not prove matching camera/time. The separate deepLoadObservations contexts use real browser performance.now without Playwright clock installation; their method, completion semantics, and limits are recorded in that field.",
   limits: [
     "Touch is emulated with CDP, not physical hardware.",
     "Body selection buttons use DOM click, while camera/pick gestures use browser mouse or CDP touch input.",
@@ -1175,6 +1175,220 @@ async function ordinaryFallback() {
   } finally { await closePage(page); }
 }
 
+// Public Playwright request events; independent of navigation lifecycle state.
+function trackPageRequests(page) {
+  const pending = new Set();
+  const snapshot = () => [...pending].map((request) => request.url());
+  let activeDrain = null;
+  let terminalError = null;
+  const changed = () => activeDrain?.changed();
+  const onRequest = (request) => { pending.add(request); changed(); };
+  const onFinished = (request) => { pending.delete(request); changed(); };
+  const stop = (message) => {
+    terminalError ??= new Error(message);
+    activeDrain?.finish(terminalError);
+  };
+  const listeners = {
+    request: onRequest, requestfinished: onFinished, requestfailed: onFinished,
+    close: () => stop("Page closed before request drain completed"),
+    crash: () => stop("Page crashed before request drain completed"),
+  };
+  for (const [event, listener] of Object.entries(listeners)) page.on(event, listener);
+  return {
+    snapshot,
+    // Options permit isolated lifecycle checks; the actual observer uses these
+    // defaults: the existing 30-second bound and a fresh 500ms quiet window.
+    async drain({ timeoutMs = 30_000, quietMs = 500 } = {}) {
+      if (terminalError) throw terminalError;
+      assert.equal(activeDrain, null, "one request drain at a time");
+      return new Promise((resolve, reject) => {
+        const started = performance.now();
+        let quietTimer = null;
+        let deadlineTimer = null;
+        let finished = false;
+        const finish = (error) => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(quietTimer);
+          clearTimeout(deadlineTimer);
+          activeDrain = null;
+          if (error) reject(error);
+          else resolve({ pendingRequests: snapshot(), quietMilliseconds: quietMs,
+            elapsedMilliseconds: performance.now() - started });
+        };
+        const onChanged = () => {
+          clearTimeout(quietTimer);
+          quietTimer = pending.size === 0 ? setTimeout(() => finish(null), quietMs) : null;
+        };
+        activeDrain = { changed: onChanged, finish };
+        deadlineTimer = setTimeout(() => finish(new Error(
+          `Request drain exceeded ${timeoutMs}ms; pending: ${JSON.stringify(snapshot())}`,
+        )), timeoutMs);
+        onChanged();
+      });
+    },
+    dispose() {
+      stop("Request tracker disposed before drain completed");
+      for (const [event, listener] of Object.entries(listeners)) page.off(event, listener);
+    },
+  };
+}
+
+async function observeDeepLoadWallClock({ browser, base, source, report, onSample = async () => {} }) {
+  Object.assign(report, {
+    source, browser: browser.version(), samples: [],
+    method: "Three fresh browser contexts per viewport, default Solar startup, public Pause at readiness, real browser performance.now, then a synthetic public WheelEvent(deltaY=2400). No Playwright clock, screenshots, or private renderer hooks are used. Completion is MutationObserver delivery observing galaxy-ready=1, aria-busy=false, and no visible Loading element when one exists. Exact main predates the Loading element; its absence is recorded as null, not fabricated feedback. This is not GPU completion or display presentation.",
+    limits: [
+      "Portrait uses touch emulation but the same synthetic wheel as desktop; it is not physical pinch or hardware evidence.",
+      "Fresh contexts share the browser process and host. Browser-process, GPU, OS, and filesystem caches are not claimed cold.",
+      "Sources run sequentially on one CI runner. Sample ranges describe that runner; they are not general performance bounds.",
+      "DOM readiness does not establish completion of textures, GPU drawing, or a visible deep-space frame.",
+      "These real-clock observations are separate from the deterministic still clock policy and do not add or replace stills.",
+    ],
+  });
+  for (const touch of [false, true]) {
+    const viewport = touch ? { width: 390, height: 844 } : { width: 1440, height: 900 };
+    for (let sample = 1; sample <= 3; sample += 1) {
+      const context = await browser.newContext({ viewport, deviceScaleFactor: 1, hasTouch: touch, isMobile: touch });
+      const page = await context.newPage();
+      const errors = [];
+      let environment = null;
+      let measurement = null;
+      let requestDrain = null;
+      const requests = trackPageRequests(page);
+      const errorListeners = {
+        pageerror: (error) => errors.push(`page: ${error.message}`),
+        console: (message) => { if (message.type() === "error") errors.push(`console: ${message.text()}`); },
+        requestfailed: (request) => errors.push(`request: ${request.url()} ${request.failure()?.errorText}`),
+        response: (response) => { if (response.status() >= 400) errors.push(`HTTP ${response.status()}: ${response.url()}`); },
+      };
+      for (const [event, listener] of Object.entries(errorListeners)) page.on(event, listener);
+      try {
+        await page.addInitScript(() => {
+          const observer = new MutationObserver(() => {
+            if (document.documentElement?.dataset.heliosReady !== "1") return;
+            const play = document.querySelector("#play-button");
+            if (play?.getAttribute("aria-pressed") === "true") play.click();
+            globalThis.__heliosDeepLoadPausedAtReady = play?.getAttribute("aria-pressed") === "false";
+            observer.disconnect();
+          });
+          observer.observe(document, { attributes: true, attributeFilter: ["data-helios-ready"], subtree: true });
+        });
+        await page.goto(base, { waitUntil: "networkidle", timeout: 30_000 });
+        await page.waitForFunction(() => document.documentElement.dataset.heliosReady === "1", null, { timeout: 20_000 });
+        await page.evaluate(() => document.fonts.ready);
+        environment = await page.evaluate(() => {
+          const canvas = document.querySelector("#viewport");
+          const gl = canvas?.getContext("webgl2");
+          const debug = gl?.getExtension("WEBGL_debug_renderer_info");
+          return {
+            url: location.pathname + location.search, userAgent: navigator.userAgent,
+            devicePixelRatio, fonts: document.fonts.status,
+            clockText: document.querySelector("#clock")?.textContent,
+            scene: document.querySelector("#scene-context")?.textContent,
+            pausedAtReady: globalThis.__heliosDeepLoadPausedAtReady,
+            renderer: gl ? {
+              vendor: gl.getParameter(gl.VENDOR), renderer: gl.getParameter(gl.RENDERER),
+              unmaskedVendor: debug ? gl.getParameter(debug.UNMASKED_VENDOR_WEBGL) : null,
+              unmaskedRenderer: debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : null,
+              drawingBuffer: [gl.drawingBufferWidth, gl.drawingBufferHeight],
+            } : null,
+          };
+        });
+        assert.equal(environment.pausedAtReady, true, "deep-load probe paused through the public control at ready");
+        assert.ok(environment.renderer, "deep-load probe requires initialized WebGL");
+        assert.deepEqual(errors, [], "no startup browser errors");
+        measurement = await page.evaluate(() => new Promise((resolve) => {
+          const canvas = document.querySelector("#viewport");
+          const loading = document.querySelector("#loading");
+          const state = () => ({
+            galaxyReady: document.documentElement.dataset.galaxyReady === "1",
+            loadingElementPresent: Boolean(loading),
+            loading: loading ? !loading.hidden : null, busy: canvas?.getAttribute("aria-busy") ?? null,
+            playing: document.querySelector("#play-button")?.getAttribute("aria-pressed") ?? null,
+          });
+          const initial = state();
+          const observations = [];
+          let started = null, handlerReturnMs = null, stateAtHandlerReturn = null, galaxyReadyObservedMs = null;
+          let observer = null, timeout = null;
+          let finished = false;
+          function finish(error, readyAndIdleObservedMs = null) {
+            if (finished) return;
+            finished = true;
+            observer?.disconnect();
+            clearTimeout(timeout);
+            // Return failure evidence before the Node-side assertion throws; a
+            // rejected page Promise would discard these browser-local records.
+            resolve({ initial, handlerReturnMs, stateAtHandlerReturn, galaxyReadyObservedMs,
+              readyAndIdleObservedMs, observations, finalState: state(),
+              elapsedAtCompletionMs: started === null ? null : performance.now() - started,
+              ...(error ? { error: String(error) } : {}),
+            });
+          }
+          if (initial.galaxyReady || initial.loading || initial.busy !== "false" || initial.playing !== "false") {
+            finish(new Error(`Unexpected initial deep-load state: ${JSON.stringify(initial)}`));
+            return;
+          }
+          try {
+            observer = new MutationObserver((mutations) => {
+              const elapsedMs = performance.now() - started;
+              const current = state();
+              observations.push({ elapsedMs, state: current, attributes: [...new Set(mutations.map((item) => item.attributeName))] });
+              if (current.galaxyReady && galaxyReadyObservedMs === null) galaxyReadyObservedMs = elapsedMs;
+              if (current.galaxyReady && !current.loading && current.busy === "false") {
+                if (elapsedMs > 20_000) {
+                  finish(new Error("Deep-load readiness exceeded the existing 20-second bound"), elapsedMs);
+                  return;
+                }
+                finish(null, elapsedMs);
+              }
+            });
+            timeout = setTimeout(() => finish(new Error(`Deep-load readiness timed out: ${JSON.stringify(state())}`)), 20_000);
+            observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-galaxy-ready"] });
+            if (loading) observer.observe(loading, { attributes: true, attributeFilter: ["hidden"] });
+            observer.observe(canvas, { attributes: true, attributeFilter: ["aria-busy"] });
+            started = performance.now();
+            canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: 2_400, bubbles: true, cancelable: true }));
+            handlerReturnMs = performance.now() - started;
+            stateAtHandlerReturn = state();
+          } catch (error) {
+            finish(error);
+          }
+        }));
+        if (measurement.error) throw new Error(measurement.error);
+        // A navigation's already-fired networkidle state is not a fresh drain.
+        // Observe a new quiet window only after the measured DOM-ready interval.
+        requestDrain = await requests.drain();
+        assert.deepEqual(errors, [], "no browser errors during the deep-load probe");
+        assert.ok(measurement.readyAndIdleObservedMs >= measurement.handlerReturnMs, "observer completion follows dispatch return");
+        assert.ok(Number.isFinite(measurement.readyAndIdleObservedMs), "finite readiness observation");
+        report.samples.push({ viewport, touchEmulation: touch, sample, environment, ...measurement, requestDrain });
+        await onSample();
+      } catch (error) {
+        (report.failures ??= []).push({ viewport, touchEmulation: touch, sample, error: String(error),
+          environment, measurement, requestDrain, pendingRequests: requests.snapshot(), browserErrors: errors });
+        await onSample();
+        throw error;
+      } finally {
+        requests.dispose();
+        for (const [event, listener] of Object.entries(errorListeners)) page.off(event, listener);
+        await context.close();
+      }
+    }
+  }
+  report.summary = [false, true].map((touch) => {
+    const samples = report.samples.filter((item) => item.touchEmulation === touch);
+    const summarize = (field) => {
+      const values = samples.map((item) => item[field]).sort((a, b) => a - b);
+      return { median: values[1], minimum: values[0], maximum: values[2] };
+    };
+    return { viewport: samples[0].viewport, touchEmulation: touch, count: samples.length,
+      handlerReturnMs: summarize("handlerReturnMs"), readyAndIdleObservedMs: summarize("readyAndIdleObservedMs") };
+  });
+  await onSample();
+  return report;
+}
+
 async function ordinaryViews() {
   await scenario("ordinary constellations and overview", ordinaryOverviewAndConstellations);
   await ordinaryDirectViews();
@@ -1214,7 +1428,13 @@ try {
     await responsive();
     await timeRates();
   }
-  if (["all", "ordinary"].includes(group)) await ordinaryViews();
+  if (["all", "ordinary"].includes(group)) {
+    await ordinaryViews();
+    manifest.deepLoadObservations = {};
+    await scenario("observational deep-load wall clock", () => observeDeepLoadWallClock({
+      browser, base, source: sourceIdentity, report: manifest.deepLoadObservations, onSample: flush,
+    }));
+  }
   await captureFocusTracking();
 } catch (error) {
   manifest.failures.push({ scenario: "capture infrastructure", reason: String(error.stack || error) });

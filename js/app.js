@@ -240,7 +240,7 @@ async function prepareGalaxyLayer() {
     }
     attachGalaxyLayer(session.group);
   } catch {
-    galaxyBuild = null;
+    // Keep the settled build promise as a failure latch for later scale paints.
     if (afterStartup) say(DEEP_PREP_FAILURE);
   } finally {
     galaxyPreparing = false;
