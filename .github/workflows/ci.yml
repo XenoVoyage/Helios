@@ -18,7 +18,7 @@ jobs:
   audit:
     name: audit
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Enforce manual audit source
         if: >-
@@ -74,18 +74,17 @@ jobs:
           retention-days: 7
 
   visual-capture:
-    name: visual-capture (${{ matrix.source }}, ${{ matrix.group }})
+    name: visual-capture (${{ matrix.group }})
     if: >-
       github.event_name == 'pull_request' &&
       github.base_ref == 'develop' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
-        source: [main, develop, candidate]
-        group: [bodies, desktop-moons, touch-moons, other]
+        group: [bodies, desktop-moons, touch-moons, other, ordinary]
     steps:
       - name: Check out capture harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -94,11 +93,25 @@ jobs:
           path: harness
           persist-credentials: false
 
-      - name: Check out renderer source
+      - name: Check out main renderer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ matrix.source == 'main' && 'refs/heads/main' || matrix.source == 'develop' && github.event.pull_request.base.sha || github.event.pull_request.head.sha }}
-          path: renderer
+          ref: refs/heads/main
+          path: renderer-main
+          persist-credentials: false
+
+      - name: Check out develop base renderer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: renderer-develop
+          persist-credentials: false
+
+      - name: Check out candidate renderer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: renderer-candidate
           persist-credentials: false
 
       - name: Set up Node.js
@@ -114,20 +127,24 @@ jobs:
         working-directory: harness
         run: npx playwright install --with-deps chromium
 
-      - name: Capture exact source views
+      - name: Capture matched sources on one runner
         working-directory: harness
-        run: >-
-          node tests/visual-capture.mjs
-          --source-root ../renderer
-          --output ../visual-stills/${{ matrix.source }}/${{ matrix.group }}
-          --source-label ${{ matrix.source }}
-          --group ${{ matrix.group }}
+        run: |
+          result=0
+          for source in main develop candidate; do
+            node tests/visual-capture.mjs \
+              --source-root "../renderer-$source" \
+              --output "../visual-stills/$source/${{ matrix.group }}" \
+              --source-label "$source" \
+              --group "${{ matrix.group }}" || result=1
+          done
+          exit "$result"
 
       - name: Upload matched visual evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: helios-visual-${{ matrix.source }}-${{ matrix.group }}
+          name: helios-visual-${{ matrix.group }}
           path: visual-stills/
           if-no-files-found: warn
           retention-days: 7
