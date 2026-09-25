@@ -4497,6 +4497,47 @@ async function auditTimeSpeedControls(browser) {
       assert.equal(initial.aria, "1 hour per second");
       await captureAccessibility("default", CONFIG.defaultDaysPerSecond);
       await captureRate("default");
+      const ignoredShortcuts = await page.evaluate(() => {
+        const viewport = document.querySelector("#viewport");
+        const snapshot = () => JSON.stringify({
+          playing: document.querySelector("#play-button").getAttribute("aria-pressed"),
+          rate: document.querySelector("#speed-slider").value,
+          readout: document.querySelector("#speed-readout").textContent,
+          date: document.querySelector("#clock").textContent,
+          cardHidden: document.querySelector("#body-card").hidden,
+          focus: document.querySelector("#card-name").textContent,
+        });
+        const before = snapshot();
+        const results = [];
+        for (const modifier of ["ctrlKey", "metaKey", "altKey", "isComposing"]) {
+          for (const input of [
+            { key: " ", code: "Space" },
+            { key: "+", code: "Equal", shiftKey: true },
+            { key: "=", code: "Equal" },
+            { key: "-", code: "Minus" },
+            { key: "_", code: "Minus", shiftKey: true },
+            { key: "Escape", code: "Escape" },
+          ]) {
+            const event = new KeyboardEvent("keydown", {
+              bubbles: true, cancelable: true, ...input, [modifier]: true,
+            });
+            const notCanceled = viewport.dispatchEvent(event);
+            results.push({ modifier, key: input.key, notCanceled,
+              defaultPrevented: event.defaultPrevented, unchanged: snapshot() === before });
+          }
+        }
+        return results;
+      });
+      for (const result of ignoredShortcuts) {
+        assert.equal(result.notCanceled, true, `${label}: ${result.modifier} ${result.key} retains native behavior`);
+        assert.equal(result.defaultPrevented, false);
+        assert.equal(result.unchanged, true, `${label}: ignored shortcut preserves playback, rate and focus`);
+      }
+      report.ignoredShortcuts = ignoredShortcuts;
+      await globalKey("Shift+Equal");
+      await checkRate("Shift-plus doubles the default", CONFIG.defaultDaysPerSecond * 2);
+      await globalKey("-");
+      await checkRate("plain minus restores the default", CONFIG.defaultDaysPerSecond);
       for (let step = 1; step <= 12; step += 1) {
         await activate("#slower-button");
         await checkRate(`Slower from default ${step}`,

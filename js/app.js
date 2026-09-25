@@ -918,7 +918,10 @@ function onKey(event) {
 }
 
 function onTimeKey(event) {
-  if (event.repeat || isShortcutTargetInteractive(event.target)) return;
+  if (
+    event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.isComposing
+    || isShortcutTargetInteractive(event.target)
+  ) return;
   if (event.code === "Space") {
     event.preventDefault();
     togglePlay();
