@@ -22,7 +22,7 @@ import {
   minimumFocusDistance,
   wheelZoomMultiplier,
 } from "../js/config.js";
-import { cmbSkyOpacity, sceneHierarchyId } from "../js/galaxy.js";
+import { cmbSkyOpacity, sceneHierarchyId, universeOpacity } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
 import { auditCameraNavigation } from "./camera-navigation.mjs";
 import { runFocusTracking } from "./focus-tracking.mjs";
@@ -484,6 +484,31 @@ async function assertAccessibleHierarchy(page, expectation, label = "scene") {
   assert.equal(tree.worldLabels, 20, `${label}: a11y tree keeps the v1 body set, not catalog galaxies`);
   assert.ok(tree.buttons < 40, `${label}: accessibility tree is not dumped with rendered objects`);
   assert.equal(tree.liveRole, "status");
+  const caption = page.locator("#scale-context");
+  const hasDeepContext = /2MRS galaxy distribution|Cosmic microwave background|Schematic observable universe/.test(context);
+  assert.equal(await caption.isVisible(), hasDeepContext, `${label}: visible context follows the deep-space scene`);
+  if (hasDeepContext) {
+    const text = await caption.textContent();
+    assert.match(text, /illustrative/i, `${label}: schematic content is identified visibly`);
+    assert.match(text, /2MRS displayed to 300 Mpc|46\.5 billion light-year display radius/, `${label}: context reports the catalog or display scale`);
+    const layout = await caption.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const overlaps = [...document.querySelectorAll(".topbar, #dock, #version-label, #camera-controls")]
+        .filter((other) => other.getClientRects().length)
+        .filter((other) => {
+          const rectangle = other.getBoundingClientRect();
+          return box.left < rectangle.right && box.right > rectangle.left
+            && box.top < rectangle.bottom && box.bottom > rectangle.top;
+        }).map((other) => other.id || other.className);
+      return {
+        overlaps,
+        fits: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+        unclipped: element.scrollHeight <= element.clientHeight && element.scrollWidth <= element.clientWidth,
+      };
+    });
+    assert.deepEqual(layout.overlaps, [], `${label}: caption clears controls and branding`);
+    assert.equal(layout.fits && layout.unclipped, true, `${label}: caption is fully readable`);
+  }
   return { context, canvasSnapshot, contextSnapshot };
 }
 
@@ -2119,6 +2144,13 @@ async function auditScaleTransitions(context) {
         hierarchyText,
         `${stop.name} scene context is ${hierarchyId}`,
       );
+      await assertAccessibleHierarchy(page, { layer: hierarchyText }, stop.name);
+      if (hierarchyId === "web") {
+        const expectedTitle = universeOpacity(stop.distance) > 0.04
+          ? "Illustrative cosmic density" : "2MRS galaxy distribution";
+        assert.ok((await page.locator("#scale-context").textContent()).startsWith(expectedTitle),
+          `${stop.name}: visible caption identifies the rendered density`);
+      }
     }
     const frame = await auditedCanvasFrame(
       page,

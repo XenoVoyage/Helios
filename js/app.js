@@ -17,6 +17,7 @@ import {
   wheelZoomMultiplier,
 } from "./config.js";
 import { advanceSimulationDays, elapsedSeconds, simulationDateLabel } from "./time.js";
+import { PARTICLE_HORIZON } from "./galaxy-catalog.js";
 import {
   BODIES,
   bodyOrientationBasis,
@@ -76,6 +77,7 @@ import {
   solarDebrisOpacity,
   solarOpacity,
   universeCameraAim,
+  universeOpacity,
   virgoCameraAim,
   webCameraAim,
 } from "./galaxy.js";
@@ -309,6 +311,7 @@ function boot() {
   ui.status = $("status-live");
   ui.timeStatus = $("time-status");
   ui.sceneContext = $("scene-context");
+  ui.scaleContext = $("scale-context");
   ui.unsupported = $("unsupported");
   ui.version = $("version-label");
   ui.brand = $("brand-label");
@@ -1278,6 +1281,19 @@ function paintSceneSemantics() {
   if (ui.sceneContext.textContent !== description) {
     ui.sceneContext.textContent = description;
   }
+  let caption = "";
+  if (id === "web") {
+    const title = universeOpacity(state.distance) > 0.04
+      ? "Illustrative cosmic density" : "2MRS galaxy distribution";
+    caption = `${title} · 2MRS displayed to ${CONFIG.webRadiusMpc} Mpc. `
+      + "Approximate redshift distances; density beyond this cutoff is illustrative.";
+  } else if (id === "cmb" || id === "universe") {
+    const title = id === "cmb" ? "Cosmic microwave background" : "Observable universe";
+    caption = `${title} · ~${PARTICLE_HORIZON.comovingRadiusGly} billion light-year display radius. `
+      + "Illustrative CMB shell; schematic outside view.";
+  }
+  if (ui.scaleContext.textContent !== caption) ui.scaleContext.textContent = caption;
+  if (ui.scaleContext.hidden !== !caption) ui.scaleContext.hidden = !caption;
   if (loadingVisible() || (galaxyPreparing && wantsDeepLayer())) return;
   if (lastHierarchyId !== null && id !== lastHierarchyId && announcement) {
     say(announcement);
