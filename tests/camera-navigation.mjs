@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { CONFIG } from "../js/config.js";
-import { sceneHierarchyId } from "../js/galaxy.js";
+import { maximumCameraDistance, sceneHierarchyId } from "../js/galaxy.js";
 
 const controls = [
   ["orbit-left", "Orbit left", "ArrowLeft", 24, 0],
@@ -348,15 +348,17 @@ async function auditShortcutIsolation(page, touch, label) {
 }
 
 async function traverseRange(page, touch, label, direction) {
-  let distance = direction === 1 ? CONFIG.cameraDistance : CONFIG.maxDistance;
-  const limit = direction === 1 ? CONFIG.maxDistance : CONFIG.minDistance;
+  const viewport = page.viewportSize();
+  const maximum = maximumCameraDistance(viewport.width / viewport.height);
+  let distance = direction === 1 ? CONFIG.cameraDistance : maximum;
+  const limit = direction === 1 ? maximum : CONFIG.minDistance;
   const steps = Math.ceil(Math.abs(Math.log(limit / distance)) / Math.log(CONFIG.cameraZoomFactor)) + 2;
   const observed = [];
   let previous;
   for (let index = 0; index < steps; index += 1) {
     if (direction === 1) await activate(page, "zoom-out", touch);
     else await page.keyboard.press("i");
-    distance = Math.max(CONFIG.minDistance, Math.min(CONFIG.maxDistance, distance * CONFIG.cameraZoomFactor ** direction));
+    distance = Math.max(CONFIG.minDistance, Math.min(maximum, distance * CONFIG.cameraZoomFactor ** direction));
     const hierarchy = sceneHierarchyId(distance);
     // Preserve every native input. Observe the first step across each hierarchy
     // boundary and the final clamp; identical-stage intermediate frames add no
@@ -389,7 +391,8 @@ async function auditRange(page, touch, label, save) {
   // The fixed 1.25x steps from the maximum skip the narrow CMB interval. Seat
   // there through the public wheel, then cross both of its edges in both
   // directions with keyboard input at every viewport size.
-  await wheel(page, Math.log(cmbViewDistance() / CONFIG.maxDistance) / 0.0016);
+  const viewport = page.viewportSize();
+  await wheel(page, Math.log(cmbViewDistance() / maximumCameraDistance(viewport.width / viewport.height)) / 0.0016);
   await settled(page);
   assert.match(await page.locator("#scene-context").textContent(), hierarchyText.cmb);
   await save("cmb");
@@ -472,6 +475,59 @@ async function auditSelectedLayouts(page, label, touch, save) {
   await activate(page, "reset-button", touch);
   await activate(page, "camera-toggle", touch);
   return evidence;
+}
+
+function assertUniverseMargins(pixels, label) {
+  // The sphere crosses the middle scanline; clear ends prove that both limbs
+  // fit, while the bright center rules out a missing or far-clipped shell.
+  const middle = 48 * 128 * 4;
+  for (const x of [0, 1, 2, 3, 124, 125, 126, 127]) {
+    assert.ok(Math.max(...pixels.slice(middle + x * 4, middle + x * 4 + 3)) < 20,
+      `${label}: the complete universe leaves a visible horizontal margin`);
+  }
+  assert.ok(Math.max(...pixels.slice(middle + 64 * 4, middle + 64 * 4 + 3)) > 30,
+    `${label}: the CMB shell is rendered between the margins`);
+}
+
+async function auditUniverseFraming(page, base, save) {
+  const original = page.viewportSize();
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await openReady(page, `${base}?look=universe`, true);
+    await wheel(page, 100_000);
+    await stableSample(page);
+    for (const viewport of [original, { width: 320, height: 568 }, { width: 844, height: 390 }, original]) {
+      await page.setViewportSize(viewport);
+      const name = `universe-framed-${viewport.width}x${viewport.height}`;
+      const maximum = await stableSample(page);
+      assertUniverseMargins(maximum, name);
+      await save(name);
+      await page.locator("#viewport").focus();
+      await page.keyboard.press("o");
+      assert.ok(pixelDifference(maximum, await stableSample(page)) < 0.1, `${name}: keyboard shares the resized outer bound`);
+      await wheel(page, 100_000);
+      assert.ok(pixelDifference(maximum, await stableSample(page)) < 0.1, `${name}: wheel shares the resized outer bound`);
+      await activate(page, "camera-toggle", true);
+      const panel = await stableSample(page);
+      await activate(page, "zoom-out", true);
+      assert.ok(pixelDifference(panel, await stableSample(page)) < 0.1, `${name}: camera button shares the outer bound`);
+      await activate(page, "camera-toggle", true);
+      const points = (gap) => [
+        { x: viewport.width / 2 - gap / 2, y: viewport.height * 0.4, id: 1 },
+        { x: viewport.width / 2 + gap / 2, y: viewport.height * 0.4, id: 2 },
+      ];
+      const beforePinch = await stableSample(page);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: points(120) });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: points(40) });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      assert.ok(pixelDifference(beforePinch, await stableSample(page)) < 0.1, `${name}: native pinch shares the outer bound`);
+      assert.match(await page.locator("#scene-context").textContent(), hierarchyText.universe);
+    }
+  } finally {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }).catch(() => {});
+    await cdp.detach();
+    await page.setViewportSize(original);
+  }
 }
 
 async function auditFarControls(page, base, save) {
@@ -567,6 +623,7 @@ export async function auditCameraNavigation(browser, base, screenshotDir) {
       if (label === "desktop") await auditShortcutIsolation(page, touch, label);
       const selectedLayouts = touch ? await auditSelectedLayouts(page, label, touch, save) : [];
       const range = await auditRange(page, touch, label, save);
+      if (label === "portrait") await auditUniverseFraming(page, base, save);
       if (label === "desktop") {
         await auditBodyMinimums(page, save);
         await auditFarControls(page, base, save);

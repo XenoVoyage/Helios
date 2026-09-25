@@ -56,6 +56,7 @@ import {
   armPointKpc,
   farthestNeighborhoodDistance,
   farthestUniverseDistance,
+  maximumCameraDistance,
   farthestVirgoDistance,
   farthestWebDistance,
   galacticCenterScenePosition,
@@ -358,6 +359,27 @@ test("galaxy scales are kpc mappings and do not reuse solar AU units", async () 
     visualNeighborhood(findNeighbor("lmc").distanceKpc) > diskFromSun * 0.8,
     "LMC sits outside the luminous disk",
   );
+});
+
+test("outer camera limit fits the universe in portrait without changing desktop or inner scales", () => {
+  const radius = farthestUniverseDistance();
+  const verticalTangent = Math.tan(CONFIG.cameraFovDegrees * Math.PI / 360);
+  for (const [width, height] of [[390, 844], [320, 568]]) {
+    const distance = maximumCameraDistance(width / height);
+    const diameter = height / verticalTangent * Math.tan(Math.asin(radius / distance));
+    assert.ok(distance > CONFIG.maxDistance, `${width}x${height} extends the outer allowance`);
+    assert.ok(diameter <= width * CONFIG.universeViewportFill + 1e-8);
+    assert.ok(diameter >= width * 0.9, "the sphere keeps most of the available width");
+    assert.ok(distance + radius < CONFIG.cameraFar, "normal portrait framing clears the far plane");
+    assert.equal(extraZoomCameraDistance(distance), distance, "the extension is outside the remapped inner curve");
+    assert.equal(sceneHierarchyId(distance), "universe");
+  }
+  for (const [width, height] of [[1440, 900], [1024, 768], [844, 390], [568, 320], [720, 720]]) {
+    assert.equal(maximumCameraDistance(width / height), CONFIG.maxDistance);
+  }
+  for (const invalid of [0, -1, NaN, Infinity]) {
+    assert.equal(maximumCameraDistance(invalid), CONFIG.maxDistance);
+  }
 });
 
 test("scale layer switches after the solar camera cap and reset stays solar", () => {

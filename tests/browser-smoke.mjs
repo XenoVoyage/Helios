@@ -359,6 +359,7 @@ async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = 
       document.querySelector("#body-card"),
       document.querySelector("#dock"),
       document.querySelector("#version-label"),
+      document.querySelector("#camera-controls"),
     ].filter((element) => element && !element.hidden && element.getClientRects().length > 0)
       .map((element) => {
         const box = element.getBoundingClientRect();
@@ -407,6 +408,15 @@ async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = 
   if (requireVisible) {
     assert.ok(audit.length > 0, `${label}: at least one body label remains visible`);
   }
+  for (const [index, first] of audit.entries()) {
+    for (const second of audit.slice(index + 1)) {
+      assert.ok(
+        first.right <= second.left || first.left >= second.right
+          || first.bottom <= second.top || first.top >= second.bottom,
+        `${label}: ${first.name}/${second.name} complete label targets do not overlap`,
+      );
+    }
+  }
   for (const item of audit) {
     assert.ok(item.width >= 43.5 && item.height >= 43.5, `${label}: ${item.name} keeps a 44px target`);
     assert.equal(item.insideViewport, true, `${label}: ${item.name} stays inside the viewport: ${JSON.stringify(item)}`);
@@ -428,6 +438,88 @@ async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = 
       }
       throw error;
     }
+  }
+}
+
+async function auditBodyLabelCollisions(context, prefix, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  try {
+    for (const input of ["pointer", "keyboard"]) {
+      await openReady(page, "?look=solarfar");
+      await page.locator("#play-button").click();
+      await waitForTwoAnimationFrames(page);
+      await assertVisibleBodyLabelsClearChrome(page, `${prefix} far-solar ${input}`);
+      for (const id of ["sun", "mercury", "venus", "earth"]) {
+        assert.equal(await page.locator(`[data-body-id="${id}"]`).isVisible(), true,
+          `${prefix}: crowded inner-world ${id} remains available`);
+      }
+      if (input === "pointer") await saveScreenshot(page, `${prefix}-solarfar-label-collisions`);
+      const id = await page.locator('.sky-label:not([hidden])').evaluateAll((labels) => (
+        labels.find((label) => label.style.transform.includes("translateX("))?.dataset.bodyId
+      ));
+      assert.ok(id, `${prefix}: regression exercises an actually displaced label`);
+      const target = page.locator(`[data-body-id="${id}"]`);
+      const before = await target.boundingBox();
+      assert.ok(before);
+      if (input === "keyboard") {
+        await target.focus();
+        await waitForTwoAnimationFrames(page);
+        const after = await target.boundingBox();
+        assert.deepEqual(after, before, `${prefix}: keyboard focus keeps the displaced target stable`);
+        assert.equal(await target.evaluate((label) => document.activeElement === label), true);
+        await assertVisibleBodyLabelsClearChrome(page, `${prefix} keyboard-focused labels`);
+        await target.press("Enter");
+      } else if (touch) {
+        await page.touchscreen.tap(before.x + before.width / 2, before.y + before.height / 2);
+      } else {
+        await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+        await page.mouse.down();
+        await waitForTwoAnimationFrames(page);
+        assert.deepEqual(await target.boundingBox(), before,
+          "mouse press cannot move its displaced target before release");
+        await page.mouse.up();
+      }
+      assert.equal(await page.locator("#card-name").textContent(), findBody(id).name,
+        `${prefix}: ${input} selects the named displaced label`);
+      await waitForCenteredBodyLabel(page, id);
+      assert.equal(await target.evaluate((label) => label.style.transform.includes("translateX(")), false,
+        `${prefix}: selected world regains its natural label seat`);
+      await assertVisibleBodyLabelsClearChrome(page, `${prefix} selected ${id}`);
+      await saveScreenshot(page, `${prefix}-label-collision-${input}`);
+    }
+    if (touch) {
+      await page.setViewportSize({ width: 568, height: 320 });
+      for (const input of ["touch", "keyboard"]) {
+        await openReady(page);
+        await page.locator("#play-button").click();
+        await waitForTwoAnimationFrames(page);
+        assert.equal(await page.locator("#body-card").isHidden(), true);
+        await assertVisibleBodyLabelsClearChrome(page, `compact overview ${input}`);
+        const mars = page.locator('[data-body-id="mars"]');
+        assert.equal(await mars.isVisible(), true, "compact overview retains the Mars target");
+        const before = await mars.boundingBox();
+        assert.ok(before);
+        if (input === "keyboard") {
+          await mars.focus();
+          await waitForTwoAnimationFrames(page);
+          assert.deepEqual(await mars.boundingBox(), before, "focus keeps the recovered Mars target stable");
+          await assertVisibleBodyLabelsClearChrome(page, "compact keyboard-focused Mars");
+          await mars.press("Enter");
+        } else {
+          await saveScreenshot(page, "touch-landscape-compact-labels");
+          await page.touchscreen.tap(before.x + before.width / 2, before.y + before.height / 2);
+        }
+        assert.equal(await page.locator("#card-name").textContent(), "Mars",
+          `compact ${input} selects the recovered named target`);
+        assert.equal(await page.locator("#body-card").isVisible(), true);
+        await waitForMoonCameraSettled(page);
+        await saveScreenshot(page, `touch-landscape-compact-mars-${input}`);
+      }
+    }
+    assert.deepEqual(errors, [], `${prefix}: crowded label selection has no runtime errors`);
+  } finally {
+    await page.close();
   }
 }
 
@@ -846,9 +938,16 @@ async function auditWheelDeltaModes(browser, touch = false) {
       const own = Object.getOwnPropertyDescriptor(prototype, "onAfterRender");
       const original = prototype.onAfterRender;
       const canvas = document.querySelector("#viewport");
+      const labels = document.querySelector("#labels");
       const touchIds = new Set();
-      const recordTouch = (event) => { if (event.pointerType === "touch") touchIds.add(event.pointerId); };
+      const touchStarts = [];
+      const recordTouch = (event) => {
+        if (event.pointerType !== "touch") return;
+        touchIds.add(event.pointerId);
+        touchStarts.push(event.target.closest("[data-body-id]")?.dataset.bodyId || "canvas");
+      };
       canvas.addEventListener("pointerdown", recordTouch);
+      labels.addEventListener("pointerdown", recordTouch);
       let serial = 0, latest = null;
       prototype.onAfterRender = function (renderer, scene, camera) {
         original.call(this, renderer, scene, camera);
@@ -868,10 +967,12 @@ async function auditWheelDeltaModes(browser, touch = false) {
       return {
         snapshot: () => latest,
         touchCount: () => touchIds.size,
+        touchStarts: () => touchStarts.slice(),
         restore() {
           if (own) Object.defineProperty(prototype, "onAfterRender", own);
           else delete prototype.onAfterRender;
           canvas.removeEventListener("pointerdown", recordTouch);
+          labels.removeEventListener("pointerdown", recordTouch);
         },
       };
     });
@@ -948,6 +1049,99 @@ async function auditWheelDeltaModes(browser, touch = false) {
       await dispatch(48);
       assert.ok(relativeGap(pinched.geometry, (await settled()).geometry) > 1e-5,
         "wheel responds again after touch release");
+
+      const farSolar = async () => {
+        await reset();
+        await dispatch(Math.log(CONFIG.solarMaxDistance / CONFIG.cameraDistance) / 0.0016);
+        return settled();
+      };
+      const point = (id, x, y) => ({ id, x, y, radiusX: 4, radiusY: 4, force: 1 });
+      const send = (type, touchPoints) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints });
+      await farSolar();
+      const referenceCenter = await page.evaluate(() => {
+        const canvas = document.querySelector("#viewport");
+        for (const y of [0.65, 0.52, 0.28, 0.38]) {
+          const x = innerWidth / 2, cy = innerHeight * y;
+          if ([-40, 40].every((dx) => document.elementFromPoint(x + dx, cy) === canvas)) return { x, y: cy };
+        }
+        return null;
+      });
+      assert.ok(referenceCenter, "far-solar reference starts both fingers on canvas");
+      const referencePoints = (gap) => [
+        point(0, referenceCenter.x - gap / 2, referenceCenter.y),
+        point(1, referenceCenter.x + gap / 2, referenceCenter.y),
+      ];
+      await send("touchStart", referencePoints(80));
+      await send("touchMove", referencePoints(160));
+      await send("touchEnd", []);
+      const canvasPinch = await settled();
+
+      for (const labelFirst of [true, false]) {
+        const before = await farSolar();
+        const target = await page.evaluate(() => {
+          const canvas = document.querySelector("#viewport");
+          for (const label of document.querySelectorAll('.sky-label:not([hidden])')) {
+            if (!label.style.transform.includes("translateX(")) continue;
+            const box = label.getBoundingClientRect();
+            const x = box.x + box.width / 2, y = box.y + box.height / 2;
+            for (const direction of [-1, 1]) {
+              const other = x + direction * 80, end = x + direction * 160;
+              if (end > 8 && end < innerWidth - 8
+                && document.elementFromPoint(x, y) === label
+                && document.elementFromPoint(other, y) === canvas) {
+                return { id: label.dataset.bodyId, x, y, other, end };
+              }
+            }
+          }
+          return null;
+        });
+        assert.ok(target, "mixed pinch begins on an actually displaced label and the canvas");
+        const labelPoint = point(0, target.x, target.y);
+        const canvasPoint = point(1, target.other, target.y);
+        const starts = (await observer.evaluate((item) => item.touchStarts())).length;
+        await send("touchStart", [labelFirst ? labelPoint : canvasPoint]);
+        await send("touchStart", [labelPoint, canvasPoint]);
+        assert.deepEqual((await observer.evaluate((item) => item.touchStarts())).slice(starts),
+          labelFirst ? [target.id, "canvas"] : ["canvas", target.id],
+          "native pointer events actually begin on both intended surfaces");
+        await send("touchMove", [labelPoint, point(1, target.end, target.y)]);
+        // CDP touchEnd releases all points; the live-handler regression covers
+        // the separate finger-release orders and subsequent lost capture.
+        await send("touchEnd", []);
+        const mixedPinch = await settled();
+        assert.ok(relativeGap(canvasPinch.geometry, mixedPinch.geometry) <= 1e-6,
+          `${labelFirst ? "label" : "canvas"}-first pinch matches canvas camera input`);
+        assert.deepEqual(mixedPinch.ui, before.ui, "mixed pinch cannot select its starting label");
+
+        // Start the same mixed gesture again, then let Chromium cancel it.
+        const cancelBefore = await farSolar();
+        const cancelStarts = (await observer.evaluate((item) => item.touchStarts())).length;
+        await send("touchStart", [labelFirst ? labelPoint : canvasPoint]);
+        await send("touchStart", [labelPoint, canvasPoint]);
+        assert.deepEqual((await observer.evaluate((item) => item.touchStarts())).slice(cancelStarts),
+          labelFirst ? [target.id, "canvas"] : ["canvas", target.id],
+          "cancel regression still begins on the intended label and canvas after reset");
+        await send("touchCancel", []);
+        equal(cancelBefore, await settled(), "canceled mixed touches neither select nor move the scene");
+        await page.touchscreen.tap(target.x, target.y);
+        await page.locator("#body-card:not([hidden])").waitFor();
+        assert.equal(await page.locator("#card-name").textContent(), findBody(target.id).name,
+          "a fresh native label tap works after pinch cancellation");
+
+        const dragBefore = await farSolar();
+        const dragStarts = (await observer.evaluate((item) => item.touchStarts())).length;
+        await send("touchStart", [labelPoint]);
+        assert.deepEqual((await observer.evaluate((item) => item.touchStarts())).slice(dragStarts), [target.id],
+          "lone-label drag begins on the displaced label after reset");
+        await send("touchMove", [point(0,
+          target.x + Math.sign(target.other - target.x) * (CONFIG.tapMovePx + 8), target.y)]);
+        await send("touchEnd", []);
+        equal(dragBefore, await settled(), "lone-label drag neither selects nor moves the scene");
+        await page.touchscreen.tap(target.x, target.y);
+        await page.locator("#body-card:not([hidden])").waitFor();
+        assert.equal(await page.locator("#card-name").textContent(), findBody(target.id).name,
+          "a fresh native label tap works after dragging past tap slop");
+      }
     } else {
       const focusFloor = async (id) => {
         await reset();
@@ -2902,6 +3096,7 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
       `${prefix} ${bodyId} zoom through the parent keeps the moon focused`,
     );
     await assertRenderedCanvas(page);
+    await assertVisibleBodyLabelsClearChrome(page, `${prefix} ${bodyId} parent-cross labels`);
     await saveScreenshot(page, `${prefix}-moon-parent-cross-${bodyId}`);
 
     if (cdp) {
@@ -3898,15 +4093,18 @@ function assertCappedDrawingBuffer(shot, expectedRatio, label) {
 async function attachRendererProbe(page) {
   const probe = await page.evaluateHandle(async () => {
     const THREE = await import(new URL("vendor/three.module.min.js", location.href).href);
+    const { STARS } = await import(new URL("js/sky.js", location.href).href);
     const prototype = THREE.Scene.prototype;
     const original = prototype.onAfterRender;
     let renderer = null;
     let camera = null;
+    let renderedScene = null;
     const pixelRatioCalls = [];
     let wrapped = false;
     prototype.onAfterRender = function onAfterRender(nextRenderer, scene, nextCamera) {
       renderer = nextRenderer;
       camera = nextCamera;
+      renderedScene = scene;
       if (!wrapped && renderer) {
         wrapped = true;
         const originalSet = renderer.setPixelRatio.bind(renderer);
@@ -3926,6 +4124,7 @@ async function attachRendererProbe(page) {
         const dock = document.querySelector("#dock")?.getBoundingClientRect();
         return {
           pixelRatio: renderer.getPixelRatio(),
+          starPixelRatio: renderedScene.getObjectByName("stars").material.uniforms.pixelRatio.value,
           pixelRatioCalls: pixelRatioCalls.slice(),
           aspect: camera.aspect,
           projection: [...camera.projectionMatrix.elements],
@@ -3939,6 +4138,16 @@ async function attachRendererProbe(page) {
           cssHeight: css.height,
           devicePixelRatio: window.devicePixelRatio,
           dockHeight: dock ? dock.height : 0,
+        };
+      },
+      catalogStarAnchor() {
+        const stars = renderedScene.getObjectByName("stars");
+        const index = STARS.findIndex((row) => row[0] === 37279); // Procyon
+        const at = new THREE.Vector3().fromBufferAttribute(stars.geometry.getAttribute("position"), index);
+        stars.localToWorld(at).project(camera);
+        return {
+          x: (at.x * 0.5 + 0.5) * window.innerWidth,
+          y: (-at.y * 0.5 + 0.5) * window.innerHeight,
         };
       },
       clearCalls() {
@@ -3955,6 +4164,60 @@ async function attachRendererProbe(page) {
     if (shot) return probe;
   }
   throw new Error("renderer probe did not observe a frame");
+}
+
+async function catalogStarPixels(page, probe) {
+  const anchor = await probe.evaluate((item) => item.catalogStarAnchor());
+  const frame = await page.locator("#viewport").screenshot({ scale: "css" });
+  return page.evaluate(async ({ source, anchor }) => {
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+    });
+    image.src = `data:image/png;base64,${source}`;
+    await ready;
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const ctx = surface.getContext("2d");
+    ctx.drawImage(image, 0, 0);
+    const left = Math.round(anchor.x) - 5;
+    const top = Math.round(anchor.y) - 5;
+    const pixels = ctx.getImageData(left, top, 11, 11).data;
+    const values = [];
+    const rim = [];
+    for (let y = 0; y < 11; y += 1) {
+      for (let x = 0; x < 11; x += 1) {
+        const offset = (y * 11 + x) * 4;
+        const value = (pixels[offset] + pixels[offset + 1] + pixels[offset + 2]) / 3;
+        values.push(value);
+        if (Math.hypot(left + x + 0.5 - anchor.x, top + y + 0.5 - anchor.y) > 4) rim.push(value);
+      }
+    }
+    rim.sort((a, b) => a - b);
+    const background = rim[Math.floor(rim.length / 2)];
+    const excess = values.map((value) => Math.max(0, value - background));
+    return {
+      anchor,
+      intensity: excess.reduce((sum, value) => sum + value, 0),
+      brightArea: excess.filter((value) => value > 80).length,
+    };
+  }, { source: frame.toString("base64"), anchor });
+}
+
+function assertCatalogStarPixels(before, after, label) {
+  const intensityRatio = after.intensity / before.intensity;
+  const areaRatio = after.brightArea / before.brightArea;
+  const evidence = `${label}: ${JSON.stringify({ before, after, intensityRatio, areaRatio })}`;
+  assert.ok(before.brightArea >= 5, `Procyon has a measurable bright core: ${evidence}`);
+  assert.ok(Math.hypot(after.anchor.x - before.anchor.x, after.anchor.y - before.anchor.y) < 0.1,
+    `DPR preserves the catalog position: ${evidence}`);
+  // Raster coverage differs at fractional pixel centers, but must not suffer
+  // the old half-diameter / roughly quarter-area high-DPI collapse.
+  assert.ok(intensityRatio >= 0.65 && intensityRatio <= 1.5, `CSS intensity is stable: ${evidence}`);
+  assert.ok(areaRatio >= 0.5 && areaRatio <= 1.75, `CSS star footprint is stable: ${evidence}`);
+  console.log(evidence);
 }
 
 async function setLiveDevicePixelRatio(page, ratio) {
@@ -4040,6 +4303,7 @@ async function auditCappedDprResync(browser) {
 
     let shot = await settle("boot");
     assert.equal(shot.devicePixelRatio, 1);
+    assert.equal(shot.starPixelRatio, 1);
     assertCappedDrawingBuffer(shot, 1, "live boot dpr 1");
     assert.deepEqual(shot.pixelRatioCalls, [], "boot frames after wrapping do not call setPixelRatio");
 
@@ -4069,12 +4333,14 @@ async function auditCappedDprResync(browser) {
       cssHeight: shot.cssHeight,
     };
     await saveScreenshot(page, "dpr-live-compact-1");
+    const starAtOne = await catalogStarPixels(page, probe);
 
     await probe.evaluate((item) => item.clearCalls());
     await setLiveDevicePixelRatio(page, 2);
     shot = await settle("live 1→2");
     assert.deepEqual(shot.pixelRatioCalls, [2], "raising DPR to 2 calls setPixelRatio once");
     assert.equal(shot.devicePixelRatio, 2);
+    assert.equal(shot.starPixelRatio, 2);
     assertCappedDrawingBuffer(shot, 2, "live 1→2");
     assert.equal(shot.innerWidth, compactLayout.innerWidth);
     assert.equal(shot.innerHeight, compactLayout.innerHeight);
@@ -4082,6 +4348,7 @@ async function auditCappedDprResync(browser) {
     assert.equal(shot.dockHeight, compactLayout.dockHeight);
     assert.deepEqual(shot.projection, compactLayout.projection, "DPR-only change keeps the projection");
     await saveScreenshot(page, "dpr-live-compact-2");
+    assertCatalogStarPixels(starAtOne, await catalogStarPixels(page, probe), "catalog star DPR 1→2");
 
     const highLayout = {
       projection: shot.projection,
@@ -4093,21 +4360,25 @@ async function auditCappedDprResync(browser) {
     shot = await settle("live 2→3 capped");
     assert.deepEqual(shot.pixelRatioCalls, [], "still-capped DPR 3 does not call setPixelRatio");
     assert.equal(shot.devicePixelRatio, 3);
+    assert.equal(shot.starPixelRatio, 2, "catalog shader uses capped renderer DPR, not device DPR 3");
     assertCappedDrawingBuffer(shot, 2, "live 2→3 capped");
     assert.deepEqual(shot.projection, highLayout.projection);
     assert.equal(shot.dockHeight, highLayout.dockHeight);
+    assertCatalogStarPixels(starAtOne, await catalogStarPixels(page, probe), "catalog star DPR 3 capped at 2");
 
     await probe.evaluate((item) => item.clearCalls());
     await setLiveDevicePixelRatio(page, 1);
     shot = await settle("live 2→1");
     assert.deepEqual(shot.pixelRatioCalls, [1], "lowering capped DPR to 1 calls setPixelRatio once");
     assert.equal(shot.devicePixelRatio, 1);
+    assert.equal(shot.starPixelRatio, 1);
     assertCappedDrawingBuffer(shot, 1, "live 2→1");
     assert.equal(shot.innerWidth, compactLayout.innerWidth);
     assert.equal(shot.innerHeight, compactLayout.innerHeight);
     assert.equal(shot.aspect, compactLayout.aspect);
     assert.deepEqual(shot.projection, compactLayout.projection, "return to DPR 1 keeps the projection");
     assert.equal(shot.dockHeight, compactLayout.dockHeight);
+    assertCatalogStarPixels(starAtOne, await catalogStarPixels(page, probe), "catalog star DPR 2→1");
 
     assert.deepEqual(errors, [], "capped DPR resync has no browser errors");
     console.log("capped DPR resync ok");
@@ -4946,6 +5217,7 @@ try {
     deviceScaleFactor: 1,
   });
   await auditWheelDeltaModes(browser);
+  await auditBodyLabelCollisions(desktop, "desktop");
   await auditCredits(desktop);
   await assertViewportBusyLifecycle(desktop, "desktop");
   // Check the issue's new pixel gate before the longer unchanged scale and
@@ -5101,6 +5373,7 @@ try {
   await assertViewportBusyLifecycle(touch, "touch-portrait emulation");
   await assertOuterPlanetNightSides(touch, "touch-portrait", true);
   await auditPointerCancelAbort(touch, "touch-portrait", true);
+  await auditBodyLabelCollisions(touch, "touch-portrait", true);
   const touchControlPage = await touch.newPage();
   const touchControlErrors = captureErrors(touchControlPage);
   await openReady(touchControlPage);

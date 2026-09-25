@@ -61,12 +61,15 @@ export const CONFIG = Object.freeze({
   cameraDistance: 880,
   cameraElevation: 0.5,
   cameraAzimuth: 0.55,
+  cameraFovDegrees: 52,
   minDistance: 2.4,
   // Focused zoom stops just outside the rendered globe, not inside it.
   focusSurfaceClearance: 1.05,
   // Solar overview / Kuiper camera cap. Further zoom is the galaxy layer.
   solarMaxDistance: 1880,
   maxDistance: 2600000,
+  // At the outer zoom limit, leave 4% of the narrow viewport edge on each side.
+  universeViewportFill: 0.92,
   mwViewDistance: 11000,
   neighborhoodViewDistance: 24000,
   localGroupViewDistance: 40000,
@@ -119,6 +122,11 @@ export const CONFIG = Object.freeze({
   cameraFar: 7000000,
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
+  // Resolve crowded world-name targets locally without moving their bodies.
+  bodyLabelGapPx: 4,
+  bodyLabelOffsetStepPx: 24,
+  bodyLabelFallbackOffsetStepPx: 12,
+  bodyLabelMaxOffsetPx: 96,
   cameraOrbitStep: 0.12,
   cameraZoomFactor: 1.25,
   // Canvas wheel convention: one text line is 16 CSS pixels; a page uses its height.
