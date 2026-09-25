@@ -123,12 +123,12 @@ test("Pages API errors fail closed", async () => {
   }), /API unavailable/);
 });
 
-test("the actual Pages job condition excludes PR, fork, unsuccessful and non-main triggers", async () => {
+test("the actual Pages job condition excludes stale, PR, fork, unsuccessful and non-main triggers", async () => {
   const workflow = await readFile(new URL("../.github/workflows/pages.yml", import.meta.url), "utf8");
   const expression = workflow.match(/^    if: >-\n((?:      .*\n)+)/m)?.[1];
   assert.ok(expression, "Pages job condition is available for behavioral verification");
   const context = () => ({
-    repository, ref: "refs/heads/main", event_name: "workflow_run",
+    repository, sha, ref: "refs/heads/main", event_name: "workflow_run",
     event: { workflow_run: fixture().run },
   });
   const allowed = (github) => runInNewContext(expression, { github });
@@ -140,6 +140,8 @@ test("the actual Pages job condition excludes PR, fork, unsuccessful and non-mai
   manual.ref = "refs/heads/develop";
   assert.equal(allowed(manual), false);
   const mutations = [
+    (github) => { github.event.workflow_run.head_sha = otherSha; },
+    (github) => { github.sha = otherSha; },
     (github) => { github.ref = "refs/heads/develop"; },
     (github) => { github.event_name = "pull_request"; },
     (github) => { github.event.workflow_run.event = "pull_request"; },
