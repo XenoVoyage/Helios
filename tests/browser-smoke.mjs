@@ -3898,15 +3898,18 @@ function assertCappedDrawingBuffer(shot, expectedRatio, label) {
 async function attachRendererProbe(page) {
   const probe = await page.evaluateHandle(async () => {
     const THREE = await import(new URL("vendor/three.module.min.js", location.href).href);
+    const { STARS } = await import(new URL("js/sky.js", location.href).href);
     const prototype = THREE.Scene.prototype;
     const original = prototype.onAfterRender;
     let renderer = null;
     let camera = null;
+    let renderedScene = null;
     const pixelRatioCalls = [];
     let wrapped = false;
     prototype.onAfterRender = function onAfterRender(nextRenderer, scene, nextCamera) {
       renderer = nextRenderer;
       camera = nextCamera;
+      renderedScene = scene;
       if (!wrapped && renderer) {
         wrapped = true;
         const originalSet = renderer.setPixelRatio.bind(renderer);
@@ -3926,6 +3929,7 @@ async function attachRendererProbe(page) {
         const dock = document.querySelector("#dock")?.getBoundingClientRect();
         return {
           pixelRatio: renderer.getPixelRatio(),
+          starPixelRatio: renderedScene.getObjectByName("stars").material.uniforms.pixelRatio.value,
           pixelRatioCalls: pixelRatioCalls.slice(),
           aspect: camera.aspect,
           projection: [...camera.projectionMatrix.elements],
@@ -3939,6 +3943,16 @@ async function attachRendererProbe(page) {
           cssHeight: css.height,
           devicePixelRatio: window.devicePixelRatio,
           dockHeight: dock ? dock.height : 0,
+        };
+      },
+      catalogStarAnchor() {
+        const stars = renderedScene.getObjectByName("stars");
+        const index = STARS.findIndex((row) => row[0] === 37279); // Procyon
+        const at = new THREE.Vector3().fromBufferAttribute(stars.geometry.getAttribute("position"), index);
+        stars.localToWorld(at).project(camera);
+        return {
+          x: (at.x * 0.5 + 0.5) * window.innerWidth,
+          y: (-at.y * 0.5 + 0.5) * window.innerHeight,
         };
       },
       clearCalls() {
@@ -3955,6 +3969,60 @@ async function attachRendererProbe(page) {
     if (shot) return probe;
   }
   throw new Error("renderer probe did not observe a frame");
+}
+
+async function catalogStarPixels(page, probe) {
+  const anchor = await probe.evaluate((item) => item.catalogStarAnchor());
+  const frame = await page.locator("#viewport").screenshot({ scale: "css" });
+  return page.evaluate(async ({ source, anchor }) => {
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+    });
+    image.src = `data:image/png;base64,${source}`;
+    await ready;
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const ctx = surface.getContext("2d");
+    ctx.drawImage(image, 0, 0);
+    const left = Math.round(anchor.x) - 5;
+    const top = Math.round(anchor.y) - 5;
+    const pixels = ctx.getImageData(left, top, 11, 11).data;
+    const values = [];
+    const rim = [];
+    for (let y = 0; y < 11; y += 1) {
+      for (let x = 0; x < 11; x += 1) {
+        const offset = (y * 11 + x) * 4;
+        const value = (pixels[offset] + pixels[offset + 1] + pixels[offset + 2]) / 3;
+        values.push(value);
+        if (Math.hypot(left + x + 0.5 - anchor.x, top + y + 0.5 - anchor.y) > 4) rim.push(value);
+      }
+    }
+    rim.sort((a, b) => a - b);
+    const background = rim[Math.floor(rim.length / 2)];
+    const excess = values.map((value) => Math.max(0, value - background));
+    return {
+      anchor,
+      intensity: excess.reduce((sum, value) => sum + value, 0),
+      brightArea: excess.filter((value) => value > 80).length,
+    };
+  }, { source: frame.toString("base64"), anchor });
+}
+
+function assertCatalogStarPixels(before, after, label) {
+  const intensityRatio = after.intensity / before.intensity;
+  const areaRatio = after.brightArea / before.brightArea;
+  const evidence = `${label}: ${JSON.stringify({ before, after, intensityRatio, areaRatio })}`;
+  assert.ok(before.brightArea >= 5, `Procyon has a measurable bright core: ${evidence}`);
+  assert.ok(Math.hypot(after.anchor.x - before.anchor.x, after.anchor.y - before.anchor.y) < 0.1,
+    `DPR preserves the catalog position: ${evidence}`);
+  // Raster coverage differs at fractional pixel centers, but must not suffer
+  // the old half-diameter / roughly quarter-area high-DPI collapse.
+  assert.ok(intensityRatio >= 0.65 && intensityRatio <= 1.5, `CSS intensity is stable: ${evidence}`);
+  assert.ok(areaRatio >= 0.5 && areaRatio <= 1.75, `CSS star footprint is stable: ${evidence}`);
+  console.log(evidence);
 }
 
 async function setLiveDevicePixelRatio(page, ratio) {
@@ -4040,6 +4108,7 @@ async function auditCappedDprResync(browser) {
 
     let shot = await settle("boot");
     assert.equal(shot.devicePixelRatio, 1);
+    assert.equal(shot.starPixelRatio, 1);
     assertCappedDrawingBuffer(shot, 1, "live boot dpr 1");
     assert.deepEqual(shot.pixelRatioCalls, [], "boot frames after wrapping do not call setPixelRatio");
 
@@ -4069,12 +4138,14 @@ async function auditCappedDprResync(browser) {
       cssHeight: shot.cssHeight,
     };
     await saveScreenshot(page, "dpr-live-compact-1");
+    const starAtOne = await catalogStarPixels(page, probe);
 
     await probe.evaluate((item) => item.clearCalls());
     await setLiveDevicePixelRatio(page, 2);
     shot = await settle("live 1→2");
     assert.deepEqual(shot.pixelRatioCalls, [2], "raising DPR to 2 calls setPixelRatio once");
     assert.equal(shot.devicePixelRatio, 2);
+    assert.equal(shot.starPixelRatio, 2);
     assertCappedDrawingBuffer(shot, 2, "live 1→2");
     assert.equal(shot.innerWidth, compactLayout.innerWidth);
     assert.equal(shot.innerHeight, compactLayout.innerHeight);
@@ -4082,6 +4153,7 @@ async function auditCappedDprResync(browser) {
     assert.equal(shot.dockHeight, compactLayout.dockHeight);
     assert.deepEqual(shot.projection, compactLayout.projection, "DPR-only change keeps the projection");
     await saveScreenshot(page, "dpr-live-compact-2");
+    assertCatalogStarPixels(starAtOne, await catalogStarPixels(page, probe), "catalog star DPR 1→2");
 
     const highLayout = {
       projection: shot.projection,
@@ -4093,21 +4165,25 @@ async function auditCappedDprResync(browser) {
     shot = await settle("live 2→3 capped");
     assert.deepEqual(shot.pixelRatioCalls, [], "still-capped DPR 3 does not call setPixelRatio");
     assert.equal(shot.devicePixelRatio, 3);
+    assert.equal(shot.starPixelRatio, 2, "catalog shader uses capped renderer DPR, not device DPR 3");
     assertCappedDrawingBuffer(shot, 2, "live 2→3 capped");
     assert.deepEqual(shot.projection, highLayout.projection);
     assert.equal(shot.dockHeight, highLayout.dockHeight);
+    assertCatalogStarPixels(starAtOne, await catalogStarPixels(page, probe), "catalog star DPR 3 capped at 2");
 
     await probe.evaluate((item) => item.clearCalls());
     await setLiveDevicePixelRatio(page, 1);
     shot = await settle("live 2→1");
     assert.deepEqual(shot.pixelRatioCalls, [1], "lowering capped DPR to 1 calls setPixelRatio once");
     assert.equal(shot.devicePixelRatio, 1);
+    assert.equal(shot.starPixelRatio, 1);
     assertCappedDrawingBuffer(shot, 1, "live 2→1");
     assert.equal(shot.innerWidth, compactLayout.innerWidth);
     assert.equal(shot.innerHeight, compactLayout.innerHeight);
     assert.equal(shot.aspect, compactLayout.aspect);
     assert.deepEqual(shot.projection, compactLayout.projection, "return to DPR 1 keeps the projection");
     assert.equal(shot.dockHeight, compactLayout.dockHeight);
+    assertCatalogStarPixels(starAtOne, await catalogStarPixels(page, probe), "catalog star DPR 2→1");
 
     assert.deepEqual(errors, [], "capped DPR resync has no browser errors");
     console.log("capped DPR resync ok");
