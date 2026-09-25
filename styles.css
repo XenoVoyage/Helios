@@ -124,6 +124,7 @@ body {
   left: 0;
   top: 0;
   pointer-events: auto;
+  touch-action: none;
   display: flex;
   min-width: 44px;
   min-height: 44px;
