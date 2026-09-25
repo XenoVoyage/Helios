@@ -359,6 +359,7 @@ async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = 
       document.querySelector("#body-card"),
       document.querySelector("#dock"),
       document.querySelector("#version-label"),
+      document.querySelector("#camera-controls"),
     ].filter((element) => element && !element.hidden && element.getClientRects().length > 0)
       .map((element) => {
         const box = element.getBoundingClientRect();
@@ -407,6 +408,15 @@ async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = 
   if (requireVisible) {
     assert.ok(audit.length > 0, `${label}: at least one body label remains visible`);
   }
+  for (const [index, first] of audit.entries()) {
+    for (const second of audit.slice(index + 1)) {
+      assert.ok(
+        first.right <= second.left || first.left >= second.right
+          || first.bottom <= second.top || first.top >= second.bottom,
+        `${label}: ${first.name}/${second.name} complete label targets do not overlap`,
+      );
+    }
+  }
   for (const item of audit) {
     assert.ok(item.width >= 43.5 && item.height >= 43.5, `${label}: ${item.name} keeps a 44px target`);
     assert.equal(item.insideViewport, true, `${label}: ${item.name} stays inside the viewport: ${JSON.stringify(item)}`);
@@ -428,6 +438,59 @@ async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = 
       }
       throw error;
     }
+  }
+}
+
+async function auditBodyLabelCollisions(context, prefix, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  try {
+    for (const input of ["pointer", "keyboard"]) {
+      await openReady(page, "?look=solarfar");
+      await page.locator("#play-button").click();
+      await waitForTwoAnimationFrames(page);
+      await assertVisibleBodyLabelsClearChrome(page, `${prefix} far-solar ${input}`);
+      for (const id of ["sun", "mercury", "venus", "earth"]) {
+        assert.equal(await page.locator(`[data-body-id="${id}"]`).isVisible(), true,
+          `${prefix}: crowded inner-world ${id} remains available`);
+      }
+      if (input === "pointer") await saveScreenshot(page, `${prefix}-solarfar-label-collisions`);
+      const id = await page.locator('.sky-label:not([hidden])').evaluateAll((labels) => (
+        labels.find((label) => label.style.transform.includes("translateX("))?.dataset.bodyId
+      ));
+      assert.ok(id, `${prefix}: regression exercises an actually displaced label`);
+      const target = page.locator(`[data-body-id="${id}"]`);
+      const before = await target.boundingBox();
+      assert.ok(before);
+      if (input === "keyboard") {
+        await target.focus();
+        await waitForTwoAnimationFrames(page);
+        const after = await target.boundingBox();
+        assert.deepEqual(after, before, `${prefix}: keyboard focus keeps the displaced target stable`);
+        assert.equal(await target.evaluate((label) => document.activeElement === label), true);
+        await assertVisibleBodyLabelsClearChrome(page, `${prefix} keyboard-focused labels`);
+        await target.press("Enter");
+      } else if (touch) {
+        await page.touchscreen.tap(before.x + before.width / 2, before.y + before.height / 2);
+      } else {
+        await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+        await page.mouse.down();
+        await waitForTwoAnimationFrames(page);
+        assert.deepEqual(await target.boundingBox(), before,
+          "mouse press cannot move its displaced target before release");
+        await page.mouse.up();
+      }
+      assert.equal(await page.locator("#card-name").textContent(), findBody(id).name,
+        `${prefix}: ${input} selects the named displaced label`);
+      await waitForCenteredBodyLabel(page, id);
+      assert.equal(await target.evaluate((label) => label.style.transform.includes("translateX(")), false,
+        `${prefix}: selected world regains its natural label seat`);
+      await assertVisibleBodyLabelsClearChrome(page, `${prefix} selected ${id}`);
+      await saveScreenshot(page, `${prefix}-label-collision-${input}`);
+    }
+    assert.deepEqual(errors, [], `${prefix}: crowded label selection has no runtime errors`);
+  } finally {
+    await page.close();
   }
 }
 
@@ -2902,6 +2965,7 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
       `${prefix} ${bodyId} zoom through the parent keeps the moon focused`,
     );
     await assertRenderedCanvas(page);
+    await assertVisibleBodyLabelsClearChrome(page, `${prefix} ${bodyId} parent-cross labels`);
     await saveScreenshot(page, `${prefix}-moon-parent-cross-${bodyId}`);
 
     if (cdp) {
@@ -4905,6 +4969,7 @@ try {
     deviceScaleFactor: 1,
   });
   await auditWheelDeltaModes(browser);
+  await auditBodyLabelCollisions(desktop, "desktop");
   await auditCredits(desktop);
   await assertViewportBusyLifecycle(desktop, "desktop");
   // Check the issue's new pixel gate before the longer unchanged scale and
@@ -5060,6 +5125,7 @@ try {
   await assertViewportBusyLifecycle(touch, "touch-portrait emulation");
   await assertOuterPlanetNightSides(touch, "touch-portrait", true);
   await auditPointerCancelAbort(touch, "touch-portrait", true);
+  await auditBodyLabelCollisions(touch, "touch-portrait", true);
   const touchControlPage = await touch.newPage();
   const touchControlErrors = captureErrors(touchControlPage);
   await openReady(touchControlPage);
