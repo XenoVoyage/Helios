@@ -41,6 +41,7 @@ import {
   setConstellationMode,
   setSkyBandBrightness,
   setStarBrightness,
+  setStarPixelRatio,
   updateConstellationLabels,
   wantsEarthSkyLook,
 } from "./sky.js";
@@ -1366,6 +1367,7 @@ function resize() {
   if (renderer.getPixelRatio() !== pixelRatio) {
     renderer.setPixelRatio(pixelRatio);
   }
+  setStarPixelRatio(celestial, renderer.getPixelRatio());
   renderer.setSize(width, height, false);
   paintDockClearance();
   bodyLabelLayoutDirty = true;

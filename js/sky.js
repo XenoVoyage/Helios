@@ -437,16 +437,18 @@ function createStars(THREE, radius) {
       starMap: { value: starSprite(THREE) },
       brightness: { value: 1 },
       fade: { value: 1 },
+      pixelRatio: { value: 1 },
     },
     vertexShader: `
       attribute float size;
       attribute vec3 color;
       uniform float brightness;
+      uniform float pixelRatio;
       varying vec3 vColor;
       void main() {
         vColor = color * brightness;
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = size * brightness * brightness;
+        gl_PointSize = size * brightness * brightness * pixelRatio;
         gl_Position = projectionMatrix * mv;
       }
     `,
@@ -875,6 +877,14 @@ export function setStarBrightness(sky, brightness) {
   const stars = sky?.getObjectByName("stars");
   if (stars?.material?.uniforms?.brightness) {
     stars.material.uniforms.brightness.value = brightness;
+  }
+}
+
+/** Catalog sizes are CSS pixels; use the renderer's already-capped ratio. */
+export function setStarPixelRatio(sky, pixelRatio) {
+  const stars = sky?.getObjectByName("stars");
+  if (stars?.material?.uniforms?.pixelRatio) {
+    stars.material.uniforms.pixelRatio.value = pixelRatio;
   }
 }
 
