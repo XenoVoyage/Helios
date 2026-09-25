@@ -4,7 +4,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import * as THREE from "../vendor/three.module.min.js";
-import { CONFIG, formatDaysPerSecond } from "../js/config.js";
+import { CONFIG, formatDaysPerSecond, pinchZoomDistance } from "../js/config.js";
 import {
   BODIES,
   bodyOrientationBasis,
@@ -30,6 +30,113 @@ import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
 
 const appSource = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
+function labelTouchInput() {
+  const makeSurface = (id) => {
+    const captures = new Set();
+    return {
+      dataset: { bodyId: id }, closest() { return this; },
+      setPointerCapture(value) { captures.add(value); },
+      hasPointerCapture(value) { return captures.has(value); },
+      releasePointerCapture(value) { captures.delete(value); },
+    };
+  };
+  const canvas = makeSurface(null), label = makeSurface("earth"), sibling = makeSurface("venus");
+  const state = { distance: 1000, azimuth: 0, elevation: 0, pinching: false, tap: null };
+  const pointerIds = new Map(), selected = [], picked = [];
+  let canvasFocusCount = 0;
+  const input = runInNewContext(`${appSource.slice(
+    appSource.indexOf("function onBodyLabelClick("), appSource.indexOf("function onWheel("),
+  )}\n${appSource.slice(
+    appSource.indexOf("function pointerGap("), appSource.indexOf("function moonZoomNeedsTransition("),
+  )}\n({ onBodyLabelClick, onLabelPointerDown, onPointerDown, onPointerMove, onPointerUp, onPointerAbort })`, {
+    CONFIG, state, pointerIds, suppressedLabelClicks: new Set(), ui: { viewport: canvas },
+    pinchZoomDistance, clamp: (x, a, b) => Math.max(a, Math.min(b, x)),
+    zoomTo: (value) => { state.distance = value; }, canvasFocus: () => { canvasFocusCount += 1; },
+    pickAt: (...point) => picked.push(point), selectBody: (id) => selected.push(id),
+  });
+  const event = (id, x, target = canvas, detail = 1) => ({
+    pointerId: id, clientX: x, clientY: 100, pointerType: "touch", target, detail, preventDefault() {},
+  });
+  return { ...input, event, canvas, label, sibling, state, pointerIds, selected, picked,
+    canvasFocusCount: () => canvasFocusCount };
+}
+
+test("label and canvas touches share pinch zoom in either contact and release order", () => {
+  for (const labelFirst of [false, true]) for (const labelUpFirst of [false, true]) {
+    const h = labelTouchInput();
+    const labelDown = () => h.onLabelPointerDown(h.event(1, 100, h.label));
+    const canvasDown = () => h.onPointerDown(h.event(2, 180));
+    for (const down of labelFirst ? [labelDown, canvasDown] : [canvasDown, labelDown]) down();
+    assert.equal(h.label.hasPointerCapture(1), true, "label keeps its native capture owner");
+    assert.equal(h.canvas.hasPointerCapture(1), false);
+    assert.equal(h.canvasFocusCount(), 1, "only a canvas contact focuses the canvas");
+    h.onPointerMove(h.event(2, 260));
+    assert.equal(h.state.distance, 500, "doubling the gap halves distance, as canvas-only input does");
+    assert.equal(h.state.azimuth, 0, "mixed pinch does not orbit");
+    for (const id of labelUpFirst ? [1, 2] : [2, 1]) {
+      h.onPointerUp(h.event(id, id === 1 ? 100 : 260, id === 1 ? h.label : h.canvas));
+      h.onPointerAbort(h.event(id, 100)); // native lost capture after normal up
+    }
+    h.onBodyLabelClick(h.event(1, 100, h.label));
+    assert.deepEqual(h.selected, [], "pinch cannot activate its starting label");
+    assert.deepEqual(h.picked, [], "pinch cannot raycast a canvas tap");
+    assert.equal(h.pointerIds.size, 0);
+    assert.equal(h.state.pinching, false);
+    h.onBodyLabelClick(h.event(1, 100, h.label, 0));
+    assert.deepEqual(h.selected, ["earth"], "keyboard activation ignores pointer-click suppression");
+    h.onLabelPointerDown(h.event(3, 100, h.label));
+    h.onPointerUp(h.event(3, 100, h.label));
+    h.onPointerAbort(h.event(3, 100, h.label));
+    h.onBodyLabelClick(h.event(3, 100, h.label));
+    assert.deepEqual(h.selected, ["earth", "earth"], "the next native label tap remains selectable");
+  }
+});
+
+test("label-only gestures preserve native taps and recover after pinch cancellation", () => {
+  const h = labelTouchInput();
+  h.onLabelPointerDown(h.event(1, 100, h.label));
+  h.onPointerMove(h.event(1, 130, h.label));
+  assert.equal(h.state.azimuth, 0, "a lone label drag does not start a scene orbit");
+  h.onLabelPointerDown(h.event(2, 210, h.sibling));
+  h.onPointerMove(h.event(2, 290, h.sibling));
+  assert.equal(h.state.distance, 500, "two labels also join the same pinch");
+  for (const [id, label] of [[1, h.label], [2, h.sibling]]) {
+    h.onPointerAbort(h.event(id, 100, label));
+    assert.equal(label.hasPointerCapture(id), false, "abort releases the actual label capture owner");
+    h.onBodyLabelClick(h.event(id, 100, label));
+  }
+  assert.deepEqual(h.selected, []);
+  assert.deepEqual(h.picked, []);
+  assert.equal(h.state.pinching, false);
+  assert.equal(h.pointerIds.size, 0);
+  const mouse = { ...h.event(3, 100, h.label), pointerType: "mouse" };
+  h.onLabelPointerDown(mouse);
+  assert.equal(h.pointerIds.size, 0, "mouse labels retain native button handling");
+  h.onBodyLabelClick(mouse);
+  assert.deepEqual(h.selected, ["earth"], "stale cancellation cannot swallow a later mouse click");
+});
+
+test("a captured lone-label drag keeps the scene still and cannot become a selecting click", () => {
+  for (const moved of [CONFIG.tapMovePx - 1, CONFIG.tapMovePx, CONFIG.tapMovePx + 20]) {
+    const h = labelTouchInput();
+    h.onLabelPointerDown(h.event(1, 100, h.label));
+    h.onPointerMove(h.event(1, 100 + moved, h.label));
+    h.onPointerUp(h.event(1, 100 + moved, h.label));
+    h.onPointerAbort(h.event(1, 100 + moved, h.label));
+    h.onBodyLabelClick(h.event(1, 100 + moved, h.label));
+    const expected = moved < CONFIG.tapMovePx ? ["earth"] : [];
+    assert.deepEqual(h.selected, expected, "only movement below tap slop can select the label");
+    assert.equal(h.state.azimuth, 0);
+    assert.equal(h.state.elevation, 0);
+    assert.equal(h.state.distance, 1000);
+    assert.deepEqual(h.picked, []);
+    h.onLabelPointerDown(h.event(2, 100, h.label));
+    h.onPointerUp(h.event(2, 100, h.label));
+    h.onBodyLabelClick(h.event(2, 100, h.label));
+    assert.deepEqual(h.selected, [...expected, "earth"], "the next ordinary tap still selects");
+  }
+});
+
 function bodyLabelLayout(labels, obstacles = []) {
   // Execute the live layout owner with measured-box stand-ins, without a DOM
   // or renderer; the browser suite supplies native hit-testing and font boxes.

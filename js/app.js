@@ -82,6 +82,7 @@ import {
 
 const DEG = Math.PI / 180;
 const pointerIds = new Map();
+const suppressedLabelClicks = new Set();
 const ndc = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
 const world = new THREE.Vector3();
@@ -802,10 +803,12 @@ function bindInput() {
   ui.helperOrbit.addEventListener("click", () => toggleHelper("showOrbitHelper"));
   ui.helperAxis.addEventListener("click", () => toggleHelper("showAxisHelper"));
   ui.helperSpin.addEventListener("click", () => toggleHelper("showSpinHelper"));
-  ui.labels.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-body-id]");
-    if (button) selectBody(button.dataset.bodyId);
-  });
+  ui.labels.addEventListener("click", onBodyLabelClick);
+  ui.labels.addEventListener("pointerdown", onLabelPointerDown);
+  ui.labels.addEventListener("pointermove", onPointerMove);
+  ui.labels.addEventListener("pointerup", onPointerUp);
+  ui.labels.addEventListener("pointercancel", onPointerAbort);
+  ui.labels.addEventListener("lostpointercapture", onPointerAbort);
 
   const canvas = ui.viewport;
   canvas.addEventListener("pointerdown", onPointerDown);
@@ -820,20 +823,49 @@ function bindInput() {
   window.addEventListener("resize", resize);
 }
 
-function onPointerDown(event) {
-  canvasFocus();
+function onBodyLabelClick(event) {
+  const button = event.target.closest("[data-body-id]");
+  if (!button) return;
+  // Keep the native click for a single tap and keyboard activation. A pinch
+  // or drag can end over its starting label, but must never select it.
+  if (event.detail > 0 && suppressedLabelClicks.has(button)) {
+    event.preventDefault();
+    return;
+  }
+  selectBody(button.dataset.bodyId);
+}
+
+function onLabelPointerDown(event) {
+  const label = event.target.closest("[data-body-id]");
+  if (!label) return;
+  if (pointerIds.size === 0) suppressedLabelClicks.clear();
+  if (event.pointerType === "touch") onPointerDown(event, label);
+}
+
+function onPointerDown(event, label = null) {
+  if (pointerIds.size === 0) suppressedLabelClicks.clear();
+  if (!label) canvasFocus();
+  const surface = label || ui.viewport;
   try {
-    ui.viewport.setPointerCapture(event.pointerId);
+    surface.setPointerCapture(event.pointerId);
   } catch {
     // The pointer may already have been canceled before capture could stick.
   }
-  pointerIds.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  state.tap = { x: event.clientX, y: event.clientY, moved: 0 };
-  if (pointerIds.size === 2) {
+  pointerIds.set(event.pointerId, {
+    x: event.clientX, y: event.clientY, label, surface, pinched: false, moved: 0,
+  });
+  state.tap = pointerIds.size === 1 && !label
+    ? { x: event.clientX, y: event.clientY, moved: 0 } : null;
+  if (pointerIds.size >= 2) {
     state.pinching = true;
-    state.tap = null;
-    state.pinchStart = pointerGap();
-    state.pinchDistance = state.distance;
+    if (pointerIds.size === 2) {
+      state.pinchStart = pointerGap();
+      state.pinchDistance = state.distance;
+    }
+    for (const pointer of pointerIds.values()) {
+      pointer.pinched = true;
+      if (pointer.label) suppressedLabelClicks.add(pointer.label);
+    }
   }
 }
 
@@ -842,7 +874,12 @@ function onPointerMove(event) {
   if (!prior) return;
   const dx = event.clientX - prior.x;
   const dy = event.clientY - prior.y;
-  pointerIds.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  prior.x = event.clientX;
+  prior.y = event.clientY;
+  if (prior.label) {
+    prior.moved += Math.hypot(dx, dy);
+    if (prior.moved >= CONFIG.tapMovePx) suppressedLabelClicks.add(prior.label);
+  }
 
   if (state.pinching && pointerIds.size >= 2) {
     const gap = pointerGap();
@@ -851,6 +888,10 @@ function onPointerMove(event) {
     }
     return;
   }
+
+  // A lone label touch remains a native button gesture. After a pinch, the
+  // remaining finger may continue the scene gesture just like canvas input.
+  if (prior.label && !prior.pinched) return;
 
   if (state.tap) {
     state.tap.moved += Math.hypot(dx, dy);
@@ -872,6 +913,7 @@ function orbitBy(azimuth, elevation) {
 }
 
 function onPointerUp(event) {
+  if (!pointerIds.has(event.pointerId)) return;
   const tap = state.tap;
   pointerIds.delete(event.pointerId);
   if (pointerIds.size < 2) state.pinching = false;
@@ -885,12 +927,16 @@ function onPointerUp(event) {
 
 // Canceled gestures and lost capture must not run tap-to-pick.
 function onPointerAbort(event) {
+  const pointer = pointerIds.get(event.pointerId);
+  // Normal pointerup already removed the pointer before lost capture fires.
+  if (!pointer) return;
+  if (pointer.label) suppressedLabelClicks.add(pointer.label);
   pointerIds.delete(event.pointerId);
   if (pointerIds.size < 2) state.pinching = false;
   if (pointerIds.size === 0) state.tap = null;
   try {
-    if (ui.viewport.hasPointerCapture(event.pointerId)) {
-      ui.viewport.releasePointerCapture(event.pointerId);
+    if (pointer.surface.hasPointerCapture(event.pointerId)) {
+      pointer.surface.releasePointerCapture(event.pointerId);
     }
   } catch {
     // Capture was already released with the canceled pointer.

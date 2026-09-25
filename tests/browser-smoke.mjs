@@ -909,9 +909,16 @@ async function auditWheelDeltaModes(browser, touch = false) {
       const own = Object.getOwnPropertyDescriptor(prototype, "onAfterRender");
       const original = prototype.onAfterRender;
       const canvas = document.querySelector("#viewport");
+      const labels = document.querySelector("#labels");
       const touchIds = new Set();
-      const recordTouch = (event) => { if (event.pointerType === "touch") touchIds.add(event.pointerId); };
+      const touchStarts = [];
+      const recordTouch = (event) => {
+        if (event.pointerType !== "touch") return;
+        touchIds.add(event.pointerId);
+        touchStarts.push(event.target.closest("[data-body-id]")?.dataset.bodyId || "canvas");
+      };
       canvas.addEventListener("pointerdown", recordTouch);
+      labels.addEventListener("pointerdown", recordTouch);
       let serial = 0, latest = null;
       prototype.onAfterRender = function (renderer, scene, camera) {
         original.call(this, renderer, scene, camera);
@@ -931,10 +938,12 @@ async function auditWheelDeltaModes(browser, touch = false) {
       return {
         snapshot: () => latest,
         touchCount: () => touchIds.size,
+        touchStarts: () => touchStarts.slice(),
         restore() {
           if (own) Object.defineProperty(prototype, "onAfterRender", own);
           else delete prototype.onAfterRender;
           canvas.removeEventListener("pointerdown", recordTouch);
+          labels.removeEventListener("pointerdown", recordTouch);
         },
       };
     });
@@ -1011,6 +1020,99 @@ async function auditWheelDeltaModes(browser, touch = false) {
       await dispatch(48);
       assert.ok(relativeGap(pinched.geometry, (await settled()).geometry) > 1e-5,
         "wheel responds again after touch release");
+
+      const farSolar = async () => {
+        await reset();
+        await dispatch(Math.log(CONFIG.solarMaxDistance / CONFIG.cameraDistance) / 0.0016);
+        return settled();
+      };
+      const point = (id, x, y) => ({ id, x, y, radiusX: 4, radiusY: 4, force: 1 });
+      const send = (type, touchPoints) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints });
+      await farSolar();
+      const referenceCenter = await page.evaluate(() => {
+        const canvas = document.querySelector("#viewport");
+        for (const y of [0.65, 0.52, 0.28, 0.38]) {
+          const x = innerWidth / 2, cy = innerHeight * y;
+          if ([-40, 40].every((dx) => document.elementFromPoint(x + dx, cy) === canvas)) return { x, y: cy };
+        }
+        return null;
+      });
+      assert.ok(referenceCenter, "far-solar reference starts both fingers on canvas");
+      const referencePoints = (gap) => [
+        point(0, referenceCenter.x - gap / 2, referenceCenter.y),
+        point(1, referenceCenter.x + gap / 2, referenceCenter.y),
+      ];
+      await send("touchStart", referencePoints(80));
+      await send("touchMove", referencePoints(160));
+      await send("touchEnd", []);
+      const canvasPinch = await settled();
+
+      for (const labelFirst of [true, false]) {
+        const before = await farSolar();
+        const target = await page.evaluate(() => {
+          const canvas = document.querySelector("#viewport");
+          for (const label of document.querySelectorAll('.sky-label:not([hidden])')) {
+            if (!label.style.transform.includes("translateX(")) continue;
+            const box = label.getBoundingClientRect();
+            const x = box.x + box.width / 2, y = box.y + box.height / 2;
+            for (const direction of [-1, 1]) {
+              const other = x + direction * 80, end = x + direction * 160;
+              if (end > 8 && end < innerWidth - 8
+                && document.elementFromPoint(x, y) === label
+                && document.elementFromPoint(other, y) === canvas) {
+                return { id: label.dataset.bodyId, x, y, other, end };
+              }
+            }
+          }
+          return null;
+        });
+        assert.ok(target, "mixed pinch begins on an actually displaced label and the canvas");
+        const labelPoint = point(0, target.x, target.y);
+        const canvasPoint = point(1, target.other, target.y);
+        const starts = (await observer.evaluate((item) => item.touchStarts())).length;
+        await send("touchStart", [labelFirst ? labelPoint : canvasPoint]);
+        await send("touchStart", [labelPoint, canvasPoint]);
+        assert.deepEqual((await observer.evaluate((item) => item.touchStarts())).slice(starts),
+          labelFirst ? [target.id, "canvas"] : ["canvas", target.id],
+          "native pointer events actually begin on both intended surfaces");
+        await send("touchMove", [labelPoint, point(1, target.end, target.y)]);
+        // CDP touchEnd releases all points; the live-handler regression covers
+        // the separate finger-release orders and subsequent lost capture.
+        await send("touchEnd", []);
+        const mixedPinch = await settled();
+        assert.ok(relativeGap(canvasPinch.geometry, mixedPinch.geometry) <= 1e-6,
+          `${labelFirst ? "label" : "canvas"}-first pinch matches canvas camera input`);
+        assert.deepEqual(mixedPinch.ui, before.ui, "mixed pinch cannot select its starting label");
+
+        // Start the same mixed gesture again, then let Chromium cancel it.
+        const cancelBefore = await farSolar();
+        const cancelStarts = (await observer.evaluate((item) => item.touchStarts())).length;
+        await send("touchStart", [labelFirst ? labelPoint : canvasPoint]);
+        await send("touchStart", [labelPoint, canvasPoint]);
+        assert.deepEqual((await observer.evaluate((item) => item.touchStarts())).slice(cancelStarts),
+          labelFirst ? [target.id, "canvas"] : ["canvas", target.id],
+          "cancel regression still begins on the intended label and canvas after reset");
+        await send("touchCancel", []);
+        equal(cancelBefore, await settled(), "canceled mixed touches neither select nor move the scene");
+        await page.touchscreen.tap(target.x, target.y);
+        await page.locator("#body-card:not([hidden])").waitFor();
+        assert.equal(await page.locator("#card-name").textContent(), findBody(target.id).name,
+          "a fresh native label tap works after pinch cancellation");
+
+        const dragBefore = await farSolar();
+        const dragStarts = (await observer.evaluate((item) => item.touchStarts())).length;
+        await send("touchStart", [labelPoint]);
+        assert.deepEqual((await observer.evaluate((item) => item.touchStarts())).slice(dragStarts), [target.id],
+          "lone-label drag begins on the displaced label after reset");
+        await send("touchMove", [point(0,
+          target.x + Math.sign(target.other - target.x) * (CONFIG.tapMovePx + 8), target.y)]);
+        await send("touchEnd", []);
+        equal(dragBefore, await settled(), "lone-label drag neither selects nor moves the scene");
+        await page.touchscreen.tap(target.x, target.y);
+        await page.locator("#body-card:not([hidden])").waitFor();
+        assert.equal(await page.locator("#card-name").textContent(), findBody(target.id).name,
+          "a fresh native label tap works after dragging past tap slop");
+      }
     } else {
       const focusFloor = async (id) => {
         await reset();
