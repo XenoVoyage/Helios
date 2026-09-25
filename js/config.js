@@ -15,7 +15,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.9.24",
+  VERSION: "v2026.9.25b",
   BRAND: "MarinsVoyage",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
@@ -61,12 +61,15 @@ export const CONFIG = Object.freeze({
   cameraDistance: 880,
   cameraElevation: 0.5,
   cameraAzimuth: 0.55,
+  cameraFovDegrees: 52,
   minDistance: 2.4,
   // Focused zoom stops just outside the rendered globe, not inside it.
   focusSurfaceClearance: 1.05,
   // Solar overview / Kuiper camera cap. Further zoom is the galaxy layer.
   solarMaxDistance: 1880,
   maxDistance: 2600000,
+  // At the outer zoom limit, leave 4% of the narrow viewport edge on each side.
+  universeViewportFill: 0.92,
   mwViewDistance: 11000,
   neighborhoodViewDistance: 24000,
   localGroupViewDistance: 40000,

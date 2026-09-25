@@ -904,6 +904,16 @@ export function farthestUniverseDistance() {
   return visualUniverse(PARTICLE_HORIZON.comovingRadiusGpc);
 }
 
+/** Extend only the outer zoom allowance when a narrow viewport cannot fit the shell. */
+export function maximumCameraDistance(aspect) {
+  const narrowAspect = Number.isFinite(aspect) && aspect > 0 ? Math.min(1, aspect) : 1;
+  const halfFov = Math.atan(
+    Math.tan(CONFIG.cameraFovDegrees * Math.PI / 360)
+      * narrowAspect * CONFIG.universeViewportFill,
+  );
+  return Math.max(CONFIG.maxDistance, farthestUniverseDistance() / Math.sin(halfFov));
+}
+
 function loadMap(THREE, path) {
   const texture = new THREE.TextureLoader().load(path);
   texture.colorSpace = THREE.SRGBColorSpace;
