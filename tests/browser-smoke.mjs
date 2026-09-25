@@ -488,6 +488,35 @@ async function auditBodyLabelCollisions(context, prefix, touch = false) {
       await assertVisibleBodyLabelsClearChrome(page, `${prefix} selected ${id}`);
       await saveScreenshot(page, `${prefix}-label-collision-${input}`);
     }
+    if (touch) {
+      await page.setViewportSize({ width: 568, height: 320 });
+      for (const input of ["touch", "keyboard"]) {
+        await openReady(page);
+        await page.locator("#play-button").click();
+        await waitForTwoAnimationFrames(page);
+        assert.equal(await page.locator("#body-card").isHidden(), true);
+        await assertVisibleBodyLabelsClearChrome(page, `compact overview ${input}`);
+        const mars = page.locator('[data-body-id="mars"]');
+        assert.equal(await mars.isVisible(), true, "compact overview retains the Mars target");
+        const before = await mars.boundingBox();
+        assert.ok(before);
+        if (input === "keyboard") {
+          await mars.focus();
+          await waitForTwoAnimationFrames(page);
+          assert.deepEqual(await mars.boundingBox(), before, "focus keeps the recovered Mars target stable");
+          await assertVisibleBodyLabelsClearChrome(page, "compact keyboard-focused Mars");
+          await mars.press("Enter");
+        } else {
+          await saveScreenshot(page, "touch-landscape-compact-labels");
+          await page.touchscreen.tap(before.x + before.width / 2, before.y + before.height / 2);
+        }
+        assert.equal(await page.locator("#card-name").textContent(), "Mars",
+          `compact ${input} selects the recovered named target`);
+        assert.equal(await page.locator("#body-card").isVisible(), true);
+        await waitForMoonCameraSettled(page);
+        await saveScreenshot(page, `touch-landscape-compact-mars-${input}`);
+      }
+    }
     assert.deepEqual(errors, [], `${prefix}: crowded label selection has no runtime errors`);
   } finally {
     await page.close();

@@ -239,6 +239,55 @@ test("unplaceable lower-priority labels cannot cover the retained target", () =>
   assertSeparateLabels(labels);
 });
 
+test("compact overview fills a finer gap without moving already placed world labels", () => {
+  // Measured 568x320 closed-overview geometry from the matched J2000 browser
+  // capture. Widths use offsetWidth, as the runtime does. The old 24px grid
+  // hid Mars even though a full target fits 36px below its natural seat.
+  const measurements = [
+    ["sun", 284, 160, 47, 0, 0],
+    ["mercury", 263.124, 170.405, 81, -48, 0],
+    ["venus", 257.169, 151.267, 64, 0, -48],
+    ["earth", 296.551, 144.433, 59, 48, -48],
+    ["mars", 324.831, 173.319, 55, 0, 36],
+    ["ceres", 247.359, 129.834, 61, -72, -24],
+    ["jupiter", 377.615, 157.856, 70, 0, 0],
+    ["saturn", 405.699, 149.742, 70, 48, 0],
+  ];
+  const labels = measurements.map(([id, x, y, width]) => measuredLabel(id, x, y, width));
+  // Chrome rectangles include the runtime's 8px clearance. The Camera toggle
+  // uses a conservative right edge, well left of the recovered Mars target.
+  const obstacles = [
+    { left: 4, right: 144.625, top: 2, bottom: 53.594 },
+    { left: 0, right: 568, top: 204, bottom: 316 },
+    { left: 4, right: 96.047, top: 46, bottom: 106 },
+    { left: 4, right: 110, top: 148, bottom: 208 },
+  ];
+  const layout = bodyLabelLayout(labels, obstacles);
+  layout.placeBodyLabels(568, 320, null);
+  for (const [index, node] of labels.entries()) {
+    assert.equal(node.labelPlaced, true, `${node.label.id} retains its target`);
+    assert.deepEqual([node.labelOffsetX, node.labelOffsetY], measurements[index].slice(4),
+      `${node.label.id}: preserve every coarse placement and restore Mars in the finer gap`);
+    assert.ok(Math.hypot(node.labelOffsetX, node.labelOffsetY) <= CONFIG.bodyLabelMaxOffsetPx);
+    assert.equal(layout.bodyLabelFits(
+      node.labelAnchorX + node.labelOffsetX, node.labelAnchorY + node.labelOffsetY, node, 568, 320,
+    ), true, `${node.label.id} clears chrome and viewport`);
+  }
+  assertSeparateLabels(labels);
+  const mars = labels.find((node) => node.label.id === "mars");
+  const before = labelBox(mars);
+  for (const id of ["sun", "jupiter"]) {
+    const above = labelBox(labels.find((node) => node.label.id === id));
+    assert.ok(before.top - above.bottom >= CONFIG.bodyLabelGapPx, `Mars clears ${id}'s full target`);
+  }
+  labels.sort((a, b) => Number(b === mars) - Number(a === mars));
+  for (const node of labels) node.labelPlaced = false;
+  layout.placeBodyLabels(568, 320, mars.label);
+  assert.equal(mars.labelPlaced, true);
+  assert.deepEqual(labelBox(mars), before, "focus preserves the finer-grid target until activation");
+  assertSeparateLabels(labels);
+});
+
 test("Reset view restores the same label positions after orbit and focus easing", () => {
   for (const [width, height] of [[1440, 900], [390, 844]]) {
     const labels = BODIES.filter((body) => body.kind !== "moon").map((body) => (

@@ -106,13 +106,15 @@ const parentGlobeOptions = {
 };
 const parentGlobeTargetOptions = { moonRadius: 0, orbitNormal: moonOrbitNormal };
 const BODY_LABEL_CLEARANCE = 8;
-const bodyLabelOffsets = [];
-for (let y = -CONFIG.bodyLabelMaxOffsetPx; y <= CONFIG.bodyLabelMaxOffsetPx; y += CONFIG.bodyLabelOffsetStepPx) {
-  for (let x = -CONFIG.bodyLabelMaxOffsetPx; x <= CONFIG.bodyLabelMaxOffsetPx; x += CONFIG.bodyLabelOffsetStepPx) {
-    if ((x || y) && Math.hypot(x, y) <= CONFIG.bodyLabelMaxOffsetPx) bodyLabelOffsets.push({ x, y });
+const bodyLabelOffsetPasses = [CONFIG.bodyLabelOffsetStepPx, CONFIG.bodyLabelFallbackOffsetStepPx].map((step) => {
+  const offsets = [];
+  for (let y = -CONFIG.bodyLabelMaxOffsetPx; y <= CONFIG.bodyLabelMaxOffsetPx; y += step) {
+    for (let x = -CONFIG.bodyLabelMaxOffsetPx; x <= CONFIG.bodyLabelMaxOffsetPx; x += step) {
+      if ((x || y) && Math.hypot(x, y) <= CONFIG.bodyLabelMaxOffsetPx) offsets.push({ x, y });
+    }
   }
-}
-bodyLabelOffsets.sort((a, b) => a.x * a.x + a.y * a.y - b.x * b.x - b.y * b.y);
+  return offsets.sort((a, b) => a.x * a.x + a.y * a.y - b.x * b.x - b.y * b.y);
+});
 const moonFocusTransition = {
   active: false,
   flightDistance: null,
@@ -1899,12 +1901,16 @@ function placeBodyLabels(width, height, activeLabel) {
       && placeBodyLabel(node, node.labelOffsetX, node.labelOffsetY, width, height)) continue;
     placeBodyLabel(node, 0, 0, width, height);
   }
-  for (const node of bodyLabelCandidates) {
-    if (node.labelPlaced) continue;
-    // Ordinary placements depend only on this frame's geometry. Returning to
-    // the same view must not retain offsets acquired along a different route.
-    for (const offset of bodyLabelOffsets) {
-      if (placeBodyLabel(node, offset.x, offset.y, width, height)) break;
+  // Finish all coarse placements before filling finer gaps. The fallback can
+  // restore a target without changing any label that already has a seat.
+  for (const offsets of bodyLabelOffsetPasses) {
+    for (const node of bodyLabelCandidates) {
+      if (node.labelPlaced) continue;
+      // Ordinary placements depend only on this frame's geometry. Returning to
+      // the same view must not retain offsets acquired along a different route.
+      for (const offset of offsets) {
+        if (placeBodyLabel(node, offset.x, offset.y, width, height)) break;
+      }
     }
   }
 }

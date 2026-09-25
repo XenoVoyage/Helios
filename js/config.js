@@ -122,6 +122,7 @@ export const CONFIG = Object.freeze({
   // Resolve crowded world-name targets locally without moving their bodies.
   bodyLabelGapPx: 4,
   bodyLabelOffsetStepPx: 24,
+  bodyLabelFallbackOffsetStepPx: 12,
   bodyLabelMaxOffsetPx: 96,
   cameraOrbitStep: 0.12,
   cameraZoomFactor: 1.25,
