@@ -60,6 +60,8 @@ import {
   localGroupCameraAim,
   extraZoomCameraDistance,
   extraZoomCameraNear,
+  farthestUniverseDistance,
+  maximumCameraDistance,
   milkyWayBelowCameraAim,
   milkyWayCameraAim,
   milkyWayEdgeCameraAim,
@@ -355,7 +357,7 @@ function boot() {
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x02050c);
-  camera = new THREE.PerspectiveCamera(52, 1, 0.05, CONFIG.cameraFar);
+  camera = new THREE.PerspectiveCamera(CONFIG.cameraFovDegrees, 1, 0.05, CONFIG.cameraFar);
   celestial = createCelestialSphere(THREE);
   scene.add(celestial);
   asteroidBelt = createBeltField({
@@ -1033,7 +1035,7 @@ function moonZoomNeedsTransition(node, distance) {
 
 function zoomTo(distance) {
   const focusedRadius = nodes.get(state.focusedId)?.radius ?? 0;
-  const next = clamp(distance, minimumFocusDistance(focusedRadius), CONFIG.maxDistance);
+  const next = clamp(distance, minimumFocusDistance(focusedRadius), maximumCameraDistance(camera.aspect));
   const focused = nodes.get(state.focusedId);
   if (next > CONFIG.solarMaxDistance && state.distance <= CONFIG.solarMaxDistance) {
     resetParentGlobeContinuity(parentGlobeContinuity);
@@ -1096,7 +1098,7 @@ function selectBody(id) {
   const node = nodes.get(id);
   if (!node) return;
   const ideal = Math.max(node.radius * 7.5, 5.5);
-  const nextDistance = clamp(ideal, minimumFocusDistance(node.radius), CONFIG.maxDistance);
+  const nextDistance = clamp(ideal, minimumFocusDistance(node.radius), maximumCameraDistance(camera.aspect));
   if (state.focusedId !== id) {
     if (node.body.kind === "moon" && node.body.parent) {
       beginMoonFocusTransition(nextDistance, 0);
@@ -1359,7 +1361,13 @@ function paintSceneSemantics() {
 function resize() {
   const width = window.innerWidth;
   const height = window.innerHeight;
+  const previousMaximum = maximumCameraDistance(camera.aspect);
   camera.aspect = width / Math.max(1, height);
+  const nextMaximum = maximumCameraDistance(camera.aspect);
+  // Keep an already fully zoomed-out sphere framed through device rotation.
+  state.distance = state.distance >= previousMaximum
+    ? nextMaximum
+    : Math.min(state.distance, nextMaximum);
   camera.updateProjectionMatrix();
   const pixelRatio = cappedPixelRatio();
   // Browser zoom and mixed-DPI moves change devicePixelRatio after boot.
@@ -1724,7 +1732,7 @@ function placeCamera(blend) {
   syncViewportBusy();
   camera.lookAt(focusPoint);
   camera.near = near;
-  camera.far = CONFIG.cameraFar;
+  camera.far = Math.max(CONFIG.cameraFar, radius + farthestUniverseDistance() * 2);
   camera.updateProjectionMatrix();
   attachSkyToCamera(celestial, camera);
   if (galaxy) attachFarGalaxySky(galaxy, camera);
