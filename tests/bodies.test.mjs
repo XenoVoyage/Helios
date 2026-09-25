@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
 import * as THREE from "../vendor/three.module.min.js";
-import { CONFIG, formatDaysPerSecond } from "../js/config.js";
+import { CONFIG, formatDaysPerSecond, pinchZoomDistance } from "../js/config.js";
 import {
   BODIES,
   bodyOrientationBasis,
@@ -27,6 +28,324 @@ import {
 } from "../js/bodies.js";
 import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
+
+const appSource = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
+function labelTouchInput() {
+  const makeSurface = (id) => {
+    const captures = new Set();
+    return {
+      dataset: { bodyId: id }, closest() { return this; },
+      setPointerCapture(value) { captures.add(value); },
+      hasPointerCapture(value) { return captures.has(value); },
+      releasePointerCapture(value) { captures.delete(value); },
+    };
+  };
+  const canvas = makeSurface(null), label = makeSurface("earth"), sibling = makeSurface("venus");
+  const state = { distance: 1000, azimuth: 0, elevation: 0, pinching: false, tap: null };
+  const pointerIds = new Map(), selected = [], picked = [];
+  let canvasFocusCount = 0;
+  const input = runInNewContext(`${appSource.slice(
+    appSource.indexOf("function onBodyLabelClick("), appSource.indexOf("function onWheel("),
+  )}\n${appSource.slice(
+    appSource.indexOf("function pointerGap("), appSource.indexOf("function moonZoomNeedsTransition("),
+  )}\n({ onBodyLabelClick, onLabelPointerDown, onPointerDown, onPointerMove, onPointerUp, onPointerAbort })`, {
+    CONFIG, state, pointerIds, suppressedLabelClicks: new Set(), ui: { viewport: canvas },
+    pinchZoomDistance, clamp: (x, a, b) => Math.max(a, Math.min(b, x)),
+    zoomTo: (value) => { state.distance = value; }, canvasFocus: () => { canvasFocusCount += 1; },
+    pickAt: (...point) => picked.push(point), selectBody: (id) => selected.push(id),
+  });
+  const event = (id, x, target = canvas, detail = 1) => ({
+    pointerId: id, clientX: x, clientY: 100, pointerType: "touch", target, detail, preventDefault() {},
+  });
+  return { ...input, event, canvas, label, sibling, state, pointerIds, selected, picked,
+    canvasFocusCount: () => canvasFocusCount };
+}
+
+test("label and canvas touches share pinch zoom in either contact and release order", () => {
+  for (const labelFirst of [false, true]) for (const labelUpFirst of [false, true]) {
+    const h = labelTouchInput();
+    const labelDown = () => h.onLabelPointerDown(h.event(1, 100, h.label));
+    const canvasDown = () => h.onPointerDown(h.event(2, 180));
+    for (const down of labelFirst ? [labelDown, canvasDown] : [canvasDown, labelDown]) down();
+    assert.equal(h.label.hasPointerCapture(1), true, "label keeps its native capture owner");
+    assert.equal(h.canvas.hasPointerCapture(1), false);
+    assert.equal(h.canvasFocusCount(), 1, "only a canvas contact focuses the canvas");
+    h.onPointerMove(h.event(2, 260));
+    assert.equal(h.state.distance, 500, "doubling the gap halves distance, as canvas-only input does");
+    assert.equal(h.state.azimuth, 0, "mixed pinch does not orbit");
+    for (const id of labelUpFirst ? [1, 2] : [2, 1]) {
+      h.onPointerUp(h.event(id, id === 1 ? 100 : 260, id === 1 ? h.label : h.canvas));
+      h.onPointerAbort(h.event(id, 100)); // native lost capture after normal up
+    }
+    h.onBodyLabelClick(h.event(1, 100, h.label));
+    assert.deepEqual(h.selected, [], "pinch cannot activate its starting label");
+    assert.deepEqual(h.picked, [], "pinch cannot raycast a canvas tap");
+    assert.equal(h.pointerIds.size, 0);
+    assert.equal(h.state.pinching, false);
+    h.onBodyLabelClick(h.event(1, 100, h.label, 0));
+    assert.deepEqual(h.selected, ["earth"], "keyboard activation ignores pointer-click suppression");
+    h.onLabelPointerDown(h.event(3, 100, h.label));
+    h.onPointerUp(h.event(3, 100, h.label));
+    h.onPointerAbort(h.event(3, 100, h.label));
+    h.onBodyLabelClick(h.event(3, 100, h.label));
+    assert.deepEqual(h.selected, ["earth", "earth"], "the next native label tap remains selectable");
+  }
+});
+
+test("label-only gestures preserve native taps and recover after pinch cancellation", () => {
+  const h = labelTouchInput();
+  h.onLabelPointerDown(h.event(1, 100, h.label));
+  h.onPointerMove(h.event(1, 130, h.label));
+  assert.equal(h.state.azimuth, 0, "a lone label drag does not start a scene orbit");
+  h.onLabelPointerDown(h.event(2, 210, h.sibling));
+  h.onPointerMove(h.event(2, 290, h.sibling));
+  assert.equal(h.state.distance, 500, "two labels also join the same pinch");
+  for (const [id, label] of [[1, h.label], [2, h.sibling]]) {
+    h.onPointerAbort(h.event(id, 100, label));
+    assert.equal(label.hasPointerCapture(id), false, "abort releases the actual label capture owner");
+    h.onBodyLabelClick(h.event(id, 100, label));
+  }
+  assert.deepEqual(h.selected, []);
+  assert.deepEqual(h.picked, []);
+  assert.equal(h.state.pinching, false);
+  assert.equal(h.pointerIds.size, 0);
+  const mouse = { ...h.event(3, 100, h.label), pointerType: "mouse" };
+  h.onLabelPointerDown(mouse);
+  assert.equal(h.pointerIds.size, 0, "mouse labels retain native button handling");
+  h.onBodyLabelClick(mouse);
+  assert.deepEqual(h.selected, ["earth"], "stale cancellation cannot swallow a later mouse click");
+});
+
+test("a captured lone-label drag keeps the scene still and cannot become a selecting click", () => {
+  for (const moved of [CONFIG.tapMovePx - 1, CONFIG.tapMovePx, CONFIG.tapMovePx + 20]) {
+    const h = labelTouchInput();
+    h.onLabelPointerDown(h.event(1, 100, h.label));
+    h.onPointerMove(h.event(1, 100 + moved, h.label));
+    h.onPointerUp(h.event(1, 100 + moved, h.label));
+    h.onPointerAbort(h.event(1, 100 + moved, h.label));
+    h.onBodyLabelClick(h.event(1, 100 + moved, h.label));
+    const expected = moved < CONFIG.tapMovePx ? ["earth"] : [];
+    assert.deepEqual(h.selected, expected, "only movement below tap slop can select the label");
+    assert.equal(h.state.azimuth, 0);
+    assert.equal(h.state.elevation, 0);
+    assert.equal(h.state.distance, 1000);
+    assert.deepEqual(h.picked, []);
+    h.onLabelPointerDown(h.event(2, 100, h.label));
+    h.onPointerUp(h.event(2, 100, h.label));
+    h.onBodyLabelClick(h.event(2, 100, h.label));
+    assert.deepEqual(h.selected, [...expected, "earth"], "the next ordinary tap still selects");
+  }
+});
+
+function bodyLabelLayout(labels, obstacles = []) {
+  // Execute the live layout owner with measured-box stand-ins, without a DOM
+  // or renderer; the browser suite supplies native hit-testing and font boxes.
+  return runInNewContext(`${appSource.slice(
+    appSource.indexOf("const BODY_LABEL_CLEARANCE ="),
+    appSource.indexOf("const moonFocusTransition ="),
+  )}\n${appSource.slice(
+    appSource.indexOf("function bodyLabelFits("),
+    appSource.indexOf("function updateLabels("),
+  )}\n({ placeBodyLabels, bodyLabelFits })`, {
+    CONFIG, bodyLabelCandidates: labels, placedBodyLabels: [], bodyLabelObstacles: obstacles,
+  });
+}
+
+function measuredLabel(id, x, y, width = 90) {
+  return {
+    label: { id }, labelAnchorX: x, labelAnchorY: y,
+    labelWidth: width, labelHeight: 44, labelOffsetX: 0, labelOffsetY: 0, labelPlaced: false,
+  };
+}
+
+function labelBox(node) {
+  const left = node.labelAnchorX + node.labelOffsetX - node.labelWidth / 2;
+  const top = node.labelAnchorY + node.labelOffsetY - node.labelHeight * 1.2;
+  return { left, top, right: left + node.labelWidth, bottom: top + node.labelHeight };
+}
+
+function assertSeparateLabels(labels) {
+  for (const [index, first] of labels.filter((node) => node.labelPlaced).entries()) {
+    const a = labelBox(first);
+    for (const second of labels.filter((node) => node.labelPlaced).slice(index + 1)) {
+      const b = labelBox(second);
+      assert.ok(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom,
+        `${first.label.id}/${second.label.id}: complete hit targets do not overlap`);
+    }
+  }
+}
+
+test("J2000 far-solar labels remain separately reachable on desktop and portrait", () => {
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const camera = new THREE.PerspectiveCamera(52, width / height, 0.05, CONFIG.cameraFar);
+    const distance = CONFIG.solarMaxDistance;
+    camera.position.set(
+      distance * Math.cos(CONFIG.cameraElevation) * Math.sin(CONFIG.cameraAzimuth),
+      distance * Math.sin(CONFIG.cameraElevation),
+      distance * Math.cos(CONFIG.cameraElevation) * Math.cos(CONFIG.cameraAzimuth),
+    );
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+    const labels = BODIES.filter((body) => body.kind !== "moon").map((body) => {
+      const at = keplerOffset(body, body.parent ? findBody(body.parent) : null, 0);
+      const point = new THREE.Vector3(at.x, at.y, at.z).project(camera);
+      return measuredLabel(body.id, (point.x * 0.5 + 0.5) * width, (-point.y * 0.5 + 0.5) * height);
+    });
+    const layout = bodyLabelLayout(labels);
+    for (let index = labels.length - 1; index >= 0; index -= 1) {
+      const node = labels[index];
+      if (!layout.bodyLabelFits(node.labelAnchorX, node.labelAnchorY, node, width, height)) labels.splice(index, 1);
+    }
+    layout.placeBodyLabels(width, height, null);
+    assert.ok(labels.every((node) => node.labelPlaced), `${width}: all eligible worlds retain a target`);
+    assertSeparateLabels(labels);
+    const sun = labels.find((node) => node.label.id === "sun");
+    assert.equal(sun.labelOffsetX, 0);
+    assert.equal(sun.labelOffsetY, 0);
+    for (const node of labels) assert.ok(Math.hypot(node.labelOffsetX, node.labelOffsetY) <= CONFIG.bodyLabelMaxOffsetPx);
+  }
+});
+
+test("crowded moon labels preserve clear anchors, chrome clearance and focused displaced targets", () => {
+  const labels = [
+    measuredLabel("callisto", 300, 300), measuredLabel("io", 304, 309),
+    measuredLabel("europa", 311, 302), measuredLabel("ganymede", 306, 301),
+    measuredLabel("clear", 540, 200),
+  ];
+  const obstacles = [{ left: 130, right: 235, top: 205, bottom: 400 }];
+  const layout = bodyLabelLayout(labels, obstacles);
+  layout.placeBodyLabels(800, 600, null);
+  assert.ok(labels.every((node) => node.labelPlaced));
+  assertSeparateLabels(labels);
+  assert.deepEqual([labels[0].labelOffsetX, labels[0].labelOffsetY], [0, 0], "scene focus keeps its anchor");
+  assert.deepEqual([labels[4].labelOffsetX, labels[4].labelOffsetY], [0, 0], "uncrowded label is unchanged");
+  const active = labels.find((node) => node.labelOffsetX || node.labelOffsetY);
+  const before = labelBox(active);
+  labels.sort((a, b) => Number(b === active) - Number(a === active));
+  for (const node of labels) node.labelPlaced = false;
+  layout.placeBodyLabels(800, 600, active.label);
+  assert.deepEqual(labelBox(active), before, "pointerdown/keyboard focus does not move a displaced target");
+  assertSeparateLabels(labels);
+  for (const node of labels) assert.equal(layout.bodyLabelFits(
+    node.labelAnchorX + node.labelOffsetX, node.labelAnchorY + node.labelOffsetY, node, 800, 600,
+  ), true, `${node.label.id} clears chrome and viewport`);
+});
+
+test("unplaceable lower-priority labels cannot cover the retained target", () => {
+  const labels = [measuredLabel("focused", 60, 70), measuredLabel("sibling", 60, 70)];
+  bodyLabelLayout(labels).placeBodyLabels(120, 90, labels[0].label);
+  assert.equal(labels[0].labelPlaced, true);
+  assert.equal(labels[1].labelPlaced, false);
+  assertSeparateLabels(labels);
+});
+
+test("compact overview fills a finer gap without moving already placed world labels", () => {
+  // Measured 568x320 closed-overview geometry from the matched J2000 browser
+  // capture. Widths use offsetWidth, as the runtime does. The old 24px grid
+  // hid Mars even though a full target fits 36px below its natural seat.
+  const measurements = [
+    ["sun", 284, 160, 47, 0, 0],
+    ["mercury", 263.124, 170.405, 81, -48, 0],
+    ["venus", 257.169, 151.267, 64, 0, -48],
+    ["earth", 296.551, 144.433, 59, 48, -48],
+    ["mars", 324.831, 173.319, 55, 0, 36],
+    ["ceres", 247.359, 129.834, 61, -72, -24],
+    ["jupiter", 377.615, 157.856, 70, 0, 0],
+    ["saturn", 405.699, 149.742, 70, 48, 0],
+  ];
+  const labels = measurements.map(([id, x, y, width]) => measuredLabel(id, x, y, width));
+  // Chrome rectangles include the runtime's 8px clearance. The Camera toggle
+  // uses a conservative right edge, well left of the recovered Mars target.
+  const obstacles = [
+    { left: 4, right: 144.625, top: 2, bottom: 53.594 },
+    { left: 0, right: 568, top: 204, bottom: 316 },
+    { left: 4, right: 96.047, top: 46, bottom: 106 },
+    { left: 4, right: 110, top: 148, bottom: 208 },
+  ];
+  const layout = bodyLabelLayout(labels, obstacles);
+  layout.placeBodyLabels(568, 320, null);
+  for (const [index, node] of labels.entries()) {
+    assert.equal(node.labelPlaced, true, `${node.label.id} retains its target`);
+    assert.deepEqual([node.labelOffsetX, node.labelOffsetY], measurements[index].slice(4),
+      `${node.label.id}: preserve every coarse placement and restore Mars in the finer gap`);
+    assert.ok(Math.hypot(node.labelOffsetX, node.labelOffsetY) <= CONFIG.bodyLabelMaxOffsetPx);
+    assert.equal(layout.bodyLabelFits(
+      node.labelAnchorX + node.labelOffsetX, node.labelAnchorY + node.labelOffsetY, node, 568, 320,
+    ), true, `${node.label.id} clears chrome and viewport`);
+  }
+  assertSeparateLabels(labels);
+  const mars = labels.find((node) => node.label.id === "mars");
+  const before = labelBox(mars);
+  for (const id of ["sun", "jupiter"]) {
+    const above = labelBox(labels.find((node) => node.label.id === id));
+    assert.ok(before.top - above.bottom >= CONFIG.bodyLabelGapPx, `Mars clears ${id}'s full target`);
+  }
+  labels.sort((a, b) => Number(b === mars) - Number(a === mars));
+  for (const node of labels) node.labelPlaced = false;
+  layout.placeBodyLabels(568, 320, mars.label);
+  assert.equal(mars.labelPlaced, true);
+  assert.deepEqual(labelBox(mars), before, "focus preserves the finer-grid target until activation");
+  assertSeparateLabels(labels);
+});
+
+test("Reset view restores the same label positions after orbit and focus easing", () => {
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const labels = BODIES.filter((body) => body.kind !== "moon").map((body) => (
+      Object.assign(measuredLabel(body.id, 0, 0), { body })
+    ));
+    const candidates = [];
+    const layout = bodyLabelLayout(candidates);
+    const state = {};
+    const resetView = runInNewContext(`${appSource.slice(
+      appSource.indexOf("function resetView("), appSource.indexOf("function changeConstellationMode("),
+    )}\nresetView`, {
+      CONFIG, state, nodes: new Map(labels.map((node) => [node.body.id, node])),
+      parentGlobeContinuity: {}, moonFocusTransition: {}, earthSkyLook: false, galaxyPreparing: false,
+      resetParentGlobeContinuity() {}, setMoonFocusTransition() {}, paintCard() {},
+      paintConstellations() {}, paintSceneSemantics() {}, say() {},
+    });
+    const project = (center = new THREE.Vector3()) => {
+      const camera = new THREE.PerspectiveCamera(52, width / height, 0.05, CONFIG.cameraFar);
+      camera.position.set(
+        state.distance * Math.cos(state.elevation) * Math.sin(state.azimuth),
+        state.distance * Math.sin(state.elevation),
+        state.distance * Math.cos(state.elevation) * Math.cos(state.azimuth),
+      ).add(center);
+      camera.lookAt(center);
+      camera.updateMatrixWorld(true);
+      candidates.length = 0;
+      for (const node of labels) {
+        const at = keplerOffset(node.body, node.body.parent ? findBody(node.body.parent) : null, 0);
+        const point = new THREE.Vector3(at.x, at.y, at.z).project(camera);
+        node.labelAnchorX = (point.x * 0.5 + 0.5) * width;
+        node.labelAnchorY = (-point.y * 0.5 + 0.5) * height;
+        node.labelPlaced = false;
+        if (layout.bodyLabelFits(node.labelAnchorX, node.labelAnchorY, node, width, height)) candidates.push(node);
+      }
+      layout.placeBodyLabels(width, height, null);
+      assertSeparateLabels(candidates);
+      return candidates.filter((node) => node.labelPlaced).map((node) => ({ id: node.body.id, ...labelBox(node) }));
+    };
+    resetView();
+    const baseline = project();
+    for (let step = 1; step <= 8; step += 1) {
+      state.azimuth += CONFIG.cameraOrbitStep;
+      project();
+    }
+    state.azimuth = CONFIG.cameraAzimuth;
+    assert.deepEqual(project(), baseline, `${width}: returning through reused nodes is history-independent`);
+    resetView();
+    assert.deepEqual(project(), baseline, `${width}: orbit then Reset restores the original targets`);
+    // Reset's existing camera flight can continue projecting intermediate
+    // centers. Those frames must not seed a different settled home layout.
+    const earth = keplerOffset(findBody("earth"), findBody("sun"), 0);
+    resetView();
+    for (let step = 8; step > 0; step -= 1) {
+      project(new THREE.Vector3(earth.x, earth.y, earth.z).multiplyScalar(step / 8));
+    }
+    assert.deepEqual(project(), baseline, `${width}: focus easing does not change the settled home targets`);
+  }
+});
 
 const orbitalProvenance = JSON.parse(await readFile(
   new URL("./fixtures/orbital-provenance.json", import.meta.url), "utf8",

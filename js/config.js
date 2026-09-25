@@ -119,6 +119,11 @@ export const CONFIG = Object.freeze({
   cameraFar: 7000000,
   // Pointer travel below this is a tap/click, not an orbit gesture.
   tapMovePx: 12,
+  // Resolve crowded world-name targets locally without moving their bodies.
+  bodyLabelGapPx: 4,
+  bodyLabelOffsetStepPx: 24,
+  bodyLabelFallbackOffsetStepPx: 12,
+  bodyLabelMaxOffsetPx: 96,
   cameraOrbitStep: 0.12,
   cameraZoomFactor: 1.25,
   // Canvas wheel convention: one text line is 16 CSS pixels; a page uses its height.
