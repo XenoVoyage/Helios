@@ -22,7 +22,7 @@ import {
   minimumFocusDistance,
   wheelZoomMultiplier,
 } from "../js/config.js";
-import { cmbSkyOpacity, sceneHierarchyId } from "../js/galaxy.js";
+import { cmbSkyOpacity, sceneHierarchyId, universeOpacity } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
 import { auditCameraNavigation } from "./camera-navigation.mjs";
 import { runFocusTracking } from "./focus-tracking.mjs";
@@ -359,6 +359,7 @@ async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = 
       document.querySelector("#body-card"),
       document.querySelector("#dock"),
       document.querySelector("#version-label"),
+      document.querySelector("#camera-controls"),
     ].filter((element) => element && !element.hidden && element.getClientRects().length > 0)
       .map((element) => {
         const box = element.getBoundingClientRect();
@@ -407,6 +408,15 @@ async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = 
   if (requireVisible) {
     assert.ok(audit.length > 0, `${label}: at least one body label remains visible`);
   }
+  for (const [index, first] of audit.entries()) {
+    for (const second of audit.slice(index + 1)) {
+      assert.ok(
+        first.right <= second.left || first.left >= second.right
+          || first.bottom <= second.top || first.top >= second.bottom,
+        `${label}: ${first.name}/${second.name} complete label targets do not overlap`,
+      );
+    }
+  }
   for (const item of audit) {
     assert.ok(item.width >= 43.5 && item.height >= 43.5, `${label}: ${item.name} keeps a 44px target`);
     assert.equal(item.insideViewport, true, `${label}: ${item.name} stays inside the viewport: ${JSON.stringify(item)}`);
@@ -428,6 +438,88 @@ async function assertVisibleBodyLabelsClearChrome(page, label, requireVisible = 
       }
       throw error;
     }
+  }
+}
+
+async function auditBodyLabelCollisions(context, prefix, touch = false) {
+  const page = await context.newPage();
+  const errors = captureErrors(page);
+  try {
+    for (const input of ["pointer", "keyboard"]) {
+      await openReady(page, "?look=solarfar");
+      await page.locator("#play-button").click();
+      await waitForTwoAnimationFrames(page);
+      await assertVisibleBodyLabelsClearChrome(page, `${prefix} far-solar ${input}`);
+      for (const id of ["sun", "mercury", "venus", "earth"]) {
+        assert.equal(await page.locator(`[data-body-id="${id}"]`).isVisible(), true,
+          `${prefix}: crowded inner-world ${id} remains available`);
+      }
+      if (input === "pointer") await saveScreenshot(page, `${prefix}-solarfar-label-collisions`);
+      const id = await page.locator('.sky-label:not([hidden])').evaluateAll((labels) => (
+        labels.find((label) => label.style.transform.includes("translateX("))?.dataset.bodyId
+      ));
+      assert.ok(id, `${prefix}: regression exercises an actually displaced label`);
+      const target = page.locator(`[data-body-id="${id}"]`);
+      const before = await target.boundingBox();
+      assert.ok(before);
+      if (input === "keyboard") {
+        await target.focus();
+        await waitForTwoAnimationFrames(page);
+        const after = await target.boundingBox();
+        assert.deepEqual(after, before, `${prefix}: keyboard focus keeps the displaced target stable`);
+        assert.equal(await target.evaluate((label) => document.activeElement === label), true);
+        await assertVisibleBodyLabelsClearChrome(page, `${prefix} keyboard-focused labels`);
+        await target.press("Enter");
+      } else if (touch) {
+        await page.touchscreen.tap(before.x + before.width / 2, before.y + before.height / 2);
+      } else {
+        await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+        await page.mouse.down();
+        await waitForTwoAnimationFrames(page);
+        assert.deepEqual(await target.boundingBox(), before,
+          "mouse press cannot move its displaced target before release");
+        await page.mouse.up();
+      }
+      assert.equal(await page.locator("#card-name").textContent(), findBody(id).name,
+        `${prefix}: ${input} selects the named displaced label`);
+      await waitForCenteredBodyLabel(page, id);
+      assert.equal(await target.evaluate((label) => label.style.transform.includes("translateX(")), false,
+        `${prefix}: selected world regains its natural label seat`);
+      await assertVisibleBodyLabelsClearChrome(page, `${prefix} selected ${id}`);
+      await saveScreenshot(page, `${prefix}-label-collision-${input}`);
+    }
+    if (touch) {
+      await page.setViewportSize({ width: 568, height: 320 });
+      for (const input of ["touch", "keyboard"]) {
+        await openReady(page);
+        await page.locator("#play-button").click();
+        await waitForTwoAnimationFrames(page);
+        assert.equal(await page.locator("#body-card").isHidden(), true);
+        await assertVisibleBodyLabelsClearChrome(page, `compact overview ${input}`);
+        const mars = page.locator('[data-body-id="mars"]');
+        assert.equal(await mars.isVisible(), true, "compact overview retains the Mars target");
+        const before = await mars.boundingBox();
+        assert.ok(before);
+        if (input === "keyboard") {
+          await mars.focus();
+          await waitForTwoAnimationFrames(page);
+          assert.deepEqual(await mars.boundingBox(), before, "focus keeps the recovered Mars target stable");
+          await assertVisibleBodyLabelsClearChrome(page, "compact keyboard-focused Mars");
+          await mars.press("Enter");
+        } else {
+          await saveScreenshot(page, "touch-landscape-compact-labels");
+          await page.touchscreen.tap(before.x + before.width / 2, before.y + before.height / 2);
+        }
+        assert.equal(await page.locator("#card-name").textContent(), "Mars",
+          `compact ${input} selects the recovered named target`);
+        assert.equal(await page.locator("#body-card").isVisible(), true);
+        await waitForMoonCameraSettled(page);
+        await saveScreenshot(page, `touch-landscape-compact-mars-${input}`);
+      }
+    }
+    assert.deepEqual(errors, [], `${prefix}: crowded label selection has no runtime errors`);
+  } finally {
+    await page.close();
   }
 }
 
@@ -484,7 +576,43 @@ async function assertAccessibleHierarchy(page, expectation, label = "scene") {
   assert.equal(tree.worldLabels, 20, `${label}: a11y tree keeps the v1 body set, not catalog galaxies`);
   assert.ok(tree.buttons < 40, `${label}: accessibility tree is not dumped with rendered objects`);
   assert.equal(tree.liveRole, "status");
-  return { context, canvasSnapshot, contextSnapshot };
+  const caption = page.locator("#scale-context");
+  const hasDeepContext = /2MRS galaxy distribution|Cosmic microwave background|Schematic observable universe/.test(context);
+  assert.equal(await caption.isVisible(), hasDeepContext, `${label}: visible context follows the deep-space scene`);
+  let captionLayout = null;
+  if (hasDeepContext) {
+    const text = await caption.textContent();
+    assert.match(text, /illustrative/i, `${label}: schematic content is identified visibly`);
+    assert.match(text, /2MRS displayed to 300 Mpc|46\.5 billion light-year display radius/, `${label}: context reports the catalog or display scale`);
+    const layout = await caption.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const chrome = [...document.querySelectorAll(".topbar, #dock, #version-label, #camera-controls")]
+        .filter((other) => other.getClientRects().length)
+        .map((other) => ({ id: other.id || other.className, ...other.getBoundingClientRect().toJSON() }));
+      const overlaps = chrome.filter((rectangle) => (
+        box.left < rectangle.right && box.right > rectangle.left
+        && box.top < rectangle.bottom && box.bottom > rectangle.top
+      )).map((rectangle) => rectangle.id);
+      return {
+        viewport: { width: innerWidth, height: innerHeight },
+        box: box.toJSON(),
+        chrome,
+        textLines: [...range.getClientRects()].map((rectangle) => rectangle.toJSON()),
+        fontSize: Number.parseFloat(style.fontSize),
+        lineHeight: Number.parseFloat(style.lineHeight),
+        overlaps,
+        fits: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+        unclipped: element.scrollHeight <= element.clientHeight && element.scrollWidth <= element.clientWidth,
+      };
+    });
+    assert.deepEqual(layout.overlaps, [], `${label}: caption clears controls and branding`);
+    assert.equal(layout.fits && layout.unclipped, true, `${label}: caption is fully readable`);
+    captionLayout = layout;
+  }
+  return { context, canvasSnapshot, contextSnapshot, captionLayout };
 }
 
 async function assertEarthSkyReset(page) {
@@ -846,9 +974,16 @@ async function auditWheelDeltaModes(browser, touch = false) {
       const own = Object.getOwnPropertyDescriptor(prototype, "onAfterRender");
       const original = prototype.onAfterRender;
       const canvas = document.querySelector("#viewport");
+      const labels = document.querySelector("#labels");
       const touchIds = new Set();
-      const recordTouch = (event) => { if (event.pointerType === "touch") touchIds.add(event.pointerId); };
+      const touchStarts = [];
+      const recordTouch = (event) => {
+        if (event.pointerType !== "touch") return;
+        touchIds.add(event.pointerId);
+        touchStarts.push(event.target.closest("[data-body-id]")?.dataset.bodyId || "canvas");
+      };
       canvas.addEventListener("pointerdown", recordTouch);
+      labels.addEventListener("pointerdown", recordTouch);
       let serial = 0, latest = null;
       prototype.onAfterRender = function (renderer, scene, camera) {
         original.call(this, renderer, scene, camera);
@@ -868,10 +1003,12 @@ async function auditWheelDeltaModes(browser, touch = false) {
       return {
         snapshot: () => latest,
         touchCount: () => touchIds.size,
+        touchStarts: () => touchStarts.slice(),
         restore() {
           if (own) Object.defineProperty(prototype, "onAfterRender", own);
           else delete prototype.onAfterRender;
           canvas.removeEventListener("pointerdown", recordTouch);
+          labels.removeEventListener("pointerdown", recordTouch);
         },
       };
     });
@@ -948,6 +1085,99 @@ async function auditWheelDeltaModes(browser, touch = false) {
       await dispatch(48);
       assert.ok(relativeGap(pinched.geometry, (await settled()).geometry) > 1e-5,
         "wheel responds again after touch release");
+
+      const farSolar = async () => {
+        await reset();
+        await dispatch(Math.log(CONFIG.solarMaxDistance / CONFIG.cameraDistance) / 0.0016);
+        return settled();
+      };
+      const point = (id, x, y) => ({ id, x, y, radiusX: 4, radiusY: 4, force: 1 });
+      const send = (type, touchPoints) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints });
+      await farSolar();
+      const referenceCenter = await page.evaluate(() => {
+        const canvas = document.querySelector("#viewport");
+        for (const y of [0.65, 0.52, 0.28, 0.38]) {
+          const x = innerWidth / 2, cy = innerHeight * y;
+          if ([-40, 40].every((dx) => document.elementFromPoint(x + dx, cy) === canvas)) return { x, y: cy };
+        }
+        return null;
+      });
+      assert.ok(referenceCenter, "far-solar reference starts both fingers on canvas");
+      const referencePoints = (gap) => [
+        point(0, referenceCenter.x - gap / 2, referenceCenter.y),
+        point(1, referenceCenter.x + gap / 2, referenceCenter.y),
+      ];
+      await send("touchStart", referencePoints(80));
+      await send("touchMove", referencePoints(160));
+      await send("touchEnd", []);
+      const canvasPinch = await settled();
+
+      for (const labelFirst of [true, false]) {
+        const before = await farSolar();
+        const target = await page.evaluate(() => {
+          const canvas = document.querySelector("#viewport");
+          for (const label of document.querySelectorAll('.sky-label:not([hidden])')) {
+            if (!label.style.transform.includes("translateX(")) continue;
+            const box = label.getBoundingClientRect();
+            const x = box.x + box.width / 2, y = box.y + box.height / 2;
+            for (const direction of [-1, 1]) {
+              const other = x + direction * 80, end = x + direction * 160;
+              if (end > 8 && end < innerWidth - 8
+                && document.elementFromPoint(x, y) === label
+                && document.elementFromPoint(other, y) === canvas) {
+                return { id: label.dataset.bodyId, x, y, other, end };
+              }
+            }
+          }
+          return null;
+        });
+        assert.ok(target, "mixed pinch begins on an actually displaced label and the canvas");
+        const labelPoint = point(0, target.x, target.y);
+        const canvasPoint = point(1, target.other, target.y);
+        const starts = (await observer.evaluate((item) => item.touchStarts())).length;
+        await send("touchStart", [labelFirst ? labelPoint : canvasPoint]);
+        await send("touchStart", [labelPoint, canvasPoint]);
+        assert.deepEqual((await observer.evaluate((item) => item.touchStarts())).slice(starts),
+          labelFirst ? [target.id, "canvas"] : ["canvas", target.id],
+          "native pointer events actually begin on both intended surfaces");
+        await send("touchMove", [labelPoint, point(1, target.end, target.y)]);
+        // CDP touchEnd releases all points; the live-handler regression covers
+        // the separate finger-release orders and subsequent lost capture.
+        await send("touchEnd", []);
+        const mixedPinch = await settled();
+        assert.ok(relativeGap(canvasPinch.geometry, mixedPinch.geometry) <= 1e-6,
+          `${labelFirst ? "label" : "canvas"}-first pinch matches canvas camera input`);
+        assert.deepEqual(mixedPinch.ui, before.ui, "mixed pinch cannot select its starting label");
+
+        // Start the same mixed gesture again, then let Chromium cancel it.
+        const cancelBefore = await farSolar();
+        const cancelStarts = (await observer.evaluate((item) => item.touchStarts())).length;
+        await send("touchStart", [labelFirst ? labelPoint : canvasPoint]);
+        await send("touchStart", [labelPoint, canvasPoint]);
+        assert.deepEqual((await observer.evaluate((item) => item.touchStarts())).slice(cancelStarts),
+          labelFirst ? [target.id, "canvas"] : ["canvas", target.id],
+          "cancel regression still begins on the intended label and canvas after reset");
+        await send("touchCancel", []);
+        equal(cancelBefore, await settled(), "canceled mixed touches neither select nor move the scene");
+        await page.touchscreen.tap(target.x, target.y);
+        await page.locator("#body-card:not([hidden])").waitFor();
+        assert.equal(await page.locator("#card-name").textContent(), findBody(target.id).name,
+          "a fresh native label tap works after pinch cancellation");
+
+        const dragBefore = await farSolar();
+        const dragStarts = (await observer.evaluate((item) => item.touchStarts())).length;
+        await send("touchStart", [labelPoint]);
+        assert.deepEqual((await observer.evaluate((item) => item.touchStarts())).slice(dragStarts), [target.id],
+          "lone-label drag begins on the displaced label after reset");
+        await send("touchMove", [point(0,
+          target.x + Math.sign(target.other - target.x) * (CONFIG.tapMovePx + 8), target.y)]);
+        await send("touchEnd", []);
+        equal(dragBefore, await settled(), "lone-label drag neither selects nor moves the scene");
+        await page.touchscreen.tap(target.x, target.y);
+        await page.locator("#body-card:not([hidden])").waitFor();
+        assert.equal(await page.locator("#card-name").textContent(), findBody(target.id).name,
+          "a fresh native label tap works after dragging past tap slop");
+      }
     } else {
       const focusFloor = async (id) => {
         await reset();
@@ -2119,6 +2349,13 @@ async function auditScaleTransitions(context) {
         hierarchyText,
         `${stop.name} scene context is ${hierarchyId}`,
       );
+      await assertAccessibleHierarchy(page, { layer: hierarchyText }, stop.name);
+      if (hierarchyId === "web") {
+        const expectedTitle = universeOpacity(stop.distance) > 0.04
+          ? "Illustrative cosmic density" : "2MRS galaxy distribution";
+        assert.ok((await page.locator("#scale-context").textContent()).startsWith(expectedTitle),
+          `${stop.name}: visible caption identifies the rendered density`);
+      }
     }
     const frame = await auditedCanvasFrame(
       page,
@@ -2348,6 +2585,45 @@ async function auditResponsiveCosmology(context, prefix) {
     }
     assert.deepEqual(errors, [], `${prefix} ${look} has no browser errors`);
     await page.close();
+  }
+}
+
+async function auditMinimumDeepCaptions(browser) {
+  const layouts = [];
+  for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }]) {
+    const context = await browser.newContext({ viewport, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+    try {
+      for (const look of ["web", "universe"]) {
+        const page = await context.newPage();
+        const errors = captureErrors(page);
+        await openReady(page, `?look=${look}`);
+        await assertRenderedCanvas(page);
+        for (const expanded of [false, true]) {
+          if (expanded) await page.locator("#camera-toggle").tap();
+          await waitForTwoAnimationFrames(page);
+          const label = `touch-minimum-${viewport.width}x${viewport.height}-${look}-camera-${expanded ? "open" : "closed"}`;
+          await saveScreenshot(page, label);
+          assert.equal(await page.locator("#camera-toggle").getAttribute("aria-expanded"), String(expanded));
+          if (expanded) assert.equal(await page.locator("#orbit-left").isVisible(), true);
+          const { captionLayout } = await assertAccessibleHierarchy(page, LOOK_SEMANTICS[look], label);
+          assert.deepEqual(captionLayout.viewport, viewport, `${label}: actual viewport matches the supported minimum`);
+          assert.ok(captionLayout.fontSize >= 13 && captionLayout.lineHeight >= captionLayout.fontSize * 1.4,
+            `${label}: compact layout preserves readable text sizing and line spacing`);
+          assert.ok(captionLayout.textLines.length > 0 && captionLayout.textLines.every((line) => (
+            line.left >= captionLayout.box.left && line.right <= captionLayout.box.right
+            && line.top >= captionLayout.box.top && line.bottom <= captionLayout.box.bottom
+          )), `${label}: every wrapped text line fits inside the caption`);
+          layouts.push({ label, ...captionLayout });
+        }
+        assert.deepEqual(errors, [], `${look} at ${viewport.width}x${viewport.height} has no browser errors`);
+        await page.close();
+      }
+    } finally {
+      await context.close();
+    }
+  }
+  if (screenshotDir) {
+    await writeFile(path.join(screenshotDir, "touch-minimum-deep-caption-layouts.json"), JSON.stringify(layouts, null, 2) + "\n");
   }
 }
 
@@ -2902,6 +3178,7 @@ async function assertMoonParentCloseViews(context, prefix, touch = false) {
       `${prefix} ${bodyId} zoom through the parent keeps the moon focused`,
     );
     await assertRenderedCanvas(page);
+    await assertVisibleBodyLabelsClearChrome(page, `${prefix} ${bodyId} parent-cross labels`);
     await saveScreenshot(page, `${prefix}-moon-parent-cross-${bodyId}`);
 
     if (cdp) {
@@ -3898,15 +4175,18 @@ function assertCappedDrawingBuffer(shot, expectedRatio, label) {
 async function attachRendererProbe(page) {
   const probe = await page.evaluateHandle(async () => {
     const THREE = await import(new URL("vendor/three.module.min.js", location.href).href);
+    const { STARS } = await import(new URL("js/sky.js", location.href).href);
     const prototype = THREE.Scene.prototype;
     const original = prototype.onAfterRender;
     let renderer = null;
     let camera = null;
+    let renderedScene = null;
     const pixelRatioCalls = [];
     let wrapped = false;
     prototype.onAfterRender = function onAfterRender(nextRenderer, scene, nextCamera) {
       renderer = nextRenderer;
       camera = nextCamera;
+      renderedScene = scene;
       if (!wrapped && renderer) {
         wrapped = true;
         const originalSet = renderer.setPixelRatio.bind(renderer);
@@ -3926,6 +4206,7 @@ async function attachRendererProbe(page) {
         const dock = document.querySelector("#dock")?.getBoundingClientRect();
         return {
           pixelRatio: renderer.getPixelRatio(),
+          starPixelRatio: renderedScene.getObjectByName("stars").material.uniforms.pixelRatio.value,
           pixelRatioCalls: pixelRatioCalls.slice(),
           aspect: camera.aspect,
           projection: [...camera.projectionMatrix.elements],
@@ -3939,6 +4220,16 @@ async function attachRendererProbe(page) {
           cssHeight: css.height,
           devicePixelRatio: window.devicePixelRatio,
           dockHeight: dock ? dock.height : 0,
+        };
+      },
+      catalogStarAnchor() {
+        const stars = renderedScene.getObjectByName("stars");
+        const index = STARS.findIndex((row) => row[0] === 37279); // Procyon
+        const at = new THREE.Vector3().fromBufferAttribute(stars.geometry.getAttribute("position"), index);
+        stars.localToWorld(at).project(camera);
+        return {
+          x: (at.x * 0.5 + 0.5) * window.innerWidth,
+          y: (-at.y * 0.5 + 0.5) * window.innerHeight,
         };
       },
       clearCalls() {
@@ -3955,6 +4246,60 @@ async function attachRendererProbe(page) {
     if (shot) return probe;
   }
   throw new Error("renderer probe did not observe a frame");
+}
+
+async function catalogStarPixels(page, probe) {
+  const anchor = await probe.evaluate((item) => item.catalogStarAnchor());
+  const frame = await page.locator("#viewport").screenshot({ scale: "css" });
+  return page.evaluate(async ({ source, anchor }) => {
+    const image = new Image();
+    const ready = new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+    });
+    image.src = `data:image/png;base64,${source}`;
+    await ready;
+    const surface = document.createElement("canvas");
+    surface.width = image.naturalWidth;
+    surface.height = image.naturalHeight;
+    const ctx = surface.getContext("2d");
+    ctx.drawImage(image, 0, 0);
+    const left = Math.round(anchor.x) - 5;
+    const top = Math.round(anchor.y) - 5;
+    const pixels = ctx.getImageData(left, top, 11, 11).data;
+    const values = [];
+    const rim = [];
+    for (let y = 0; y < 11; y += 1) {
+      for (let x = 0; x < 11; x += 1) {
+        const offset = (y * 11 + x) * 4;
+        const value = (pixels[offset] + pixels[offset + 1] + pixels[offset + 2]) / 3;
+        values.push(value);
+        if (Math.hypot(left + x + 0.5 - anchor.x, top + y + 0.5 - anchor.y) > 4) rim.push(value);
+      }
+    }
+    rim.sort((a, b) => a - b);
+    const background = rim[Math.floor(rim.length / 2)];
+    const excess = values.map((value) => Math.max(0, value - background));
+    return {
+      anchor,
+      intensity: excess.reduce((sum, value) => sum + value, 0),
+      brightArea: excess.filter((value) => value > 80).length,
+    };
+  }, { source: frame.toString("base64"), anchor });
+}
+
+function assertCatalogStarPixels(before, after, label) {
+  const intensityRatio = after.intensity / before.intensity;
+  const areaRatio = after.brightArea / before.brightArea;
+  const evidence = `${label}: ${JSON.stringify({ before, after, intensityRatio, areaRatio })}`;
+  assert.ok(before.brightArea >= 5, `Procyon has a measurable bright core: ${evidence}`);
+  assert.ok(Math.hypot(after.anchor.x - before.anchor.x, after.anchor.y - before.anchor.y) < 0.1,
+    `DPR preserves the catalog position: ${evidence}`);
+  // Raster coverage differs at fractional pixel centers, but must not suffer
+  // the old half-diameter / roughly quarter-area high-DPI collapse.
+  assert.ok(intensityRatio >= 0.65 && intensityRatio <= 1.5, `CSS intensity is stable: ${evidence}`);
+  assert.ok(areaRatio >= 0.5 && areaRatio <= 1.75, `CSS star footprint is stable: ${evidence}`);
+  console.log(evidence);
 }
 
 async function setLiveDevicePixelRatio(page, ratio) {
@@ -4040,6 +4385,7 @@ async function auditCappedDprResync(browser) {
 
     let shot = await settle("boot");
     assert.equal(shot.devicePixelRatio, 1);
+    assert.equal(shot.starPixelRatio, 1);
     assertCappedDrawingBuffer(shot, 1, "live boot dpr 1");
     assert.deepEqual(shot.pixelRatioCalls, [], "boot frames after wrapping do not call setPixelRatio");
 
@@ -4069,12 +4415,14 @@ async function auditCappedDprResync(browser) {
       cssHeight: shot.cssHeight,
     };
     await saveScreenshot(page, "dpr-live-compact-1");
+    const starAtOne = await catalogStarPixels(page, probe);
 
     await probe.evaluate((item) => item.clearCalls());
     await setLiveDevicePixelRatio(page, 2);
     shot = await settle("live 1→2");
     assert.deepEqual(shot.pixelRatioCalls, [2], "raising DPR to 2 calls setPixelRatio once");
     assert.equal(shot.devicePixelRatio, 2);
+    assert.equal(shot.starPixelRatio, 2);
     assertCappedDrawingBuffer(shot, 2, "live 1→2");
     assert.equal(shot.innerWidth, compactLayout.innerWidth);
     assert.equal(shot.innerHeight, compactLayout.innerHeight);
@@ -4082,6 +4430,7 @@ async function auditCappedDprResync(browser) {
     assert.equal(shot.dockHeight, compactLayout.dockHeight);
     assert.deepEqual(shot.projection, compactLayout.projection, "DPR-only change keeps the projection");
     await saveScreenshot(page, "dpr-live-compact-2");
+    assertCatalogStarPixels(starAtOne, await catalogStarPixels(page, probe), "catalog star DPR 1→2");
 
     const highLayout = {
       projection: shot.projection,
@@ -4093,21 +4442,25 @@ async function auditCappedDprResync(browser) {
     shot = await settle("live 2→3 capped");
     assert.deepEqual(shot.pixelRatioCalls, [], "still-capped DPR 3 does not call setPixelRatio");
     assert.equal(shot.devicePixelRatio, 3);
+    assert.equal(shot.starPixelRatio, 2, "catalog shader uses capped renderer DPR, not device DPR 3");
     assertCappedDrawingBuffer(shot, 2, "live 2→3 capped");
     assert.deepEqual(shot.projection, highLayout.projection);
     assert.equal(shot.dockHeight, highLayout.dockHeight);
+    assertCatalogStarPixels(starAtOne, await catalogStarPixels(page, probe), "catalog star DPR 3 capped at 2");
 
     await probe.evaluate((item) => item.clearCalls());
     await setLiveDevicePixelRatio(page, 1);
     shot = await settle("live 2→1");
     assert.deepEqual(shot.pixelRatioCalls, [1], "lowering capped DPR to 1 calls setPixelRatio once");
     assert.equal(shot.devicePixelRatio, 1);
+    assert.equal(shot.starPixelRatio, 1);
     assertCappedDrawingBuffer(shot, 1, "live 2→1");
     assert.equal(shot.innerWidth, compactLayout.innerWidth);
     assert.equal(shot.innerHeight, compactLayout.innerHeight);
     assert.equal(shot.aspect, compactLayout.aspect);
     assert.deepEqual(shot.projection, compactLayout.projection, "return to DPR 1 keeps the projection");
     assert.equal(shot.dockHeight, compactLayout.dockHeight);
+    assertCatalogStarPixels(starAtOne, await catalogStarPixels(page, probe), "catalog star DPR 2→1");
 
     assert.deepEqual(errors, [], "capped DPR resync has no browser errors");
     console.log("capped DPR resync ok");
@@ -4497,6 +4850,47 @@ async function auditTimeSpeedControls(browser) {
       assert.equal(initial.aria, "1 hour per second");
       await captureAccessibility("default", CONFIG.defaultDaysPerSecond);
       await captureRate("default");
+      const ignoredShortcuts = await page.evaluate(() => {
+        const viewport = document.querySelector("#viewport");
+        const snapshot = () => JSON.stringify({
+          playing: document.querySelector("#play-button").getAttribute("aria-pressed"),
+          rate: document.querySelector("#speed-slider").value,
+          readout: document.querySelector("#speed-readout").textContent,
+          date: document.querySelector("#clock").textContent,
+          cardHidden: document.querySelector("#body-card").hidden,
+          focus: document.querySelector("#card-name").textContent,
+        });
+        const before = snapshot();
+        const results = [];
+        for (const modifier of ["ctrlKey", "metaKey", "altKey", "isComposing"]) {
+          for (const input of [
+            { key: " ", code: "Space" },
+            { key: "+", code: "Equal", shiftKey: true },
+            { key: "=", code: "Equal" },
+            { key: "-", code: "Minus" },
+            { key: "_", code: "Minus", shiftKey: true },
+            { key: "Escape", code: "Escape" },
+          ]) {
+            const event = new KeyboardEvent("keydown", {
+              bubbles: true, cancelable: true, ...input, [modifier]: true,
+            });
+            const notCanceled = viewport.dispatchEvent(event);
+            results.push({ modifier, key: input.key, notCanceled,
+              defaultPrevented: event.defaultPrevented, unchanged: snapshot() === before });
+          }
+        }
+        return results;
+      });
+      for (const result of ignoredShortcuts) {
+        assert.equal(result.notCanceled, true, `${label}: ${result.modifier} ${result.key} retains native behavior`);
+        assert.equal(result.defaultPrevented, false);
+        assert.equal(result.unchanged, true, `${label}: ignored shortcut preserves playback, rate and focus`);
+      }
+      report.ignoredShortcuts = ignoredShortcuts;
+      await globalKey("Shift+Equal");
+      await checkRate("Shift-plus doubles the default", CONFIG.defaultDaysPerSecond * 2);
+      await globalKey("-");
+      await checkRate("plain minus restores the default", CONFIG.defaultDaysPerSecond);
       for (let step = 1; step <= 12; step += 1) {
         await activate("#slower-button");
         await checkRate(`Slower from default ${step}`,
@@ -4905,6 +5299,7 @@ try {
     deviceScaleFactor: 1,
   });
   await auditWheelDeltaModes(browser);
+  await auditBodyLabelCollisions(desktop, "desktop");
   await auditCredits(desktop);
   await assertViewportBusyLifecycle(desktop, "desktop");
   // Check the issue's new pixel gate before the longer unchanged scale and
@@ -5060,6 +5455,7 @@ try {
   await assertViewportBusyLifecycle(touch, "touch-portrait emulation");
   await assertOuterPlanetNightSides(touch, "touch-portrait", true);
   await auditPointerCancelAbort(touch, "touch-portrait", true);
+  await auditBodyLabelCollisions(touch, "touch-portrait", true);
   const touchControlPage = await touch.newPage();
   const touchControlErrors = captureErrors(touchControlPage);
   await openReady(touchControlPage);
@@ -5181,6 +5577,7 @@ try {
   });
   await auditResponsiveCosmology(compactLandscape, "touch-landscape");
   await compactLandscape.close();
+  await auditMinimumDeepCaptions(browser);
 
   const failure = await browser.newContext({ viewport: { width: 1024, height: 768 } });
   const failurePage = await failure.newPage();

@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 import {
   CONFIG,
   describeDaysPerSecond,
   formatDaysPerSecond,
+  isShortcutTargetInteractive,
   sliderFromSpeed,
   speedFromSlider,
 } from "../js/config.js";
@@ -13,6 +16,84 @@ import {
   elapsedSeconds,
   simulationDateLabel,
 } from "../js/time.js";
+
+// Exercise the shipped handler without initializing the WebGL scene.
+const appSource = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
+const handlerStart = appSource.indexOf("function onTimeKey(event) {");
+const handlerEnd = appSource.indexOf("\nfunction pointerGap()", handlerStart);
+assert.ok(handlerStart >= 0 && handlerEnd > handlerStart, "time shortcut handler is available");
+const handlerSource = appSource.slice(handlerStart, handlerEnd);
+
+function timeShortcuts() {
+  const state = { playing: false, rate: 1, focus: "earth" };
+  const handle = runInNewContext(`${handlerSource}\nonTimeKey`, {
+    isShortcutTargetInteractive,
+    togglePlay: () => { state.playing = !state.playing; },
+    scaleSpeed: (factor) => { state.rate *= factor; },
+    resetView: () => { state.focus = "sun"; },
+  });
+  return {
+    state,
+    press({ target = { tagName: "CANVAS" }, ...input }) {
+      const event = new Event("keydown", { cancelable: true });
+      Object.assign(event, input);
+      Object.defineProperty(event, "target", { value: target });
+      handle(event);
+      return event.defaultPrevented;
+    },
+  };
+}
+
+const timeKeys = [
+  { key: " ", code: "Space" },
+  { key: "+", code: "Equal", shiftKey: true },
+  { key: "=", code: "Equal" },
+  { key: "-", code: "Minus" },
+  { key: "_", code: "Minus", shiftKey: true },
+  { key: "Escape", code: "Escape" },
+];
+
+test("browser and composition shortcuts keep their default behavior and simulation state", () => {
+  for (const modifier of ["ctrlKey", "metaKey", "altKey", "isComposing"]) {
+    for (const input of timeKeys) {
+      const { state, press } = timeShortcuts();
+      assert.equal(press({ ...input, [modifier]: true }), false, `${modifier} ${input.code}`);
+      assert.deepEqual(state, { playing: false, rate: 1, focus: "earth" });
+    }
+  }
+});
+
+test("plain time shortcuts and Shift-plus retain their existing actions", () => {
+  const { state, press } = timeShortcuts();
+  for (const [input, rate] of [
+    [timeKeys[1], 2], [timeKeys[2], 4], [timeKeys[3], 2], [timeKeys[4], 1],
+  ]) {
+    assert.equal(press(input), false);
+    assert.equal(state.rate, rate);
+  }
+  assert.equal(press(timeKeys[0]), true, "plain Space prevents page scrolling");
+  assert.equal(state.playing, true);
+  assert.equal(press(timeKeys[0]), true);
+  assert.equal(state.playing, false);
+  assert.equal(press(timeKeys[5]), false);
+  assert.equal(state.focus, "sun");
+});
+
+test("repeated shortcuts and interactive targets keep their existing guards", () => {
+  const guards = [
+    { repeat: true },
+    ...["BUTTON", "A", "INPUT", "SELECT", "TEXTAREA"].map((tagName) => ({ target: { tagName } })),
+    { target: { tagName: "DIV", isContentEditable: true } },
+    { target: { tagName: "SPAN", parentElement: { tagName: "BUTTON" } } },
+  ];
+  for (const guard of guards) {
+    for (const input of timeKeys) {
+      const { state, press } = timeShortcuts();
+      assert.equal(press({ ...input, ...guard }), false);
+      assert.deepEqual(state, { playing: false, rate: 1, focus: "earth" });
+    }
+  }
+});
 
 function runFrames(fps, seconds, rate) {
   let days = 0;

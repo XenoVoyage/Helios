@@ -38,6 +38,7 @@ import {
   normalizeConstellationMode,
   selectConstellationLabelIds,
   setConstellationMode,
+  setStarPixelRatio,
   sizeFromMag,
   updateConstellationLabels,
 } from "../js/sky.js";
@@ -45,6 +46,27 @@ import {
 function dot(a, b) {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
+
+test("catalog-star DPR updates preserve other sky controls and support live return", () => {
+  const uniforms = {
+    pixelRatio: { value: 1 },
+    brightness: { value: 0.8 },
+    fade: { value: 0.6 },
+  };
+  const sky = {
+    getObjectByName(name) {
+      assert.equal(name, "stars");
+      return { material: { uniforms } };
+    },
+  };
+  for (const ratio of [1, 2, 2, 1]) {
+    setStarPixelRatio(sky, ratio);
+    assert.equal(uniforms.pixelRatio.value, ratio);
+    assert.equal(uniforms.brightness.value, 0.8);
+    assert.equal(uniforms.fade.value, 0.6);
+  }
+  assert.doesNotThrow(() => setStarPixelRatio(null, 2));
+});
 
 test("named stars have sane J2000 RA/Dec and magnitudes", () => {
   const sirius = findStarByName("Sirius");
