@@ -3,23 +3,23 @@
 [![Version v2026.9.26](https://img.shields.io/badge/version-v2026.9.26-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
-An interactive 3D orrery of the solar system.
+An interactive 3D solar system and universe explorer.
 
 ## [▶ Play Helios in your browser](https://xenovoyage.github.io/Helios/)
 
-[![Overview of the Helios orrery: Sun, planets, asteroid belt, and the outer Kuiper field.](docs/assets/helios-overview.webp)](https://xenovoyage.github.io/Helios/)
+[![Solar-system overview: the Sun, planets, orbital paths, and asteroid belt.](docs/assets/helios-overview.webp)](https://xenovoyage.github.io/Helios/)
 
-![Saturn focused from the front side of the ring plane, with Titan beyond the rings.](docs/assets/helios-titan-rings.webp)
+![Saturn focused from the lit side of the ring plane, with Titan beside the rings.](docs/assets/helios-titan-rings.webp)
 
-![Constellation names readable at overview, with Sagittarius and Scorpius labeled.](docs/assets/helios-constellations.webp)
+![Constellations in All mode at overview, with Hydra, Sextans, and Canis Major labeled.](docs/assets/helios-constellations.webp)
 
 ![Far solar overview: Hipparcos and the Gaia band fill the frame as the camera reaches the solar cap.](docs/assets/helios-solar-far.webp)
 
-![Milky Way after extra zoom-out: already inside the bright Orion-arm trail at the Sun, not a distant plate.](docs/assets/helios-milky-way.webp)
+![Inside the Milky Way's stylized Orion-arm trail, with the Solar System marked.](docs/assets/helios-milky-way.webp)
 
-![Same tail, with an unlit unresolved distant-density sky already starting behind the arm.](docs/assets/helios-tail-sky.webp)
+![Pulling back from the Milky Way arm into the illustrative distant-density sky.](docs/assets/helios-tail-sky.webp)
 
-![Leaving the tail: the Milky Way disk growing on a spherical distant-density sky. Catalog neighbors only; no invented nearby galaxies.](docs/assets/helios-growing.webp)
+![The Milky Way's spiral disk comes into view against the illustrative distant-density sky.](docs/assets/helios-growing.webp)
 
 ![Full Milky Way disk with catalog neighbors against the spherical distant-density sky.](docs/assets/helios-disk.webp)
 
@@ -27,13 +27,15 @@ An interactive 3D orrery of the solar system.
 
 ![Local Group after a further zoom: its aggregate label replaces the now-unreadable individual galaxy labels.](docs/assets/helios-local-group.webp)
 
-![Virgo Cluster and Local (Virgo) Supercluster labels outrank the smaller Local Group label.](docs/assets/helios-virgo.webp)
+![The Local Group, Virgo Cluster, and Local (Virgo) Supercluster at a wider scale.](docs/assets/helios-virgo.webp)
 
-![After Virgo, Laniakea and seven measured group anchors lead into the observed 2MRS galaxy distribution.](docs/assets/helios-preweb.webp)
+![Laniakea Supercluster, Virgo Cluster, and measured group anchors before the 2MRS view.](docs/assets/helios-preweb.webp)
 
 ![The flux-limited 2MRS galaxy distribution in redshift space, shown as points without invented connections.](docs/assets/helios-web.webp)
 
 ![Schematic outside-camera view of the warm illustrative CMB shell at the particle-horizon display radius.](docs/assets/helios-universe.webp)
+
+Screenshots show v2026.9.26; [capture sources and image credits](PROVENANCE.md#readme-screenshot-sources).
 
 Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch-out zooms in; pinch-in zooms out. Play, pause, and change the speed of time from the bar at the bottom. Close the body card with the X or by tapping empty space. Zoom out past the solar overview and the orrery shrinks to a Sun among the stars. The Hipparcos sky, IAU figures, and Gaia band stay at constant brightness through the solar cap, so the first extra-zoom frame is already inside the Milky Way tail. The moment the camera leaves that tail, that solar sky and the Constellations control go off. The control offers Off, Major (the ten familiar default names), and All; All packs eligible names inside the viewport with a responsive collision budget. Extra-zoom sky from the tail through Virgo is a camera-centered spherical point-density illustration with unresolved bright concentrations and dark gaps. It has no cube faces, named generated objects, or claimed survey coordinates. The full disk, neighborhood, Local Group, and Virgo are catalog neighbors against that field, not a scatter of invented nearby galaxies. After Virgo, seven measured group anchors lead into 42,927 public 2MRS galaxy directions with approximate redshift distances; there are no invented web connections. Beyond the survey's 300 Mpc display cap, a small first-party density illustration provides continuity to the Planck-style CMB shell. That shell is deliberately drawn at the particle-horizon display radius. Leaving it is only an outside-camera/scale metaphor, not a physically possible observer. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
 

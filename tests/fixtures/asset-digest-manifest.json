@@ -34,7 +34,7 @@
     },
     {
       "id": "documentation-screenshots",
-      "manifestSha256": "872d58b3bda6be63d37fb3e2009367bea8261209decc606f60667defa6049dc4"
+      "manifestSha256": "a88d1c47c59be3c7e4f51015704ef010e33eb0926b0e19368f48089caf9e33a8"
     },
     {
       "id": "saturn-ring-backface-evidence",
@@ -164,72 +164,72 @@
     },
     {
       "path": "docs/assets/helios-constellations.webp",
-      "sha256": "3fdf02d7f1852a69f4a928ee9795f0a6a71dabdca2142cd706329161b03ea068",
+      "sha256": "773b6a6b526176b0286545ddd454f8c0d69a93afd4855bca447b37d31d7ed6ae",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-disk.webp",
-      "sha256": "e6b07e1ab09d11381a18f8a3165c11824b187baeabbcda878d9a7e9be98b9d60",
+      "sha256": "76b3f6a67b7dd5cbcb0db7713dbcebada9f4ecbf37681f75e71ab01de677930f",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-growing.webp",
-      "sha256": "cef18904b17b06ce3c94a75d05e8e3d32ed7d1feb2e987c6e5e80dcc0b019631",
+      "sha256": "9a617f56adc05dc74bf96289e1c92533a157589b9092e7cb9a340ba12bf07d43",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-local-group.webp",
-      "sha256": "b76997382f82b2fbf44f7b1a0ed346d6c587024cf754e7ab4f42c8eeeed3f053",
+      "sha256": "440a02839c185001d97cb4fbc99076a5a9e91b319267f66a5adcdbe844e2ed9a",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-milky-way.webp",
-      "sha256": "175723a9759f5ded31ed6fd703c06d2768575f1dfd47352e9baf74cae6f6ce6b",
+      "sha256": "e2767697cdf2577fd2b3cb0633ee3e2e7e8e3139bfe060a67ffac81da70aa014",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-neighborhood.webp",
-      "sha256": "7acb6392b26b5d2269974c961c687e31912c8440f253f9ff4714f2d3a563893a",
+      "sha256": "88adc73b876ad68f0d32faef6a0a495bff7ad0b86aecaf9d03db81634464a381",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-overview.webp",
-      "sha256": "451d8a7942cb5f68284d67428508c0cdaa05d82eb5b41b7217ecaef132419115",
+      "sha256": "3d50bd7226bfe8bd3c1c183926c7c3bb9a4cce2f1aab0099704ea9521fe9d746",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-preweb.webp",
-      "sha256": "4a5a8ff97030932a24e6b6f7cb0202482cb7f54d092e606e68498bf3a7612473",
+      "sha256": "55ece04396591ad7c47b2cc9c447de40f58306c1070afc6370e778100913e1d5",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-solar-far.webp",
-      "sha256": "f324e9e873f5f66ce2cff941bf1692c91c706941b680ba83c51a318bea5db673",
+      "sha256": "50cb9a18059652e903a263ad0ef5f5585bccae806b80cf9dc71d8b6ebbf65e81",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-tail-sky.webp",
-      "sha256": "dd2b65706d2e994e5fd5a021e6cd9eefc30c4a73a3e2bef68e671f2816c933db",
+      "sha256": "3bdb7af10d5446ea5398d44b3ad03e2d58304a85701f66b0a8be5eff650656c9",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-titan-rings.webp",
-      "sha256": "e6a1d9ff52ce5c380533a336de480427a3c21510f2b47a82b5e7a78711a5b95e",
+      "sha256": "1d1e68df0a1e1c6534876c3c95fe21c5f96522714a826ecfbe6b9de29b25a9f0",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-universe.webp",
-      "sha256": "43398d50a52c8456f63d4f0e2d392ae25eda120c1411f77850da1abfcc58b0df",
+      "sha256": "b6e93efef46d10484a8a73985e750b8ae5ef05417741e2b2d0aa2039a0e3baa0",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-virgo.webp",
-      "sha256": "d870fa6b11a18994bca0f9a303cc4dac5350cc37dab27faf99b792c0459fb859",
+      "sha256": "5dfd00910dc90006851e4a64984f345d763c1da89fe5a7ee7ee9db77f53bd70e",
       "family": "documentation-screenshots"
     },
     {
       "path": "docs/assets/helios-web.webp",
-      "sha256": "26fca82942288ad89709d963e21d460034de9ccc66ab6f9ae4741ced59aab5c5",
+      "sha256": "a1f2732c69c1a7e7e91ed8df62991af45fa48021f43890780c647ebeb24b8b62",
       "family": "documentation-screenshots"
     },
     {
