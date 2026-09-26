@@ -196,13 +196,36 @@ stays in [tests/fixtures/2mrs-integrity.json](tests/fixtures/2mrs-integrity.json
 | `assets/sky/milky-way.jpg` | [ESA Gaia DR2 all-sky colour](https://sci.esa.int/web/gaia/-/60196-gaia-s-sky-in-colour-equirectangular-projection), ESA/Gaia/DPAC, CC BY-SA 3.0 IGO. Equirectangular galactic projection, resized/compressed to `2000×1000`; exact prior settings were not retained. | `esa-gaia-milky-way` |
 | `assets/sky/andromeda.png` | NASA/JPL-Caltech [Spitzer PIA04921](https://images.nasa.gov/details/PIA04921), subject to NASA media guidelines. Cropped to a transparent `384×348` sprite; the exact crop/matte recipe was not retained. | `nasa-spitzer-andromeda` |
 | `assets/sky/cmb.jpg` | First-party `1536×768` Planck-style illustration. It contains no claimed Planck mission pixels or scientific map values. The original generator settings were not retained. | `cmb-illustration` |
-| `docs/assets/*.webp` | Current Helios screenshots for repository documentation. Thirteen previews are derived without resizing from the `1440×900` PNG evidence for exact runtime tree `4244250ff5c2394cd17f5c4b0f1c255278697589` in [Audit #160](https://github.com/XenoVoyage/Helios/actions/runs/32756244378). `helios-titan-rings.webp` is a centered `1440×900` crop of the owner's approved `2048×1181` physical-Mac capture of that runtime. All fourteen were converted to lossy VP8 WebP with ImageMagick/libwebp (`quality 82`, method 6). | `documentation-screenshots` |
+| `docs/assets/*.webp` | Helios v2026.9.26 screenshots from the successful exact-main [Audit #389](https://github.com/XenoVoyage/Helios/actions/runs/36254128195), commit `4c2b19fd7de47fecf814de4727f45bb404748013`, tree `9230e7a4f8772db7810b5c35a7fc0f579eaf2552`. All fourteen are automated Chromium captures from its `helios-browser-stills` artifact, converted from `1440×900` PNG to lossy VP8 WebP with ImageMagick/libwebp (`quality 82`, method 6), without cropping, resizing, or scene edits. The scene assets retain the credits and terms above. Exact capture names are listed [below](#readme-screenshot-sources). | `documentation-screenshots` |
 | `docs/issues/saturn-ring-backface.webp` | Owner-supplied `2048×1182` physical-Mac reproduction of the deferred Saturn ring back-face visibility defect on runtime tree `4244250ff5c2394cd17f5c4b0f1c255278697589`. Converted without resizing to lossy VP8 WebP with ImageMagick/libwebp (`quality 90`, method 6); retained as issue evidence until the defect is resolved. | `saturn-ring-backface-evidence` |
 
 For a family manifest, its listed paths are bytewise-sorted, hashed individually
 with `sha256sum`, and that textual manifest is hashed once with `sha256sum`. The
 digest fixture stores both the individual file digests and those family-manifest
 digests.
+
+### README screenshot sources
+
+Source artifact: `helios-browser-stills` (ID `10911092748`) from
+[Audit #389](https://github.com/XenoVoyage/Helios/actions/runs/36254128195).
+These are automated desktop captures, not physical-device observations.
+
+| Preview in `docs/assets/` | PNG in the Audit artifact |
+| --- | --- |
+| `helios-overview.webp` | `desktop-overview.png` |
+| `helios-titan-rings.webp` | `desktop-saturn-rings-lit.png` |
+| `helios-constellations.webp` | `desktop-constellations-all.png` |
+| `helios-solar-far.webp` | `desktop-solarfar.png` |
+| `helios-milky-way.webp` | `desktop-milkyway.png` |
+| `helios-tail-sky.webp` | `desktop-tailsky.png` |
+| `helios-growing.webp` | `desktop-growing.png` |
+| `helios-disk.webp` | `desktop-disk.png` |
+| `helios-neighborhood.webp` | `desktop-neighborhood.png` |
+| `helios-local-group.webp` | `desktop-localgroup.png` |
+| `helios-virgo.webp` | `desktop-virgo.png` |
+| `helios-preweb.webp` | `desktop-preweb.png` |
+| `helios-web.webp` | `desktop-web.png` |
+| `helios-universe.webp` | `desktop-universe.png` |
 
 ## Body texture ledger
 
