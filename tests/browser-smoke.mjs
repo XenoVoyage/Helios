@@ -22,7 +22,7 @@ import {
   minimumFocusDistance,
   wheelZoomMultiplier,
 } from "../js/config.js";
-import { cmbSkyOpacity, sceneHierarchyId } from "../js/galaxy.js";
+import { cmbSkyOpacity, sceneHierarchyId, universeOpacity } from "../js/galaxy.js";
 import { equatorialVectorToScene } from "../js/sky.js";
 import { auditCameraNavigation } from "./camera-navigation.mjs";
 import { runFocusTracking } from "./focus-tracking.mjs";
@@ -576,7 +576,43 @@ async function assertAccessibleHierarchy(page, expectation, label = "scene") {
   assert.equal(tree.worldLabels, 20, `${label}: a11y tree keeps the v1 body set, not catalog galaxies`);
   assert.ok(tree.buttons < 40, `${label}: accessibility tree is not dumped with rendered objects`);
   assert.equal(tree.liveRole, "status");
-  return { context, canvasSnapshot, contextSnapshot };
+  const caption = page.locator("#scale-context");
+  const hasDeepContext = /2MRS galaxy distribution|Cosmic microwave background|Schematic observable universe/.test(context);
+  assert.equal(await caption.isVisible(), hasDeepContext, `${label}: visible context follows the deep-space scene`);
+  let captionLayout = null;
+  if (hasDeepContext) {
+    const text = await caption.textContent();
+    assert.match(text, /illustrative/i, `${label}: schematic content is identified visibly`);
+    assert.match(text, /2MRS displayed to 300 Mpc|46\.5 billion light-year display radius/, `${label}: context reports the catalog or display scale`);
+    const layout = await caption.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const chrome = [...document.querySelectorAll(".topbar, #dock, #version-label, #camera-controls")]
+        .filter((other) => other.getClientRects().length)
+        .map((other) => ({ id: other.id || other.className, ...other.getBoundingClientRect().toJSON() }));
+      const overlaps = chrome.filter((rectangle) => (
+        box.left < rectangle.right && box.right > rectangle.left
+        && box.top < rectangle.bottom && box.bottom > rectangle.top
+      )).map((rectangle) => rectangle.id);
+      return {
+        viewport: { width: innerWidth, height: innerHeight },
+        box: box.toJSON(),
+        chrome,
+        textLines: [...range.getClientRects()].map((rectangle) => rectangle.toJSON()),
+        fontSize: Number.parseFloat(style.fontSize),
+        lineHeight: Number.parseFloat(style.lineHeight),
+        overlaps,
+        fits: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+        unclipped: element.scrollHeight <= element.clientHeight && element.scrollWidth <= element.clientWidth,
+      };
+    });
+    assert.deepEqual(layout.overlaps, [], `${label}: caption clears controls and branding`);
+    assert.equal(layout.fits && layout.unclipped, true, `${label}: caption is fully readable`);
+    captionLayout = layout;
+  }
+  return { context, canvasSnapshot, contextSnapshot, captionLayout };
 }
 
 async function assertEarthSkyReset(page) {
@@ -2313,6 +2349,13 @@ async function auditScaleTransitions(context) {
         hierarchyText,
         `${stop.name} scene context is ${hierarchyId}`,
       );
+      await assertAccessibleHierarchy(page, { layer: hierarchyText }, stop.name);
+      if (hierarchyId === "web") {
+        const expectedTitle = universeOpacity(stop.distance) > 0.04
+          ? "Illustrative cosmic density" : "2MRS galaxy distribution";
+        assert.ok((await page.locator("#scale-context").textContent()).startsWith(expectedTitle),
+          `${stop.name}: visible caption identifies the rendered density`);
+      }
     }
     const frame = await auditedCanvasFrame(
       page,
@@ -2542,6 +2585,45 @@ async function auditResponsiveCosmology(context, prefix) {
     }
     assert.deepEqual(errors, [], `${prefix} ${look} has no browser errors`);
     await page.close();
+  }
+}
+
+async function auditMinimumDeepCaptions(browser) {
+  const layouts = [];
+  for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }]) {
+    const context = await browser.newContext({ viewport, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+    try {
+      for (const look of ["web", "universe"]) {
+        const page = await context.newPage();
+        const errors = captureErrors(page);
+        await openReady(page, `?look=${look}`);
+        await assertRenderedCanvas(page);
+        for (const expanded of [false, true]) {
+          if (expanded) await page.locator("#camera-toggle").tap();
+          await waitForTwoAnimationFrames(page);
+          const label = `touch-minimum-${viewport.width}x${viewport.height}-${look}-camera-${expanded ? "open" : "closed"}`;
+          await saveScreenshot(page, label);
+          assert.equal(await page.locator("#camera-toggle").getAttribute("aria-expanded"), String(expanded));
+          if (expanded) assert.equal(await page.locator("#orbit-left").isVisible(), true);
+          const { captionLayout } = await assertAccessibleHierarchy(page, LOOK_SEMANTICS[look], label);
+          assert.deepEqual(captionLayout.viewport, viewport, `${label}: actual viewport matches the supported minimum`);
+          assert.ok(captionLayout.fontSize >= 13 && captionLayout.lineHeight >= captionLayout.fontSize * 1.4,
+            `${label}: compact layout preserves readable text sizing and line spacing`);
+          assert.ok(captionLayout.textLines.length > 0 && captionLayout.textLines.every((line) => (
+            line.left >= captionLayout.box.left && line.right <= captionLayout.box.right
+            && line.top >= captionLayout.box.top && line.bottom <= captionLayout.box.bottom
+          )), `${label}: every wrapped text line fits inside the caption`);
+          layouts.push({ label, ...captionLayout });
+        }
+        assert.deepEqual(errors, [], `${look} at ${viewport.width}x${viewport.height} has no browser errors`);
+        await page.close();
+      }
+    } finally {
+      await context.close();
+    }
+  }
+  if (screenshotDir) {
+    await writeFile(path.join(screenshotDir, "touch-minimum-deep-caption-layouts.json"), JSON.stringify(layouts, null, 2) + "\n");
   }
 }
 
@@ -5495,6 +5577,7 @@ try {
   });
   await auditResponsiveCosmology(compactLandscape, "touch-landscape");
   await compactLandscape.close();
+  await auditMinimumDeepCaptions(browser);
 
   const failure = await browser.newContext({ viewport: { width: 1024, height: 768 } });
   const failurePage = await failure.newPage();

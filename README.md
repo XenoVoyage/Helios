@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.9.25c](https://img.shields.io/badge/version-v2026.9.25c-66f7ff)](VERSION.txt)
+[![Version v2026.9.25d](https://img.shields.io/badge/version-v2026.9.25d-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D orrery of the solar system.
@@ -40,6 +40,10 @@ Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch
 Open **Camera** for orbit and zoom buttons that work with a click, tap, or keyboard. With the scene focused, use the arrow keys to orbit, **I** to zoom in, and **O** to zoom out; hold a key to repeat. **Play** stays selected while time runs; activate it again to pause. **Space** toggles the same state, **+ / −** change time speed, and **Escape** resets the view. Camera commands preserve the same globe safety, zoom limits, and scale transitions as drag, wheel, and pinch. The fixed `?look=sky` diagnostic view has no camera navigation.
 
 Helios is a local page: no accounts, no telemetry, and no CDN.
+
+Deep-space views include a compact scene caption identifying the 2MRS survey,
+illustrative outer density, and schematic CMB/observable-universe view. Reported
+catalog display limits and display radii are context, not a linear on-screen ruler.
 
 Marins Voyage: [X @MarinsVoyage](https://x.com/MarinsVoyage) · [YouTube](https://www.youtube.com/@MarinsVoyage).
 
