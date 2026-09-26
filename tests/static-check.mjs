@@ -244,6 +244,26 @@ assert.match(auditWorkflow, /startsWith\(github\.head_ref, 'hotfix\/'\)/);
 assert.doesNotMatch(auditWorkflow, /issue-74|bootstrap/i);
 assert.equal((pagesWorkflow.match(/branches:\s*\[main\]/g) || []).length, 1);
 assert.doesNotMatch(pagesWorkflow, /branches:\s*\[[^\]]*develop/);
+assert.match(pagesWorkflow, /workflow_run:\s*\n\s*workflows: \[Audit\]\s*\n\s*types: \[completed\]/);
+assert.doesNotMatch(pagesWorkflow, /^  (?:push|pull_request|pull_request_target):/m);
+assert.match(pagesWorkflow, /audit_run_id:\s*\n\s*description:[^\n]+\n\s*required: true\s*\n\s*type: string/);
+assert.match(pagesWorkflow, /github\.ref == 'refs\/heads\/main'/);
+assert.match(pagesWorkflow, /github\.event\.workflow_run\.conclusion == 'success'/);
+assert.match(pagesWorkflow, /github\.event\.workflow_run\.head_sha == github\.sha/);
+assert.match(pagesWorkflow, /github\.event\.workflow_run\.head_repository\.full_name == github\.repository/);
+assert.match(pagesWorkflow, /github\.event\.workflow_run\.event == 'push'/);
+assert.match(pagesWorkflow, /github\.event\.workflow_run\.event == 'workflow_dispatch'/);
+assert.match(pagesWorkflow, /ref: \$\{\{ github\.sha \}\}/);
+assert.doesNotMatch(pagesWorkflow, /ref:.*(?:head_sha|head_branch|inputs\.)/);
+assert.match(pagesWorkflow, /actions: read/);
+assert.match(pagesWorkflow, /checks: read/);
+assert.match(pagesWorkflow, /queue: max/);
+assert.match(pagesWorkflow, /cancel-in-progress: false/);
+assert.equal((pagesWorkflow.match(/run: node scripts\/verify-pages-audit\.mjs/g) || []).length, 2);
+assert.ok(pagesWorkflow.indexOf("run: node scripts/verify-pages-audit.mjs") < pagesWorkflow.indexOf("run: npm run test:static"));
+assert.ok(pagesWorkflow.lastIndexOf("run: node scripts/verify-pages-audit.mjs") > pagesWorkflow.indexOf("actions/upload-pages-artifact@"));
+assert.ok(pagesWorkflow.lastIndexOf("run: node scripts/verify-pages-audit.mjs") < pagesWorkflow.indexOf("actions/deploy-pages@"));
+assert.ok(packageJson.scripts["test:static"].includes("tests/pages-audit.test.mjs"));
 assert.match(issueTemplate, /title:\s*"\[SEVERITY\]\[Area\] "/);
 assert.match(
   issueTemplate,
