@@ -17,6 +17,7 @@ import {
   wheelZoomMultiplier,
 } from "./config.js";
 import { advanceSimulationDays, elapsedSeconds, simulationDateLabel } from "./time.js";
+import { PARTICLE_HORIZON } from "./galaxy-catalog.js";
 import {
   BODIES,
   bodyOrientationBasis,
@@ -41,6 +42,7 @@ import {
   setConstellationMode,
   setSkyBandBrightness,
   setStarBrightness,
+  setStarPixelRatio,
   updateConstellationLabels,
   wantsEarthSkyLook,
 } from "./sky.js";
@@ -59,6 +61,8 @@ import {
   localGroupCameraAim,
   extraZoomCameraDistance,
   extraZoomCameraNear,
+  farthestUniverseDistance,
+  maximumCameraDistance,
   milkyWayBelowCameraAim,
   milkyWayCameraAim,
   milkyWayEdgeCameraAim,
@@ -76,12 +80,14 @@ import {
   solarDebrisOpacity,
   solarOpacity,
   universeCameraAim,
+  universeOpacity,
   virgoCameraAim,
   webCameraAim,
 } from "./galaxy.js";
 
 const DEG = Math.PI / 180;
 const pointerIds = new Map();
+const suppressedLabelClicks = new Set();
 const ndc = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
 const world = new THREE.Vector3();
@@ -105,6 +111,15 @@ const parentGlobeOptions = {
 };
 const parentGlobeTargetOptions = { moonRadius: 0, orbitNormal: moonOrbitNormal };
 const BODY_LABEL_CLEARANCE = 8;
+const bodyLabelOffsetPasses = [CONFIG.bodyLabelOffsetStepPx, CONFIG.bodyLabelFallbackOffsetStepPx].map((step) => {
+  const offsets = [];
+  for (let y = -CONFIG.bodyLabelMaxOffsetPx; y <= CONFIG.bodyLabelMaxOffsetPx; y += step) {
+    for (let x = -CONFIG.bodyLabelMaxOffsetPx; x <= CONFIG.bodyLabelMaxOffsetPx; x += step) {
+      if ((x || y) && Math.hypot(x, y) <= CONFIG.bodyLabelMaxOffsetPx) offsets.push({ x, y });
+    }
+  }
+  return offsets.sort((a, b) => a.x * a.x + a.y * a.y - b.x * b.x - b.y * b.y);
+});
 const moonFocusTransition = {
   active: false,
   flightDistance: null,
@@ -137,6 +152,8 @@ const state = {
 const ui = {};
 const nodes = new Map();
 const bodyLabelObstacles = [];
+const bodyLabelCandidates = [];
+const placedBodyLabels = [];
 let renderer;
 let scene;
 let camera;
@@ -309,6 +326,7 @@ function boot() {
   ui.status = $("status-live");
   ui.timeStatus = $("time-status");
   ui.sceneContext = $("scene-context");
+  ui.scaleContext = $("scale-context");
   ui.unsupported = $("unsupported");
   ui.version = $("version-label");
   ui.brand = $("brand-label");
@@ -342,7 +360,7 @@ function boot() {
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x02050c);
-  camera = new THREE.PerspectiveCamera(52, 1, 0.05, CONFIG.cameraFar);
+  camera = new THREE.PerspectiveCamera(CONFIG.cameraFovDegrees, 1, 0.05, CONFIG.cameraFar);
   celestial = createCelestialSphere(THREE);
   scene.add(celestial);
   asteroidBelt = createBeltField({
@@ -646,6 +664,11 @@ function createBodyNode(body) {
     label,
     labelWidth: 0,
     labelHeight: 0,
+    labelAnchorX: 0,
+    labelAnchorY: 0,
+    labelOffsetX: 0,
+    labelOffsetY: 0,
+    labelPlaced: false,
     radius,
     glow,
     spinPhase,
@@ -788,10 +811,12 @@ function bindInput() {
   ui.helperOrbit.addEventListener("click", () => toggleHelper("showOrbitHelper"));
   ui.helperAxis.addEventListener("click", () => toggleHelper("showAxisHelper"));
   ui.helperSpin.addEventListener("click", () => toggleHelper("showSpinHelper"));
-  ui.labels.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-body-id]");
-    if (button) selectBody(button.dataset.bodyId);
-  });
+  ui.labels.addEventListener("click", onBodyLabelClick);
+  ui.labels.addEventListener("pointerdown", onLabelPointerDown);
+  ui.labels.addEventListener("pointermove", onPointerMove);
+  ui.labels.addEventListener("pointerup", onPointerUp);
+  ui.labels.addEventListener("pointercancel", onPointerAbort);
+  ui.labels.addEventListener("lostpointercapture", onPointerAbort);
 
   const canvas = ui.viewport;
   canvas.addEventListener("pointerdown", onPointerDown);
@@ -806,20 +831,49 @@ function bindInput() {
   window.addEventListener("resize", resize);
 }
 
-function onPointerDown(event) {
-  canvasFocus();
+function onBodyLabelClick(event) {
+  const button = event.target.closest("[data-body-id]");
+  if (!button) return;
+  // Keep the native click for a single tap and keyboard activation. A pinch
+  // or drag can end over its starting label, but must never select it.
+  if (event.detail > 0 && suppressedLabelClicks.has(button)) {
+    event.preventDefault();
+    return;
+  }
+  selectBody(button.dataset.bodyId);
+}
+
+function onLabelPointerDown(event) {
+  const label = event.target.closest("[data-body-id]");
+  if (!label) return;
+  if (pointerIds.size === 0) suppressedLabelClicks.clear();
+  if (event.pointerType === "touch") onPointerDown(event, label);
+}
+
+function onPointerDown(event, label = null) {
+  if (pointerIds.size === 0) suppressedLabelClicks.clear();
+  if (!label) canvasFocus();
+  const surface = label || ui.viewport;
   try {
-    ui.viewport.setPointerCapture(event.pointerId);
+    surface.setPointerCapture(event.pointerId);
   } catch {
     // The pointer may already have been canceled before capture could stick.
   }
-  pointerIds.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  state.tap = { x: event.clientX, y: event.clientY, moved: 0 };
-  if (pointerIds.size === 2) {
+  pointerIds.set(event.pointerId, {
+    x: event.clientX, y: event.clientY, label, surface, pinched: false, moved: 0,
+  });
+  state.tap = pointerIds.size === 1 && !label
+    ? { x: event.clientX, y: event.clientY, moved: 0 } : null;
+  if (pointerIds.size >= 2) {
     state.pinching = true;
-    state.tap = null;
-    state.pinchStart = pointerGap();
-    state.pinchDistance = state.distance;
+    if (pointerIds.size === 2) {
+      state.pinchStart = pointerGap();
+      state.pinchDistance = state.distance;
+    }
+    for (const pointer of pointerIds.values()) {
+      pointer.pinched = true;
+      if (pointer.label) suppressedLabelClicks.add(pointer.label);
+    }
   }
 }
 
@@ -828,7 +882,12 @@ function onPointerMove(event) {
   if (!prior) return;
   const dx = event.clientX - prior.x;
   const dy = event.clientY - prior.y;
-  pointerIds.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  prior.x = event.clientX;
+  prior.y = event.clientY;
+  if (prior.label) {
+    prior.moved += Math.hypot(dx, dy);
+    if (prior.moved >= CONFIG.tapMovePx) suppressedLabelClicks.add(prior.label);
+  }
 
   if (state.pinching && pointerIds.size >= 2) {
     const gap = pointerGap();
@@ -837,6 +896,10 @@ function onPointerMove(event) {
     }
     return;
   }
+
+  // A lone label touch remains a native button gesture. After a pinch, the
+  // remaining finger may continue the scene gesture just like canvas input.
+  if (prior.label && !prior.pinched) return;
 
   if (state.tap) {
     state.tap.moved += Math.hypot(dx, dy);
@@ -858,6 +921,7 @@ function orbitBy(azimuth, elevation) {
 }
 
 function onPointerUp(event) {
+  if (!pointerIds.has(event.pointerId)) return;
   const tap = state.tap;
   pointerIds.delete(event.pointerId);
   if (pointerIds.size < 2) state.pinching = false;
@@ -871,12 +935,16 @@ function onPointerUp(event) {
 
 // Canceled gestures and lost capture must not run tap-to-pick.
 function onPointerAbort(event) {
+  const pointer = pointerIds.get(event.pointerId);
+  // Normal pointerup already removed the pointer before lost capture fires.
+  if (!pointer) return;
+  if (pointer.label) suppressedLabelClicks.add(pointer.label);
   pointerIds.delete(event.pointerId);
   if (pointerIds.size < 2) state.pinching = false;
   if (pointerIds.size === 0) state.tap = null;
   try {
-    if (ui.viewport.hasPointerCapture(event.pointerId)) {
-      ui.viewport.releasePointerCapture(event.pointerId);
+    if (pointer.surface.hasPointerCapture(event.pointerId)) {
+      pointer.surface.releasePointerCapture(event.pointerId);
     }
   } catch {
     // Capture was already released with the canceled pointer.
@@ -918,7 +986,10 @@ function onKey(event) {
 }
 
 function onTimeKey(event) {
-  if (event.repeat || isShortcutTargetInteractive(event.target)) return;
+  if (
+    event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.isComposing
+    || isShortcutTargetInteractive(event.target)
+  ) return;
   if (event.code === "Space") {
     event.preventDefault();
     togglePlay();
@@ -970,7 +1041,7 @@ function moonZoomNeedsTransition(node, distance) {
 
 function zoomTo(distance) {
   const focusedRadius = nodes.get(state.focusedId)?.radius ?? 0;
-  const next = clamp(distance, minimumFocusDistance(focusedRadius), CONFIG.maxDistance);
+  const next = clamp(distance, minimumFocusDistance(focusedRadius), maximumCameraDistance(camera.aspect));
   const focused = nodes.get(state.focusedId);
   if (next > CONFIG.solarMaxDistance && state.distance <= CONFIG.solarMaxDistance) {
     resetParentGlobeContinuity(parentGlobeContinuity);
@@ -1033,7 +1104,7 @@ function selectBody(id) {
   const node = nodes.get(id);
   if (!node) return;
   const ideal = Math.max(node.radius * 7.5, 5.5);
-  const nextDistance = clamp(ideal, minimumFocusDistance(node.radius), CONFIG.maxDistance);
+  const nextDistance = clamp(ideal, minimumFocusDistance(node.radius), maximumCameraDistance(camera.aspect));
   if (state.focusedId !== id) {
     if (node.body.kind === "moon" && node.body.parent) {
       beginMoonFocusTransition(nextDistance, 0);
@@ -1061,6 +1132,10 @@ function selectBody(id) {
   }
   state.focusedId = id;
   state.selectedId = id;
+  // The click has completed; the newly focused world can regain its natural
+  // label seat during the camera flight instead of retaining a crowded offset.
+  node.labelOffsetX = 0;
+  node.labelOffsetY = 0;
   state.distance = nextDistance;
   paintConstellations();
   bindSelectionHelpers();
@@ -1085,6 +1160,10 @@ function resetView() {
   state.azimuth = CONFIG.cameraAzimuth;
   state.elevation = CONFIG.cameraElevation;
   state.distance = CONFIG.cameraDistance;
+  for (const node of nodes.values()) {
+    node.labelOffsetX = 0;
+    node.labelOffsetY = 0;
+  }
   if (galaxyPreparing) setLoadingVisible(false);
   paintCard();
   paintConstellations();
@@ -1278,6 +1357,19 @@ function paintSceneSemantics() {
   if (ui.sceneContext.textContent !== description) {
     ui.sceneContext.textContent = description;
   }
+  let caption = "";
+  if (id === "web") {
+    const title = universeOpacity(state.distance) > 0.04
+      ? "Illustrative cosmic density" : "2MRS galaxy distribution";
+    caption = `${title} · 2MRS displayed to ${CONFIG.webRadiusMpc} Mpc. `
+      + "Approximate redshift distances; density beyond this cutoff is illustrative.";
+  } else if (id === "cmb" || id === "universe") {
+    const title = id === "cmb" ? "Cosmic microwave background" : "Observable universe";
+    caption = `${title} · ~${PARTICLE_HORIZON.comovingRadiusGly} billion light-year display radius. `
+      + "Illustrative CMB shell; schematic outside view.";
+  }
+  if (ui.scaleContext.textContent !== caption) ui.scaleContext.textContent = caption;
+  if (ui.scaleContext.hidden !== !caption) ui.scaleContext.hidden = !caption;
   if (loadingVisible() || (galaxyPreparing && wantsDeepLayer())) return;
   if (lastHierarchyId !== null && id !== lastHierarchyId && announcement) {
     say(announcement);
@@ -1288,7 +1380,13 @@ function paintSceneSemantics() {
 function resize() {
   const width = window.innerWidth;
   const height = window.innerHeight;
+  const previousMaximum = maximumCameraDistance(camera.aspect);
   camera.aspect = width / Math.max(1, height);
+  const nextMaximum = maximumCameraDistance(camera.aspect);
+  // Keep an already fully zoomed-out sphere framed through device rotation.
+  state.distance = state.distance >= previousMaximum
+    ? nextMaximum
+    : Math.min(state.distance, nextMaximum);
   camera.updateProjectionMatrix();
   const pixelRatio = cappedPixelRatio();
   // Browser zoom and mixed-DPI moves change devicePixelRatio after boot.
@@ -1296,6 +1394,7 @@ function resize() {
   if (renderer.getPixelRatio() !== pixelRatio) {
     renderer.setPixelRatio(pixelRatio);
   }
+  setStarPixelRatio(celestial, renderer.getPixelRatio());
   renderer.setSize(width, height, false);
   paintDockClearance();
   bodyLabelLayoutDirty = true;
@@ -1652,7 +1751,7 @@ function placeCamera(blend) {
   syncViewportBusy();
   camera.lookAt(focusPoint);
   camera.near = near;
-  camera.far = CONFIG.cameraFar;
+  camera.far = Math.max(CONFIG.cameraFar, radius + farthestUniverseDistance() * 2);
   camera.updateProjectionMatrix();
   attachSkyToCamera(celestial, camera);
   if (galaxy) attachFarGalaxySky(galaxy, camera);
@@ -1796,6 +1895,55 @@ function bodyLabelFits(anchorX, anchorY, node, viewportWidth, viewportHeight) {
   return true;
 }
 
+function placeBodyLabel(node, offsetX, offsetY, width, height) {
+  const x = node.labelAnchorX + offsetX;
+  const y = node.labelAnchorY + offsetY;
+  if (!bodyLabelFits(x, y, node, width, height)) return false;
+  const left = x - node.labelWidth / 2;
+  const top = y - node.labelHeight * 1.2;
+  const gap = CONFIG.bodyLabelGapPx;
+  for (const placed of placedBodyLabels) {
+    const otherLeft = placed.labelAnchorX + placed.labelOffsetX - placed.labelWidth / 2;
+    const otherTop = placed.labelAnchorY + placed.labelOffsetY - placed.labelHeight * 1.2;
+    if (
+      left < otherLeft + placed.labelWidth + gap
+      && left + node.labelWidth + gap > otherLeft
+      && top < otherTop + placed.labelHeight + gap
+      && top + node.labelHeight + gap > otherTop
+    ) return false;
+  }
+  node.labelOffsetX = offsetX;
+  node.labelOffsetY = offsetY;
+  node.labelPlaced = true;
+  placedBodyLabels.push(node);
+  return true;
+}
+
+function placeBodyLabels(width, height, activeLabel) {
+  placedBodyLabels.length = 0;
+  // Reserve natural seats before moving conflicts, so a displaced label cannot
+  // move an otherwise uncrowded label. Keyboard/scene focus owns the first seat.
+  for (const node of bodyLabelCandidates) {
+    // Pointerdown focuses a button before its click. Keep that target in place
+    // while it owns focus so it cannot jump out from under the releasing pointer.
+    if (node.label === activeLabel
+      && placeBodyLabel(node, node.labelOffsetX, node.labelOffsetY, width, height)) continue;
+    placeBodyLabel(node, 0, 0, width, height);
+  }
+  // Finish all coarse placements before filling finer gaps. The fallback can
+  // restore a target without changing any label that already has a seat.
+  for (const offsets of bodyLabelOffsetPasses) {
+    for (const node of bodyLabelCandidates) {
+      if (node.labelPlaced) continue;
+      // Ordinary placements depend only on this frame's geometry. Returning to
+      // the same view must not retain offsets acquired along a different route.
+      for (const offset of offsets) {
+        if (placeBodyLabel(node, offset.x, offset.y, width, height)) break;
+      }
+    }
+  }
+}
+
 function updateLabels() {
   camera.updateMatrixWorld(true);
   if (celestial) celestial.updateMatrixWorld(true);
@@ -1812,7 +1960,9 @@ function updateLabels() {
   const height = window.innerHeight;
   const focused = findBody(state.focusedId);
   if (bodyLabelLayoutDirty) paintBodyLabelObstacles();
+  bodyLabelCandidates.length = 0;
   for (const node of nodes.values()) {
+    node.labelPlaced = false;
     node.mesh.getWorldPosition(world);
     projected.copy(world).project(camera);
     const onScreen = projected.z > -1 && projected.z < 1
@@ -1820,15 +1970,27 @@ function updateLabels() {
       && Math.abs(projected.y) < 1.12;
     const anchorX = (projected.x * 0.5 + 0.5) * width;
     const anchorY = (-projected.y * 0.5 + 0.5) * height;
-    const show = !hidePlanets
+    node.labelAnchorX = anchorX;
+    node.labelAnchorY = anchorY;
+    const eligible = !hidePlanets
       && onScreen
       && canShowLabel(node.body, focused)
       && bodyLabelFits(anchorX, anchorY, node, width, height);
+    if (eligible) bodyLabelCandidates.push(node);
+  }
+  const priority = (node) => document.activeElement === node.label ? 0
+    : node.body.id === state.focusedId ? 1 : 2;
+  bodyLabelCandidates.sort((a, b) => priority(a) - priority(b));
+  placeBodyLabels(width, height, document.activeElement);
+  for (const node of nodes.values()) {
+    const show = node.labelPlaced;
     if (!show && document.activeElement === node.label) canvasFocus();
     node.label.hidden = !show;
     if (!show) continue;
     node.label.classList.toggle("is-active", node.body.id === state.selectedId);
-    node.label.style.transform = `translate(-50%, -120%) translate(${anchorX}px, ${anchorY}px)`;
+    const offset = node.labelOffsetX || node.labelOffsetY
+      ? `translateX(${node.labelOffsetX}px) translateY(${node.labelOffsetY}px) ` : "";
+    node.label.style.transform = `translate(-50%, -120%) ${offset}translate(${node.labelAnchorX}px, ${node.labelAnchorY}px)`;
   }
 }
 

@@ -124,6 +124,7 @@ body {
   left: 0;
   top: 0;
   pointer-events: auto;
+  touch-action: none;
   display: flex;
   min-width: 44px;
   min-height: 44px;
@@ -216,6 +217,40 @@ h1 {
 
 h2 {
   font-size: 22px;
+}
+
+.scale-context {
+  position: absolute;
+  z-index: 3;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  width: min(400px, calc(100vw - 184px));
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--chrome-backing);
+  color: var(--ink);
+  font: 13px/1.45 ui-sans-serif, system-ui, sans-serif;
+  pointer-events: none;
+}
+
+.scale-context[hidden] {
+  display: none;
+}
+
+@media (max-width: 720px) and (orientation: portrait) {
+  .scale-context {
+    top: calc(max(12px, env(safe-area-inset-top)) + 52px);
+    left: max(12px, env(safe-area-inset-left));
+    width: auto;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .scale-context {
+    width: min(400px, calc(100vw - 248px));
+  }
 }
 
 .card {
