@@ -86,11 +86,14 @@ controls; accessibility; performance; responsive behavior; dependencies;
 provenance; and all unrelated runtime behavior. Apply the required issue-PR
 version increment above without bundling unrelated behavior.
 
-Issue #44 exclusively owns Saturn's back-facing ring-shading correction. Do not
-change Saturn ring material, shading, texture, UVs, geometry, lighting, or
-related rendering unless #44 is the selected current issue and its live
-acceptance criteria have been read. Testing Saturn in another issue does not
-activate #44; any unrelated ring delta is a regression.
+Saturn's ring shading is frozen approved behavior. Preserve the owner-approved
+back-facing transmitted-light term owned by `CONFIG.ringTransmission` (the
+display-only share that keeps the unlit face's bands, divisions, and gaps
+readable). Do not change Saturn ring material, shading, texture, UVs,
+geometry, lighting, or related rendering unless the selected issue explicitly
+requires a bounded change to that behavior. Any unrelated ring delta is a
+regression. Issue #44 completed this correction on 2026-09-21 and is historical
+context only, not an active owner gate.
 
 ## Verification
 
