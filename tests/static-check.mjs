@@ -107,7 +107,14 @@ for (const severity of ["CRITICAL", "HIGH", "MEDIUM", "LOW"]) {
   assert.match(agents, new RegExp(`\\b${severity}\\b`));
 }
 assert.match(agents, /Node 24 baseline/);
-assert.match(agents, /Issue #44 exclusively owns Saturn's back-facing ring-shading correction/);
+assert.match(agents, /Saturn's ring shading is frozen approved behavior/);
+assert.match(agents, /back-facing transmitted-light term owned by `CONFIG\.ringTransmission`/);
+assert.match(
+  agents,
+  /Issue #44 completed this correction on 2026-09-21 and is historical\s+context only, not an active owner gate/,
+);
+assert.doesNotMatch(agents, /Issue #44 exclusively owns/);
+assert.doesNotMatch(agents, /unless #44 is the selected current issue/);
 assert.match(readme, /\[Repository Standard\]\(REPOSITORY_STANDARD\.md\)/);
 assert.match(provenance, /`AGENTS\.md` is the sole owner of Helios's Repository Standard status/);
 assert.match(provenance, /provenance blockers contributing to its `adopting` state/);
