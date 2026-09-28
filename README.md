@@ -6,20 +6,34 @@
 An interactive 3D solar system and universe explorer.
 
 ## [▶ Play Helios in your browser](https://xenovoyage.github.io/Helios/)
+
 [![Solar-system overview: the Sun, planets, orbital paths, and asteroid belt.](docs/assets/helios-overview.webp)](https://xenovoyage.github.io/Helios/)
-![Saturn from the lit side of the rings, with Titan beside them.](docs/assets/helios-titan-rings.webp)
-![Constellations in All mode, with Hydra, Sextans, and Canis Major labeled.](docs/assets/helios-constellations.webp)
-![Far solar overview: Hipparcos and the Gaia band at the solar cap.](docs/assets/helios-solar-far.webp)
-![Inside the stylized Orion-arm trail, with the Solar System marked.](docs/assets/helios-milky-way.webp)
-![Pulling back from the Milky Way arm into the distant-density sky.](docs/assets/helios-tail-sky.webp)
-![The Milky Way spiral against the distant-density sky.](docs/assets/helios-growing.webp)
-![Full Milky Way disk and catalog neighbors on that sky.](docs/assets/helios-disk.webp)
-![Andromeda, Triangulum, and the Magellanic Clouds beside the disk.](docs/assets/helios-neighborhood.webp)
-![Local Group: one label replaces the individual galaxy names.](docs/assets/helios-local-group.webp)
-![The Local Group, Virgo Cluster, and Local (Virgo) Supercluster.](docs/assets/helios-virgo.webp)
-![Laniakea, Virgo, and measured group anchors before the 2MRS view.](docs/assets/helios-preweb.webp)
-![Flux-limited 2MRS galaxies, shown as points without invented connections.](docs/assets/helios-web.webp)
-![Outside view of the warm illustrative CMB shell.](docs/assets/helios-universe.webp)
+
+![Saturn focused from the lit side of the ring plane, with Titan beside the rings.](docs/assets/helios-titan-rings.webp)
+
+![Constellations in All mode at overview, with Hydra, Sextans, and Canis Major labeled.](docs/assets/helios-constellations.webp)
+
+![Far solar overview: Hipparcos and the Gaia band fill the frame as the camera reaches the solar cap.](docs/assets/helios-solar-far.webp)
+
+![Inside the Milky Way's stylized Orion-arm trail, with the Solar System marked.](docs/assets/helios-milky-way.webp)
+
+![Pulling back from the Milky Way arm into the illustrative distant-density sky.](docs/assets/helios-tail-sky.webp)
+
+![The Milky Way's spiral disk comes into view against the illustrative distant-density sky.](docs/assets/helios-growing.webp)
+
+![Full Milky Way disk with catalog neighbors against the spherical distant-density sky.](docs/assets/helios-disk.webp)
+
+![Nearby galaxies: Andromeda, Triangulum, and the Magellanic Clouds beside the disk.](docs/assets/helios-neighborhood.webp)
+
+![Local Group after a further zoom: its aggregate label replaces the now-unreadable individual galaxy labels.](docs/assets/helios-local-group.webp)
+
+![The Local Group, Virgo Cluster, and Local (Virgo) Supercluster at a wider scale.](docs/assets/helios-virgo.webp)
+
+![Laniakea Supercluster, Virgo Cluster, and measured group anchors before the 2MRS view.](docs/assets/helios-preweb.webp)
+
+![The flux-limited 2MRS galaxy distribution in redshift space, shown as points without invented connections.](docs/assets/helios-web.webp)
+
+![Schematic outside-camera view of the warm illustrative CMB shell at the particle-horizon display radius.](docs/assets/helios-universe.webp)
 
 Screenshots show v2026.9.26; [capture sources and image credits](PROVENANCE.md#readme-screenshot-sources).
 
