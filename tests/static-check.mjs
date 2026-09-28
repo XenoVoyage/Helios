@@ -176,9 +176,10 @@ assert.match(readme, /v3\.1–v3\.4 \(CC BY-SA 2\.5\)/);
   }
 }
 assert.match(readme, /Venus uses that publisher's atmosphere map/);
-assert.match(readme, /Ceres's stored heliocentric state is one Horizons/);
-assert.match(readme, /Neptune's six orbital elements are one JPL Approximate Positions Table 1/);
+assert.match(agents, /Ceres's stored heliocentric state is one Horizons/);
+assert.match(agents, /Neptune's six orbital elements are one JPL Approximate Positions Table 1/);
 assert.doesNotMatch(readme, /not JPL Horizons or a perturbation ephemeris/);
+assert.doesNotMatch(agents, /not JPL Horizons or a perturbation ephemeris/);
 assert.equal(
   await sha256("js/sky-catalog.js"),
   "e504b4c96a10eca759157959b6b0b5ca2cbe33781ff980601ed3274e9b08da34",
