@@ -5,37 +5,21 @@
 
 An interactive 3D solar system and universe explorer.
 
-## [▶ Play Helios in your browser](https://xenovoyage.github.io/Helios/)
+**[Play Helios in your browser](https://xenovoyage.github.io/Helios/)** · [At a glance](#at-a-glance) · [Run locally](#run-locally)
 
-[![Solar-system overview: the Sun, planets, orbital paths, and asteroid belt.](docs/assets/helios-overview.webp)](https://xenovoyage.github.io/Helios/)
+## A look inside
 
-![Saturn focused from the lit side of the ring plane, with Titan beside the rings.](docs/assets/helios-titan-rings.webp)
+| | |
+| :---: | :---: |
+| <img src="docs/assets/helios-overview.webp" alt="Solar-system overview: the Sun, planets, orbital paths, and asteroid belt." width="400"><br>Solar-system overview: the Sun, planets, orbital paths, and asteroid belt. | <img src="docs/assets/helios-titan-rings.webp" alt="Saturn focused from the lit side of the ring plane, with Titan beside the rings." width="400"><br>Saturn focused from the lit side of the ring plane, with Titan beside the rings. |
+| <img src="docs/assets/helios-constellations.webp" alt="Constellations in All mode at overview, with Hydra, Sextans, and Canis Major labeled." width="400"><br>Constellations in All mode at overview, with Hydra, Sextans, and Canis Major labeled. | <img src="docs/assets/helios-solar-far.webp" alt="Far solar overview: Hipparcos and the Gaia band fill the frame as the camera reaches the solar cap." width="400"><br>Far solar overview: Hipparcos and the Gaia band fill the frame as the camera reaches the solar cap. |
+| <img src="docs/assets/helios-milky-way.webp" alt="Inside the Milky Way's stylized Orion-arm trail, with the Solar System marked." width="400"><br>Inside the Milky Way's stylized Orion-arm trail, with the Solar System marked. | <img src="docs/assets/helios-tail-sky.webp" alt="Pulling back from the Milky Way arm into the illustrative distant-density sky." width="400"><br>Pulling back from the Milky Way arm into the illustrative distant-density sky. |
+| <img src="docs/assets/helios-growing.webp" alt="The Milky Way's spiral disk comes into view against the illustrative distant-density sky." width="400"><br>The Milky Way's spiral disk comes into view against the illustrative distant-density sky. | <img src="docs/assets/helios-disk.webp" alt="Full Milky Way disk with catalog neighbors against the spherical distant-density sky." width="400"><br>Full Milky Way disk with catalog neighbors against the spherical distant-density sky. |
+| <img src="docs/assets/helios-neighborhood.webp" alt="Nearby galaxies: Andromeda, Triangulum, and the Magellanic Clouds beside the disk." width="400"><br>Nearby galaxies: Andromeda, Triangulum, and the Magellanic Clouds beside the disk. | <img src="docs/assets/helios-local-group.webp" alt="Local Group after a further zoom: its aggregate label replaces the now-unreadable individual galaxy labels." width="400"><br>Local Group after a further zoom: its aggregate label replaces the now-unreadable individual galaxy labels. |
+| <img src="docs/assets/helios-virgo.webp" alt="The Local Group, Virgo Cluster, and Local (Virgo) Supercluster at a wider scale." width="400"><br>The Local Group, Virgo Cluster, and Local (Virgo) Supercluster at a wider scale. | <img src="docs/assets/helios-preweb.webp" alt="Laniakea Supercluster, Virgo Cluster, and measured group anchors before the 2MRS view." width="400"><br>Laniakea Supercluster, Virgo Cluster, and measured group anchors before the 2MRS view. |
+| <img src="docs/assets/helios-web.webp" alt="The flux-limited 2MRS galaxy distribution in redshift space, shown as points without invented connections." width="400"><br>The flux-limited 2MRS galaxy distribution in redshift space, shown as points without invented connections. | <img src="docs/assets/helios-universe.webp" alt="Schematic outside-camera view of the warm illustrative CMB shell at the particle-horizon display radius." width="400"><br>Schematic outside-camera view of the warm illustrative CMB shell at the particle-horizon display radius. |
 
-![Constellations in All mode at overview, with Hydra, Sextans, and Canis Major labeled.](docs/assets/helios-constellations.webp)
-
-![Far solar overview: Hipparcos and the Gaia band fill the frame as the camera reaches the solar cap.](docs/assets/helios-solar-far.webp)
-
-![Inside the Milky Way's stylized Orion-arm trail, with the Solar System marked.](docs/assets/helios-milky-way.webp)
-
-![Pulling back from the Milky Way arm into the illustrative distant-density sky.](docs/assets/helios-tail-sky.webp)
-
-![The Milky Way's spiral disk comes into view against the illustrative distant-density sky.](docs/assets/helios-growing.webp)
-
-![Full Milky Way disk with catalog neighbors against the spherical distant-density sky.](docs/assets/helios-disk.webp)
-
-![Nearby galaxies: Andromeda, Triangulum, and the Magellanic Clouds beside the disk.](docs/assets/helios-neighborhood.webp)
-
-![Local Group after a further zoom: its aggregate label replaces the now-unreadable individual galaxy labels.](docs/assets/helios-local-group.webp)
-
-![The Local Group, Virgo Cluster, and Local (Virgo) Supercluster at a wider scale.](docs/assets/helios-virgo.webp)
-
-![Laniakea Supercluster, Virgo Cluster, and measured group anchors before the 2MRS view.](docs/assets/helios-preweb.webp)
-
-![The flux-limited 2MRS galaxy distribution in redshift space, shown as points without invented connections.](docs/assets/helios-web.webp)
-
-![Schematic outside-camera view of the warm illustrative CMB shell at the particle-horizon display radius.](docs/assets/helios-universe.webp)
-
-Screenshots show v2026.9.26; [capture sources and image credits](PROVENANCE.md#readme-screenshot-sources).
+*Screenshots show v2026.9.26. [Capture sources and image credits](PROVENANCE.md#readme-screenshot-sources).*
 
 Tap or click a world, including the Sun, to focus it. Drag to orbit, pinch or scroll to zoom, and use the bottom bar to play, pause, or change the speed of time. Close the body card with the X or by tapping empty space. Zoom out past the planets and the view continues through the Milky Way, nearby galaxies, and a schematic observable universe. Distances and sizes are compressed so the scene stays readable; what is measured, inherited, or only illustrated is recorded in [AGENTS.md](AGENTS.md) and [PROVENANCE.md](PROVENANCE.md).
 
