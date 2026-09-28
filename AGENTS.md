@@ -43,7 +43,7 @@ alone.
 | Tracked image membership and SHA-256 | `tests/fixtures/asset-digest-manifest.json` |
 | Reusable contributor policy | `REPOSITORY_STANDARD.md` |
 | Helios-specific contributor contract | `AGENTS.md` |
-| Human introduction | `README.md` |
+| Human introduction | `README.md` (short human intro; depth stays in this file and `PROVENANCE.md`) |
 
 `js/2mrs-data.js` is a generated, hash-verified payload. Read its metadata
 header—not the base64 body—unless the task specifically owns catalog
@@ -75,6 +75,96 @@ Reconcile a concurrent bump before integration and rerun the candidate gate.
   listed in `js/bodies.js`. Do not add extra moons.
 - Do not add accounts, telemetry, runtime CDNs, a physics engine, or speculative
   application architecture.
+
+## Camera, time, and visual scale
+
+`README.md` is the short human introduction. This section keeps the play,
+camera, and scale contract. Survey limits, orbital source identity, and asset
+terms stay in [PROVENANCE.md](PROVENANCE.md). Runtime knobs stay in
+`js/config.js`.
+
+Tap or click a world, including the Sun, to focus it. Drag to orbit. Pinch-out
+zooms in; pinch-in zooms out. Play, pause, and the speed of time live on the
+bottom bar. Close the body card with the X or by tapping empty space. Open
+**Camera** for orbit and zoom buttons that work with a click, tap, or keyboard.
+With the scene focused, the arrow keys orbit, **I** zooms in, and **O** zooms
+out; hold a key to repeat. **Play** stays selected while time runs; activate it
+again to pause. **Space** toggles the same state, **+ / −** change time speed,
+and **Escape** resets the view. Camera commands preserve the same globe safety,
+zoom limits, and scale transitions as drag, wheel, and pinch. The fixed
+`?look=sky` diagnostic view has no camera navigation.
+
+Zoom out past the solar overview and the orrery shrinks to a Sun among the
+stars. The Hipparcos sky, IAU figures, and Gaia band stay at constant brightness
+through the solar cap, so the first extra-zoom frame is already inside the
+Milky Way tail. The moment the camera leaves that tail, that solar sky and the
+Constellations control go off. The control offers Off, Major (the ten familiar
+default names), and All; All packs eligible names inside the viewport with a
+responsive collision budget. Extra-zoom sky from the tail through Virgo is a
+camera-centered spherical point-density illustration with unresolved bright
+concentrations and dark gaps. It has no cube faces, named generated objects, or
+claimed survey coordinates. The full disk, neighborhood, Local Group, and Virgo
+are catalog neighbors against that field, not a scatter of invented nearby
+galaxies. After Virgo, seven measured group anchors lead into 42,927 public
+2MRS galaxy directions with approximate redshift distances; there are no
+invented web connections. Beyond the survey's 300 Mpc display cap, a small
+first-party density illustration provides continuity to the Planck-style CMB
+shell. That shell is deliberately drawn at the particle-horizon display radius.
+Leaving it is only an outside-camera/scale metaphor, not a physically possible
+observer. We sit in the Local Group, inside Laniakea; Virgo is the nearest
+large cluster, not our cluster in the same sense. Deep-space views include a
+compact scene caption identifying the 2MRS survey, illustrative outer density,
+and schematic CMB/observable-universe view. Reported catalog display limits and
+display radii are context, not a linear on-screen ruler.
+
+Time is independent of visual scale. Minimum: 1 simulated second per real
+second. Default: 1 simulated hour per real second. Maximum: 400 simulated days
+per real second. Background time catches up on return; JavaScript's last valid
+date is the hard stop (`js/time.js`). The asteroid field sits between Mars and
+Jupiter. The nominal Kuiper field runs about 30–50 AU. Both are sparse points,
+not rock catalogs. Pluto's eccentric visual path crosses the Kuiper field's
+drawn edges.
+
+True 1:1 distances make every planet vanish beside the Sun. Helios combines
+NASA / JPL reference data with inherited catalog approximations, then
+compresses distances more than sizes so the system can be read at a glance.
+The one planet-spacing knob is `CONFIG.visualScale` in `js/config.js`; it
+multiplies a compressed AU curve (`orbitScale * AU^orbitPower`). Body sizes use
+the same kind of curve (`sizeScale * (radius/Earth)^sizePower`). Moons share
+that size curve. Moon distances stay a compressed real-radii map: outside their
+parent, just outside any rings, and outside a readable gap from the next inner
+sibling. Calendar positions use frozen two-body Kepler ellipses. They are not a
+live Horizons ephemeris and they do not model perturbations.
+Ceres's stored heliocentric state is one Horizons J2000 geometric snapshot; Neptune's six orbital elements are one JPL Approximate Positions Table 1 J2000 snapshot at T=0; other heliocentric rows retain inherited Keplerian approximations. Their
+sidereal periods match dated NASA NSSDCA fact-sheet printings recorded in
+[the orbital ledger](PROVENANCE.md#orbital-row-ledger); the remaining six
+orbital fields still have explicit source gaps there. The Sun, planets, Ceres,
+Pluto, the Moon, and Triton use fixed J2000 PCK poles. Earth, Moon, and Triton
+also use verified prime-meridian phases; inherited maps without a retained
+longitude-registration record keep their closest previous display roll rather
+than claim an unverified scientific longitude. Except for the Moon and Triton,
+synchronous moon rates only prevent secular longitudinal drift: their simple
+axes and texture phases are not registered near-side models. The lunar model
+shows bounded geometric libration but not the complete time-varying PCK model.
+Lighting supplies a terminator and readable night-side fill, not cast shadows
+or eclipses. The measured statements behind this summary are in
+[PROVENANCE.md](PROVENANCE.md).
+
+The Milky Way disk is a deterministic, stylized four-arm illustration. Its
+catalog distances and the Sun's Orion Arm label are sourced, but the visible
+arm particles are not a survey reconstruction. The 2MRS view is K-band
+flux-limited, omits the Galactic Zone of Avoidance, and maps barycentric radial
+velocity to `D=cz/H0` rather than correcting peculiar velocities. It must not
+be read as a complete matter-density reconstruction. Cosmological point sizes
+and additive brightness, the outer web's false-color palette, and the
+strengthened CMB texture opacity are deliberately stylized for readability;
+they are not photometrically calibrated measurements or literal structure
+boundaries. The label hierarchy fades unreadable galaxy names into Local Group
+context, keeps the Local Group and Virgo Cluster separate, and then rolls up
+through the historical Local (Virgo) Supercluster and Laniakea Supercluster
+before clearing for the web and CMB views. It describes spatial scale during
+zoom, not object renaming, physical-size measurement, or cosmological time
+evolution.
 
 ## Frozen approved behavior
 
