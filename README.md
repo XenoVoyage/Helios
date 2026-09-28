@@ -1,69 +1,39 @@
 # Helios
 
-[![Version v2026.9.26](https://img.shields.io/badge/version-v2026.9.26-66f7ff)](VERSION.txt)
+[![Version v2026.9.28](https://img.shields.io/badge/version-v2026.9.28-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D solar system and universe explorer.
 
-## [▶ Play Helios in your browser](https://xenovoyage.github.io/Helios/)
+**[Play Helios in your browser](https://xenovoyage.github.io/Helios/)** · [At a glance](#at-a-glance) · [Run locally](#run-locally)
 
-[![Solar-system overview: the Sun, planets, orbital paths, and asteroid belt.](docs/assets/helios-overview.webp)](https://xenovoyage.github.io/Helios/)
+## A look inside
 
-![Saturn focused from the lit side of the ring plane, with Titan beside the rings.](docs/assets/helios-titan-rings.webp)
+| | |
+| :---: | :---: |
+| <img src="docs/assets/helios-overview.webp" alt="Solar-system overview: the Sun, planets, orbital paths, and asteroid belt." width="400"><br>Solar-system overview: the Sun, planets, orbital paths, and asteroid belt. | <img src="docs/assets/helios-titan-rings.webp" alt="Saturn focused from the lit side of the ring plane, with Titan beside the rings." width="400"><br>Saturn focused from the lit side of the ring plane, with Titan beside the rings. |
+| <img src="docs/assets/helios-constellations.webp" alt="Constellations in All mode at overview, with Hydra, Sextans, and Canis Major labeled." width="400"><br>Constellations in All mode at overview, with Hydra, Sextans, and Canis Major labeled. | <img src="docs/assets/helios-solar-far.webp" alt="Far solar overview: Hipparcos and the Gaia band fill the frame as the camera reaches the solar cap." width="400"><br>Far solar overview: Hipparcos and the Gaia band fill the frame as the camera reaches the solar cap. |
+| <img src="docs/assets/helios-milky-way.webp" alt="Inside the Milky Way's stylized Orion-arm trail, with the Solar System marked." width="400"><br>Inside the Milky Way's stylized Orion-arm trail, with the Solar System marked. | <img src="docs/assets/helios-tail-sky.webp" alt="Pulling back from the Milky Way arm into the illustrative distant-density sky." width="400"><br>Pulling back from the Milky Way arm into the illustrative distant-density sky. |
+| <img src="docs/assets/helios-growing.webp" alt="The Milky Way's spiral disk comes into view against the illustrative distant-density sky." width="400"><br>The Milky Way's spiral disk comes into view against the illustrative distant-density sky. | <img src="docs/assets/helios-disk.webp" alt="Full Milky Way disk with catalog neighbors against the spherical distant-density sky." width="400"><br>Full Milky Way disk with catalog neighbors against the spherical distant-density sky. |
+| <img src="docs/assets/helios-neighborhood.webp" alt="Nearby galaxies: Andromeda, Triangulum, and the Magellanic Clouds beside the disk." width="400"><br>Nearby galaxies: Andromeda, Triangulum, and the Magellanic Clouds beside the disk. | <img src="docs/assets/helios-local-group.webp" alt="Local Group after a further zoom: its aggregate label replaces the now-unreadable individual galaxy labels." width="400"><br>Local Group after a further zoom: its aggregate label replaces the now-unreadable individual galaxy labels. |
+| <img src="docs/assets/helios-virgo.webp" alt="The Local Group, Virgo Cluster, and Local (Virgo) Supercluster at a wider scale." width="400"><br>The Local Group, Virgo Cluster, and Local (Virgo) Supercluster at a wider scale. | <img src="docs/assets/helios-preweb.webp" alt="Laniakea Supercluster, Virgo Cluster, and measured group anchors before the 2MRS view." width="400"><br>Laniakea Supercluster, Virgo Cluster, and measured group anchors before the 2MRS view. |
+| <img src="docs/assets/helios-web.webp" alt="The flux-limited 2MRS galaxy distribution in redshift space, shown as points without invented connections." width="400"><br>The flux-limited 2MRS galaxy distribution in redshift space, shown as points without invented connections. | <img src="docs/assets/helios-universe.webp" alt="Schematic outside-camera view of the warm illustrative CMB shell at the particle-horizon display radius." width="400"><br>Schematic outside-camera view of the warm illustrative CMB shell at the particle-horizon display radius. |
 
-![Constellations in All mode at overview, with Hydra, Sextans, and Canis Major labeled.](docs/assets/helios-constellations.webp)
+*Screenshots show v2026.9.26. [Capture sources and image credits](PROVENANCE.md#readme-screenshot-sources).*
 
-![Far solar overview: Hipparcos and the Gaia band fill the frame as the camera reaches the solar cap.](docs/assets/helios-solar-far.webp)
+Tap or click a world, including the Sun, to focus it. Drag to orbit, pinch or scroll to zoom, and use the bottom bar to play, pause, or change the speed of time. Close the body card with the X or by tapping empty space. Zoom out past the planets and the view continues through the Milky Way, nearby galaxies, and a schematic observable universe. Distances and sizes are compressed so the scene stays readable; what is measured, inherited, or only illustrated is recorded in [AGENTS.md](AGENTS.md) and [PROVENANCE.md](PROVENANCE.md).
 
-![Inside the Milky Way's stylized Orion-arm trail, with the Solar System marked.](docs/assets/helios-milky-way.webp)
-
-![Pulling back from the Milky Way arm into the illustrative distant-density sky.](docs/assets/helios-tail-sky.webp)
-
-![The Milky Way's spiral disk comes into view against the illustrative distant-density sky.](docs/assets/helios-growing.webp)
-
-![Full Milky Way disk with catalog neighbors against the spherical distant-density sky.](docs/assets/helios-disk.webp)
-
-![Nearby galaxies: Andromeda, Triangulum, and the Magellanic Clouds beside the disk.](docs/assets/helios-neighborhood.webp)
-
-![Local Group after a further zoom: its aggregate label replaces the now-unreadable individual galaxy labels.](docs/assets/helios-local-group.webp)
-
-![The Local Group, Virgo Cluster, and Local (Virgo) Supercluster at a wider scale.](docs/assets/helios-virgo.webp)
-
-![Laniakea Supercluster, Virgo Cluster, and measured group anchors before the 2MRS view.](docs/assets/helios-preweb.webp)
-
-![The flux-limited 2MRS galaxy distribution in redshift space, shown as points without invented connections.](docs/assets/helios-web.webp)
-
-![Schematic outside-camera view of the warm illustrative CMB shell at the particle-horizon display radius.](docs/assets/helios-universe.webp)
-
-Screenshots show v2026.9.26; [capture sources and image credits](PROVENANCE.md#readme-screenshot-sources).
-
-Tap or click a world — including the Sun — to focus it. Drag to orbit. Pinch-out zooms in; pinch-in zooms out. Play, pause, and change the speed of time from the bar at the bottom. Close the body card with the X or by tapping empty space. Zoom out past the solar overview and the orrery shrinks to a Sun among the stars. The Hipparcos sky, IAU figures, and Gaia band stay at constant brightness through the solar cap, so the first extra-zoom frame is already inside the Milky Way tail. The moment the camera leaves that tail, that solar sky and the Constellations control go off. The control offers Off, Major (the ten familiar default names), and All; All packs eligible names inside the viewport with a responsive collision budget. Extra-zoom sky from the tail through Virgo is a camera-centered spherical point-density illustration with unresolved bright concentrations and dark gaps. It has no cube faces, named generated objects, or claimed survey coordinates. The full disk, neighborhood, Local Group, and Virgo are catalog neighbors against that field, not a scatter of invented nearby galaxies. After Virgo, seven measured group anchors lead into 42,927 public 2MRS galaxy directions with approximate redshift distances; there are no invented web connections. Beyond the survey's 300 Mpc display cap, a small first-party density illustration provides continuity to the Planck-style CMB shell. That shell is deliberately drawn at the particle-horizon display radius. Leaving it is only an outside-camera/scale metaphor, not a physically possible observer. We sit in the Local Group, inside Laniakea; Virgo is the nearest large cluster, not our cluster in the same sense.
-
-Open **Camera** for orbit and zoom buttons that work with a click, tap, or keyboard. With the scene focused, use the arrow keys to orbit, **I** to zoom in, and **O** to zoom out; hold a key to repeat. **Play** stays selected while time runs; activate it again to pause. **Space** toggles the same state, **+ / −** change time speed, and **Escape** resets the view. Camera commands preserve the same globe safety, zoom limits, and scale transitions as drag, wheel, and pinch. The fixed `?look=sky` diagnostic view has no camera navigation.
-
-Helios is a local page: no accounts, no telemetry, and no CDN.
-
-Deep-space views include a compact scene caption identifying the 2MRS survey,
-illustrative outer density, and schematic CMB/observable-universe view. Reported
-catalog display limits and display radii are context, not a linear on-screen ruler.
-
-Marins Voyage: [X @MarinsVoyage](https://x.com/MarinsVoyage) · [YouTube](https://www.youtube.com/@MarinsVoyage).
+Helios is a local page: no accounts, no telemetry, and no CDN. Marins Voyage: [X @MarinsVoyage](https://x.com/MarinsVoyage) · [YouTube](https://www.youtube.com/@MarinsVoyage).
 
 ## At a glance
 
 | Detail | Summary |
 | --- | --- |
 | Worlds | Sun, 8 planets, the Moon, Phobos, Deimos, Io, Europa, Ganymede, Callisto, Titan, Triton, Pluto, and Ceres |
-| Sky | Hipparcos bright stars, an 88-constellation figure catalog, a Milky Way band, and Andromeda at M31 inside the solar system. Major mode preserves the ten familiar default names; All makes all 88 names eligible and applies viewport, collision, and responsive-budget filtering. That sky remains constant through the solar cap and into the Milky Way tail, then turns off. After the tail a seamless spherical distant-density illustration stays up through Virgo behind catalog neighbors. Beyond Virgo, measured 2MRS galaxy points yield to an explicitly illustrative outer density and CMB shell. |
-| Belts | Asteroid field between Mars and Jupiter; nominal Kuiper field from about 30–50 AU. Sparse points, not rock catalogs; Pluto's eccentric visual path crosses the field's drawn edges |
-| Time | Independent of visual scale. Minimum: 1 simulated second per real second. Default: 1 simulated hour per real second; maximum: 400 simulated days per real second. Background time catches up on return; JavaScript's last valid date is the hard stop |
+| Sky | Hipparcos stars, 88 constellation figures, the Milky Way band, and Andromeda, then catalog galaxies, 2MRS points, and an illustrative CMB shell |
+| Belts | Sparse asteroid and Kuiper fields, not rock catalogs |
+| Time | One simulated second to 400 simulated days per real second; the default is one simulated hour |
 | Play with | Mouse, keyboard, or touch |
-
-## Visual scale
-
-True 1:1 distances make every planet vanish beside the Sun. Helios combines NASA / JPL reference data with inherited catalog approximations, then compresses **distances more than sizes** so the system can be read at a glance. The one planet-spacing knob is `CONFIG.visualScale` in `js/config.js`; it multiplies a compressed AU curve (`orbitScale * AU^orbitPower`). Body sizes use the same kind of curve (`sizeScale * (radius/Earth)^sizePower`). Moons share that size curve. Moon distances stay a compressed real-radii map: outside their parent, just outside any rings, and outside a readable gap from the next inner sibling. Calendar positions use frozen two-body Kepler ellipses, not a live JPL Horizons ephemeris or a perturbation model. Ceres's stored heliocentric state is one Horizons J2000 geometric snapshot; Neptune's six orbital elements are one JPL Approximate Positions Table 1 J2000 snapshot at T=0; other heliocentric rows retain inherited Keplerian approximations. Their sidereal periods match dated NASA NSSDCA fact-sheet printings recorded in [the orbital ledger](PROVENANCE.md#orbital-row-ledger); the remaining six orbital fields still have explicit source gaps there. The Sun, planets, Ceres, Pluto, the Moon, and Triton use fixed J2000 PCK poles. Earth, Moon, and Triton also use verified prime-meridian phases; inherited maps without a retained longitude-registration record keep their closest previous display roll rather than claim an unverified scientific longitude. Except for the Moon and Triton, synchronous moon rates only prevent secular longitudinal drift: their simple axes and texture phases are not registered near-side models. The lunar model shows bounded geometric libration but not the complete time-varying PCK model. Lighting supplies a terminator and readable night-side fill, not cast shadows or eclipses. Time is a separate slider.
-
-The Milky Way disk is a deterministic, stylized four-arm illustration. Its catalog distances and the Sun's Orion Arm label are sourced, but the visible arm particles are not a survey reconstruction. The later 2MRS view is observational but still selective: it is K-band flux-limited, omits the Galactic Zone of Avoidance, and maps barycentric radial velocity to `D=cz/H0` rather than correcting peculiar velocities. It must not be read as a complete matter-density reconstruction. Cosmological point sizes and additive brightness, the outer web's false-color palette, and the strengthened CMB texture opacity are deliberately stylized for readability; they are not photometrically calibrated measurements or literal structure boundaries. The label hierarchy fades unreadable galaxy names into Local Group context, keeps the Local Group and Virgo Cluster separate, and then rolls up through the historical Local (Virgo) Supercluster and Laniakea Supercluster before clearing for the web and CMB views. It describes spatial scale during zoom, not object renaming, physical-size measurement, or cosmological time evolution.
 
 ## Run locally
 
@@ -74,7 +44,7 @@ npm test
 npm run serve
 ```
 
-The first two commands install the pinned test dependency and browser for a clean checkout. Then open `http://127.0.0.1:4173/Helios/`. Opening `index.html` through a local static server also works. A WebGL browser is required.
+Then open `http://127.0.0.1:4173/Helios/`. A WebGL browser is required. Opening `index.html` through another local static server also works.
 
 | Action | Desktop | Touch |
 | --- | --- | --- |
@@ -84,23 +54,15 @@ The first two commands install the pinned test dependency and browser for a clea
 | Close card | Click empty space or X | Tap empty space or X |
 | Play / pause | Space or Play toggle | Play toggle |
 | Speed | `+` / `-` or the slider | − / + or the slider |
-| Constellations | Choose Off, Major, or All | Choose Off, Major, or All |
+| Constellations | Off, Major, or All | Off, Major, or All |
 | Overview | Escape or Reset view | Reset view / Overview |
 
 ## Contributing
 
-Read the reusable [Repository Standard](REPOSITORY_STANDARD.md) and the
-Helios-specific [contributor instructions](AGENTS.md) before contributing.
-Helios resolves one issue per short-lived branch and stages approved work on
-`develop` (the **Alpha Development** integration branch). Task pull requests
-target `develop`; only an owner-tested, fully audited release pull request moves
-`develop` to protected `main`. An explicitly audited `hotfix/*` branch is
-reserved for a genuine production emergency and must be integrated back into
-`develop`. Use the repository issue form and pull request template for the
-required severity, baseline, scope, evidence, risk, and rollback record.
+Read the [Repository Standard](REPOSITORY_STANDARD.md) and the Helios [contributor instructions](AGENTS.md) before contributing. This page is the short human introduction. Issue flow, camera and scale contracts, and release rules live in `AGENTS.md`.
 
 ## Credits
 
-Planet, Sun, Moon, and Ceres maps are [Solar System Scope](https://www.solarsystemscope.com/textures/) 2k textures (CC BY 4.0); Venus uses that publisher's atmosphere map; the publisher discloses saturation and fictional gap filling, and categorizes its Ceres map as fictional. Most moon maps are from [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources). Triton uses NASA/JPL-Caltech/LPI [PIA18668](https://www.jpl.nasa.gov/images/pia18668-map-of-triton/) with incomplete Voyager coverage and a neutral no-data fill. Bright-star positions are a Hipparcos subset compiled through [HYG](https://github.com/astronexus/HYG-Database) v3.1–v3.4 (CC BY-SA 2.5). Constellation stick figures are the [IAU / Alan MacRobert figures](https://www.iau.org/IAU/Astronomy-FAQs/Constellations.aspx) (CC BY 4.0). The Milky Way band is [ESA Gaia DR2](https://sci.esa.int/web/gaia/-/60196-gaia-s-sky-in-colour-equirectangular-projection) (CC BY-SA 3.0 IGO). Andromeda is NASA/JPL-Caltech [Spitzer PIA04921](https://images.nasa.gov/details/PIA04921). Post-Virgo galaxy directions and redshifts are from NASA HEASARC's [2MRS catalog](https://heasarc.gsfc.nasa.gov/w3browse/all/twomassrsc.html), Huchra et al. 2012. Catalog values and scientific sources are recorded beside the data and in [PROVENANCE.md](PROVENANCE.md); that ledger also records transformations, hashes, limitations, and unresolved source versions. Three.js is vendored under MIT.
+Planet, Sun, Moon, and Ceres maps are [Solar System Scope](https://www.solarsystemscope.com/textures/) 2k textures (CC BY 4.0); Venus uses that publisher's atmosphere map; the publisher discloses saturation and fictional gap filling, and categorizes its Ceres map as fictional. Most moon maps are from [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources). Triton uses NASA/JPL-Caltech/LPI [PIA18668](https://www.jpl.nasa.gov/images/pia18668-map-of-triton/) with incomplete Voyager coverage and a neutral no-data fill. Bright-star positions are a Hipparcos subset compiled through [HYG](https://github.com/astronexus/HYG-Database) v3.1–v3.4 (CC BY-SA 2.5). Constellation stick figures are the [IAU / Alan MacRobert figures](https://www.iau.org/IAU/Astronomy-FAQs/Constellations.aspx) (CC BY 4.0). The Milky Way band is [ESA Gaia DR2](https://sci.esa.int/web/gaia/-/60196-gaia-s-sky-in-colour-equirectangular-projection) (CC BY-SA 3.0 IGO). Andromeda is NASA/JPL-Caltech [Spitzer PIA04921](https://images.nasa.gov/details/PIA04921). Post-Virgo galaxy directions and redshifts are from NASA HEASARC's [2MRS catalog](https://heasarc.gsfc.nasa.gov/w3browse/all/twomassrsc.html), Huchra et al. 2012. Transformations, hashes, limitations, and unresolved source versions are in [PROVENANCE.md](PROVENANCE.md). Three.js is vendored under MIT.
 
 First-party code is released under the [MIT License](LICENSE). Third-party images, data, and Three.js retain the terms documented in [PROVENANCE.md](PROVENANCE.md).
