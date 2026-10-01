@@ -15,7 +15,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.10.1",
+  VERSION: "v2026.10.1a",
   BRAND: "MarinsVoyage",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
