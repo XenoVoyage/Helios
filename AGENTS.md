@@ -200,6 +200,37 @@ context only, not an active owner gate.
 - Compare rendered output with the recorded task base and the owner-approved
   visual baseline. Browser automation is not physical-device proof.
 
+### Audit execution and evidence
+
+The required `Audit / audit` job aggregates the functional suite and every
+comparison job applicable to the event. A failed, cancelled, or unexpectedly
+skipped dependency must fail that gate. Same-repository pull requests to
+`develop` also run all five visual groups and the historical focus comparison;
+pushes, production promotion pull requests, and manual main audits retain the
+complete functional suite.
+
+Each comparison run freezes `main` once and uses the event's exact develop base
+and candidate head. Functional PR tests use GitHub's proposed merge checkout;
+comparison images use the recorded source commits. Keep those identities
+distinct in review evidence. Every distinct complete Git tree is captured once
+per group, sequentially on the same runner. Identical trees share the strictest
+applicable capture validation (candidate, then develop, then main). Changed
+trees always receive fresh captures; there is no reuse across workflow runs.
+
+Start review with `comparison-index-<group>.json` in each visual artifact. It
+records each requested source's commit/tree and its original evidence path;
+an alias is explicitly reused evidence, not another rendering. Only successful,
+complete, hash-verified captures may satisfy an alias. All 349 comparison
+scenarios and the separate 30 historical focus captures remain required.
+Capture success and identical-tree reuse do not replace visual review or
+automatically approve a new baseline.
+
+Keep full-resolution originals in the seven-day Actions artifacts, with run
+links and exact commit/tree identities in the pull request. Preserve evidence
+needed for a long-lived accepted baseline before artifact expiry. Do not commit
+routine audit screenshots or duplicate reports. Retain referenced README,
+provenance, and issue images; age alone is not evidence that a file is unused.
+
 ## Helios issues and release flow
 
 Search open and closed issues and pull requests before acting. Use the

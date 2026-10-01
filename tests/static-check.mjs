@@ -220,7 +220,7 @@ assert.equal(packageJson.engines.node, "24.x");
 assert.equal(packageLock.packages[""].engines.node, "24.x");
 assert.equal(packageJson.devDependencies.playwright, "1.62.1");
 assert.equal(packageLock.packages[""].devDependencies.playwright, "1.62.1");
-assert.equal((auditWorkflow.match(/node-version:\s*24\b/g) || []).length, 3);
+assert.equal((auditWorkflow.match(/node-version:\s*24\b/g) || []).length, 4);
 assert.equal((pagesWorkflow.match(/node-version:\s*24\b/g) || []).length, 1);
 assert.doesNotMatch(`${auditWorkflow}\n${pagesWorkflow}`, /node-version:\s*(?:22|26)\b/);
 for (const workflow of [auditWorkflow, pagesWorkflow]) {
@@ -236,6 +236,8 @@ assert.match(
   /group:\s*audit-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'workflow_dispatch' && github\.run_id \|\| github\.ref \}\}/,
 );
 assert.match(auditWorkflow, /cancel-in-progress:\s*true/);
+assert.match(auditWorkflow, /^  audit:\n    name: audit\n    if: always\(\)\n    needs: \[functional, comparison-baseline, visual-capture, focus-history\]/m);
+assert.ok(packageJson.scripts["test:static"].includes("tests/audit-jobs.test.mjs"));
 assert.match(
   auditWorkflow,
   /github\.event_name == 'workflow_dispatch' &&\s*github\.ref != 'refs\/heads\/main'/,

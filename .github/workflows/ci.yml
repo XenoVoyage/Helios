@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  audit:
-    name: audit
+  functional:
+    name: functional
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -44,6 +44,7 @@ jobs:
           exit 1
 
       - name: Check out repository
+        # Preserve GitHub's merge-ref checkout for PR integration checks.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -73,8 +74,35 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  comparison-baseline:
+    name: comparison-baseline
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.base_ref == 'develop' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      main_sha: ${{ steps.baseline.outputs.main_sha }}
+      main_tree: ${{ steps.baseline.outputs.main_tree }}
+    steps:
+      - name: Freeze main comparison baseline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+
+      - name: Record immutable baseline
+        id: baseline
+        run: |
+          printf 'main_sha=%s\nmain_tree=%s\n' \
+            "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
+          printf 'Main visual baseline: `%s`, tree `%s`.\n' \
+            "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" >> "$GITHUB_STEP_SUMMARY"
+
   visual-capture:
     name: visual-capture (${{ matrix.group }})
+    needs: comparison-baseline
     if: >-
       github.event_name == 'pull_request' &&
       github.base_ref == 'develop' &&
@@ -86,6 +114,14 @@ jobs:
       matrix:
         group: [bodies, desktop-moons, touch-moons, other, ordinary]
     steps:
+      - name: Require the frozen main identity
+        run: |
+          [[ "$MAIN_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$MAIN_TREE" =~ ^[0-9a-f]{40}$ ]]
+        env:
+          MAIN_SHA: ${{ needs.comparison-baseline.outputs.main_sha }}
+          MAIN_TREE: ${{ needs.comparison-baseline.outputs.main_tree }}
+
       - name: Check out capture harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -96,7 +132,7 @@ jobs:
       - name: Check out main renderer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/heads/main
+          ref: ${{ needs.comparison-baseline.outputs.main_sha }}
           path: renderer-main
           persist-credentials: false
 
@@ -129,16 +165,15 @@ jobs:
 
       - name: Capture matched sources on one runner
         working-directory: harness
-        run: |
-          result=0
-          for source in main develop candidate; do
-            node tests/visual-capture.mjs \
-              --source-root "../renderer-$source" \
-              --output "../visual-stills/$source/${{ matrix.group }}" \
-              --source-label "$source" \
-              --group "${{ matrix.group }}" || result=1
-          done
-          exit "$result"
+        run: >-
+          node scripts/capture-comparison.mjs
+          --group "$CAPTURE_GROUP"
+          --main ../renderer-main
+          --develop ../renderer-develop
+          --candidate ../renderer-candidate
+          --output ../visual-stills
+        env:
+          CAPTURE_GROUP: ${{ matrix.group }}
 
       - name: Upload matched visual evidence
         if: always()
@@ -148,6 +183,28 @@ jobs:
           path: visual-stills/
           if-no-files-found: warn
           retention-days: 7
+
+  audit:
+    name: audit
+    if: always()
+    needs: [functional, comparison-baseline, visual-capture, focus-history]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out audit gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Require every applicable audit job
+        run: node scripts/verify-audit-jobs.mjs
+        env:
+          HELIOS_AUDIT_NEEDS: ${{ toJSON(needs) }}
 
   focus-history:
     name: focus-history
