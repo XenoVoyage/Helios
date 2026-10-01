@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -27,11 +27,24 @@ import { equatorialVectorToScene } from "../js/sky.js";
 import { auditCameraNavigation } from "./camera-navigation.mjs";
 import { runFocusTracking } from "./focus-tracking.mjs";
 import { MAX_SIMULATION_DAYS, simulationDateLabel } from "../js/time.js";
+import { parseBrowserGroup, prepareBrowserEvidence, runBrowserGroups, writeBrowserGroupEvidence } from "./browser-groups.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.BROWSER_SMOKE_PORT || 4175);
 const base = `http://127.0.0.1:${port}/Helios/`;
 const screenshotDir = process.env.HELIOS_SCREENSHOT_DIR;
+const group = parseBrowserGroup(process.argv.slice(2));
+if (group !== "all") assert.ok(screenshotDir, "a browser group requires HELIOS_SCREENSHOT_DIR for complete evidence");
+function browserSourceIdentity() {
+  const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  return { commit: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"),
+    clean: git("status", "--porcelain", "--untracked-files=all") === "" };
+}
+const source = screenshotDir ? browserSourceIdentity() : null;
+if (screenshotDir) {
+  if (group !== "all") assert.equal(source.clean, true, "a browser group requires a clean source checkout");
+  await prepareBrowserEvidence(screenshotDir, { requireEmpty: group !== "all" });
+}
 const BRIGHT_LUMINANCE = 12;
 const DARK_LUMINANCE = 6;
 const TRANSITION_MEAN_LUMINANCE_FLOOR = 5.5;
@@ -5263,16 +5276,7 @@ async function assertCreditsClearDock(page, viewport) {
   assert.equal(layout.hit, "version-label", `${viewport.width}px credits remain hit-testable`);
 }
 
-try {
-  const [line] = await Promise.race([
-    once(child.stdout, "data"),
-    once(child, "exit").then(([code]) => {
-      throw new Error(`server exited ${code}`);
-    }),
-  ]);
-  assert.match(String(line), /Helios local server/);
-
-  browser = await launchBrowser();
+async function auditPlatform() {
   await assertResizeAuditWaitsForPaint(browser);
   await auditCappedDprResync(browser);
   const dateLayout = await browser.newContext({ deviceScaleFactor: 1, hasTouch: true });
@@ -5293,7 +5297,9 @@ try {
     },
   });
   await auditCameraNavigation(browser, base, screenshotDir);
+}
 
+async function auditDesktopScenes() {
   const desktop = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
@@ -5440,11 +5446,21 @@ try {
   await auditFarSkyDirections(desktop);
   await captureEarthSolstice(desktop, "earth-june-solstice", "2000-06-21");
   await captureEarthSolstice(desktop, "earth-december-solstice", "2000-12-21", true);
+  await desktop.close();
+}
+
+async function auditDesktopBodies() {
+  const desktop = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 1,
+  });
   await assertMinimumZoomViews(desktop, "desktop", PRIMARY_BODY_IDS);
   await assertMoonParentCloseViews(desktop, "desktop");
   await assertSaturnRingReferenceViews(desktop);
   await desktop.close();
+}
 
+async function auditTouch() {
   const touch = await browser.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 1,
@@ -5614,6 +5630,33 @@ try {
   await saveScreenshot(failurePage, "webgl-fallback");
   assert.equal(await failurePage.locator("#loading").getAttribute("hidden"), "");
   await failure.close();
+}
+
+try {
+  const [line] = await Promise.race([
+    once(child.stdout, "data"),
+    once(child, "exit").then(([code]) => {
+      throw new Error(`server exited ${code}`);
+    }),
+  ]);
+  assert.match(String(line), /Helios local server/);
+
+  browser = await launchBrowser();
+  const completedGroups = [];
+  const completed = await runBrowserGroups(group, {
+    platform: auditPlatform,
+    "desktop-scenes": auditDesktopScenes,
+    "desktop-bodies": auditDesktopBodies,
+    touch: auditTouch,
+  }, async ({ group: completedGroup, wallMilliseconds }) => {
+    if (screenshotDir) {
+      await writeBrowserGroupEvidence({ directory: screenshotDir, group: completedGroup, source,
+        sourceAfter: browserSourceIdentity(), isolated: group !== "all", completedGroups, wallMilliseconds });
+    }
+    completedGroups.push(completedGroup);
+    console.log(`browser group ${completedGroup} ok (${(wallMilliseconds / 1000).toFixed(1)}s)`);
+  });
+  assert.deepEqual(completed, completedGroups, "every completed browser group is recorded");
 
   console.log("browser-smoke ok");
 } finally {

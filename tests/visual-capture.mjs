@@ -20,7 +20,8 @@ const inventoryOnly = options.has("--inventory-only");
 for (const name of ["--source-root", "--source-label", ...(inventoryOnly ? [] : ["--output"])]) assert.ok(options.has(name), `${name} is required`);
 for (const name of options.keys()) assert.ok(["--source-root", "--output", "--source-label", "--inventory-only", "--group"].includes(name), `unknown argument ${name}`);
 const group = options.get("--group") || "all";
-assert.ok(["all", "bodies", "desktop-moons", "touch-moons", "other", "ordinary", "focus"].includes(group), "group must be all, bodies, desktop-moons, touch-moons, other, ordinary or focus");
+assert.ok(["all", "bodies-inner", "bodies-giants", "bodies-outer", "moons-inner", "moons-outer", "touch-controls", "responsive", "desktop-states", "touch-states", "ordinary", "focus"].includes(group),
+  "group must be all, bodies-inner, bodies-giants, bodies-outer, moons-inner, moons-outer, touch-controls, responsive, desktop-states, touch-states, ordinary or focus");
 const sourceRoot = path.resolve(options.get("--source-root"));
 const output = options.has("--output") ? path.resolve(options.get("--output")) : null;
 const sourceLabel = options.get("--source-label");
@@ -153,18 +154,31 @@ const ordinaryNameSet = new Set(ordinaryNames);
 for (const name of ordinaryNames) expect(name);
 assert.equal(expected.size, 349);
 const completeMatrix = [...expected];
+const bodyGroupFor = (id) => {
+  const body = findBody(id), system = body.kind === "moon" ? body.parent : id;
+  return ["jupiter", "saturn"].includes(system) ? "bodies-giants"
+    : ["uranus", "neptune", "pluto"].includes(system) ? "bodies-outer" : "bodies-inner";
+};
+const moonGroupFor = (id) => ["moon", "phobos", "deimos", "io"].includes(id) ? "moons-inner" : "moons-outer";
 const groupFor = (name) => {
   if (ordinaryNameSet.has(name)) return "ordinary";
   const tracking = trackingNames.get(name);
-  if (tracking) return tracking.touch ? "other" : tracking.bodyId === "io" ? "desktop-moons" : "bodies";
-  if (name.includes("-moon-parent-")) return name.startsWith("desktop-") ? "desktop-moons" : "touch-moons";
-  if (name.startsWith("desktop-minimum-zoom-") || (name.startsWith("supplement-desktop-") && !name.includes("-busy-"))) return "bodies";
-  return "other";
+  if (tracking) return tracking.touch ? "touch-states" : tracking.bodyId === "io" ? "moons-inner" : "bodies-inner";
+  if (name.includes("-moon-parent-")) {
+    const id = name.includes("-moon-parent-transition-io-") ? "io" : name.split("-").at(-1);
+    return name.startsWith("desktop-") ? moonGroupFor(id) : "touch-controls";
+  }
+  if (name.startsWith("supplement-responsive-")) return "responsive";
+  if (name.startsWith("supplement-time-rate-") || name.startsWith("touch-portrait-minimum-zoom-")) return "touch-controls";
+  const body = name.match(/^desktop-minimum-zoom-(.+)$|^supplement-desktop-(.+)-(?:framed|intermediate|zoom-back-out)$/);
+  if (body) return bodyGroupFor(body[1] || body[2]);
+  if (name.startsWith("touch-portrait-night-side-") || name.startsWith("supplement-touch-portrait-busy-")) return "touch-states";
+  return "desktop-states";
 };
 for (const name of expected) {
   if (group === "focus" ? !trackingNames.has(name) : group !== "all" && groupFor(name) !== group) expected.delete(name);
 }
-assert.equal(expected.size, { all: 349, bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 115, ordinary: 63, focus: 30 }[group]);
+assert.equal(expected.size, { all: 349, "bodies-inner": 48, "bodies-giants": 23, "bodies-outer": 13, "moons-inner": 31, "moons-outer": 30, "touch-controls": 47, responsive: 40, "desktop-states": 26, "touch-states": 28, ordinary: 63, focus: 30 }[group]);
 const activeTrackingScenarios = focusTrackingScenarios.filter((item) =>
   expected.has(`focus-tracking-${item.id}-${focusTrackingOffsets[0]}ms`));
 
@@ -476,30 +490,48 @@ async function settle(page) {
   let previous = await screenshot(page, "settle-before");
   let stable = false;
   let elapsed = 1500;
+  let stableFrame = null;
+  let stablePurpose = null;
   for (let attempt = 0; attempt < 15; attempt += 1) {
     await advance(page, 400);
     elapsed += 400;
     const next = await screenshot(page, `settle-after-${attempt + 1}`);
     const busy = await page.locator("#viewport").getAttribute("aria-busy");
-    if (sha256(previous) === sha256(next) && busy !== "true") { stable = true; break; }
+    if (sha256(previous) === sha256(next) && busy !== "true") {
+      stable = true;
+      stableFrame = next;
+      stablePurpose = `settle-after-${attempt + 1}`;
+      break;
+    }
     previous = next;
   }
-  return { stable, elapsed, criterion: "two byte-identical full-viewport PNGs separated by 400 controlled milliseconds; aria-busy not true, with its exact expected value checked at capture" };
+  return {
+    settled: { stable, elapsed, criterion: "two byte-identical full-viewport PNGs separated by 400 controlled milliseconds; aria-busy not true, with its exact expected value checked at capture" },
+    png: stableFrame, purpose: stablePurpose,
+  };
 }
 
 async function capture(page, name, details = {}, moving = false) {
   const started = performance.now();
   assert.ok(expected.has(name), `unexpected filename ${name}`);
   assert.ok(!manifest.captures.some((entry) => entry.name === name), `duplicate capture ${name}`);
-  const settled = moving ? null : await settle(page);
+  const frame = moving ? null : await settle(page);
+  const settled = frame?.settled ?? null;
   const state = states.get(page);
-  const png = await screenshot(page, name, details.clip || null);
+  // The final verified frame already depicts this paused full viewport. Keep
+  // crops, moving states, and failed-settle diagnostics as fresh acquisitions.
+  const reuseStableFrame = settled?.stable === true && !details.clip;
+  const png = reuseStableFrame ? frame.png : await screenshot(page, name, details.clip || null);
   await writeFile(path.join(output, `${name}.png`), png);
   const entry = {
     name, file: `${name}.png`, sha256: sha256(png), bytes: png.length,
     viewport: page.viewportSize(), touchEmulation: state.touch,
     controlledElapsed: state.elapsed, initial: state.initial, observable: await observe(page),
     inputs: state.inputs.slice(), settled, moving, ...details,
+    screenshotAcquisition: {
+      method: reuseStableFrame ? "verified-settle-frame" : "fresh-screenshot",
+      page: state.id, purpose: reuseStableFrame ? frame.purpose : name, controlledAt: state.elapsed,
+    },
   };
   entry.acquisitionWallMilliseconds = Math.round(performance.now() - started);
   manifest.captures.push(entry);
@@ -601,7 +633,7 @@ function parentDelta(id) {
 async function bodySweep() {
   const page = await newPage();
   try {
-    for (const body of BODIES) await scenario(`body ${body.id}`, async () => {
+    for (const body of BODIES.filter(({ id }) => expected.has(`supplement-desktop-${id}-intermediate`))) await scenario(`body ${body.id}`, async () => {
       const id = body.id, framed = framedDistance(id), minimum = minimumDistance(id), intermediate = Math.sqrt(framed * minimum);
       await select(page, id);
       if (!["uranus", "neptune"].includes(id)) await capture(page, `supplement-desktop-${id}-framed`, { expectedDistance: framed });
@@ -631,7 +663,7 @@ async function moonSweep(touch) {
   const prefix = touch ? "touch-portrait" : "desktop";
   const page = await newPage(touch);
   try {
-    for (const id of touch ? touchMoons : moonIds) await scenario(`${prefix} parent ${id}`, async () => {
+    for (const id of (touch ? touchMoons : moonIds).filter((id) => expected.has(`${prefix}-moon-parent-min-${id}`))) await scenario(`${prefix} parent ${id}`, async () => {
       await select(page, id);
       await zoomMinimum(page);
       if (id === "io") {
@@ -870,6 +902,7 @@ async function timeRates() {
         manifest.captures.push({
           ...full, name: cropName, file: `${cropName}.png`, sha256: sha256(png), bytes: png.length,
           crop: { sourceFullView: full.file, clip, criterion: "same settled paused frame; outward-rounded visible dock bounds, no resize" },
+          screenshotAcquisition: { method: "fresh-screenshot", page: states.get(page).id, purpose: cropName, controlledAt: states.get(page).elapsed },
           observable: await observe(page), acquisitionWallMilliseconds: Math.round(performance.now() - started),
         });
         await flush();
@@ -1413,21 +1446,21 @@ try {
   browser = await chromium.launch({ headless: true, executablePath: process.env.HELIOS_CHROMIUM_PATH || undefined,
     args: ["--no-sandbox", "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
   manifest.browser = browser.version();
-  if (["all", "bodies"].includes(group)) await scenario("desktop body sweep", bodySweep);
-  if (["all", "other"].includes(group)) await scenario("touch primary minimum", primaryTouch);
+  if (["all", "bodies-inner", "bodies-giants", "bodies-outer"].includes(group)) await scenario("desktop body sweep", bodySweep);
+  if (["all", "touch-controls"].includes(group)) await scenario("touch primary minimum", primaryTouch);
   for (const touch of [false, true]) {
-    if (["all", touch ? "touch-moons" : "desktop-moons"].includes(group)) await scenario(`moon sweep touch=${touch}`, () => moonSweep(touch));
-    if (["all", "other"].includes(group)) {
+    if (["all", ...(touch ? ["touch-controls"] : ["moons-inner", "moons-outer"])].includes(group)) await scenario(`moon sweep touch=${touch}`, () => moonSweep(touch));
+    if (["all", touch ? "touch-states" : "desktop-states"].includes(group)) {
       await scenario(`phases touch=${touch}`, () => phases(touch));
       await scenario(`lifecycle touch=${touch}`, () => lifecycle(touch));
     }
   }
-  if (["all", "other"].includes(group)) {
+  if (["all", "desktop-states"].includes(group)) {
     await scenario("Saturn and Earth sky", ringsAndSky);
     await scenario("Controlled regular Triton, overview and Milky Way references", controlledLegacyViews);
-    await responsive();
-    await timeRates();
   }
+  if (["all", "responsive"].includes(group)) await responsive();
+  if (["all", "touch-controls"].includes(group)) await timeRates();
   if (["all", "ordinary"].includes(group)) {
     await ordinaryViews();
     manifest.deepLoadObservations = {};
