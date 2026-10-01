@@ -198,6 +198,10 @@ context only, not an active owner gate.
   the browser command retains the complete sequential local audit. CI runs the
   four sections on separate runners after static/HTTP checks pass; each artifact
   includes its source identity, completed section, duration and output hashes.
+- Controlled visual captures save the final verified stable PNG for settled
+  full-viewport views. The stability intervals, attempt limit, exact-image
+  comparison, and semantic checks still apply. Moving views, crops, and failed
+  settling acquire fresh images; buffers never carry across capture calls.
 - `npm run serve` serves the Pages-equivalent path at
   `http://127.0.0.1:4173/Helios/`.
 - Add a focused regression for every confirmed math, catalog, or behavior

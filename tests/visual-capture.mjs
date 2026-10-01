@@ -490,30 +490,48 @@ async function settle(page) {
   let previous = await screenshot(page, "settle-before");
   let stable = false;
   let elapsed = 1500;
+  let stableFrame = null;
+  let stablePurpose = null;
   for (let attempt = 0; attempt < 15; attempt += 1) {
     await advance(page, 400);
     elapsed += 400;
     const next = await screenshot(page, `settle-after-${attempt + 1}`);
     const busy = await page.locator("#viewport").getAttribute("aria-busy");
-    if (sha256(previous) === sha256(next) && busy !== "true") { stable = true; break; }
+    if (sha256(previous) === sha256(next) && busy !== "true") {
+      stable = true;
+      stableFrame = next;
+      stablePurpose = `settle-after-${attempt + 1}`;
+      break;
+    }
     previous = next;
   }
-  return { stable, elapsed, criterion: "two byte-identical full-viewport PNGs separated by 400 controlled milliseconds; aria-busy not true, with its exact expected value checked at capture" };
+  return {
+    settled: { stable, elapsed, criterion: "two byte-identical full-viewport PNGs separated by 400 controlled milliseconds; aria-busy not true, with its exact expected value checked at capture" },
+    png: stableFrame, purpose: stablePurpose,
+  };
 }
 
 async function capture(page, name, details = {}, moving = false) {
   const started = performance.now();
   assert.ok(expected.has(name), `unexpected filename ${name}`);
   assert.ok(!manifest.captures.some((entry) => entry.name === name), `duplicate capture ${name}`);
-  const settled = moving ? null : await settle(page);
+  const frame = moving ? null : await settle(page);
+  const settled = frame?.settled ?? null;
   const state = states.get(page);
-  const png = await screenshot(page, name, details.clip || null);
+  // The final verified frame already depicts this paused full viewport. Keep
+  // crops, moving states, and failed-settle diagnostics as fresh acquisitions.
+  const reuseStableFrame = settled?.stable === true && !details.clip;
+  const png = reuseStableFrame ? frame.png : await screenshot(page, name, details.clip || null);
   await writeFile(path.join(output, `${name}.png`), png);
   const entry = {
     name, file: `${name}.png`, sha256: sha256(png), bytes: png.length,
     viewport: page.viewportSize(), touchEmulation: state.touch,
     controlledElapsed: state.elapsed, initial: state.initial, observable: await observe(page),
     inputs: state.inputs.slice(), settled, moving, ...details,
+    screenshotAcquisition: {
+      method: reuseStableFrame ? "verified-settle-frame" : "fresh-screenshot",
+      page: state.id, purpose: reuseStableFrame ? frame.purpose : name, controlledAt: state.elapsed,
+    },
   };
   entry.acquisitionWallMilliseconds = Math.round(performance.now() - started);
   manifest.captures.push(entry);
@@ -884,6 +902,7 @@ async function timeRates() {
         manifest.captures.push({
           ...full, name: cropName, file: `${cropName}.png`, sha256: sha256(png), bytes: png.length,
           crop: { sourceFullView: full.file, clip, criterion: "same settled paused frame; outward-rounded visible dock bounds, no resize" },
+          screenshotAcquisition: { method: "fresh-screenshot", page: states.get(page).id, purpose: cropName, controlledAt: states.get(page).elapsed },
           observable: await observe(page), acquisitionWallMilliseconds: Math.round(performance.now() - started),
         });
         await flush();
