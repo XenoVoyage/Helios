@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const comparisonJobs = ["comparison-baseline", "visual-capture", "focus-history"];
+const functionalJobs = ["functional", "browser"];
 
 // Applicability comes from the event, never from an upstream job's optional output.
 export function verifyAuditJobs({ eventName, ref, repository, event, needs }) {
@@ -24,8 +25,10 @@ export function verifyAuditJobs({ eventName, ref, repository, event, needs }) {
   }
 
   assert.ok(needs && typeof needs === "object", "Audit dependency results required");
-  assert.deepEqual(Object.keys(needs).sort(), ["functional", ...comparisonJobs].sort(), "every Audit dependency must be reported");
-  assert.equal(needs.functional?.result, "success", "functional must succeed");
+  assert.deepEqual(Object.keys(needs).sort(), [...functionalJobs, ...comparisonJobs].sort(), "every Audit dependency must be reported");
+  for (const job of functionalJobs) {
+    assert.equal(needs[job]?.result, "success", `${job} must succeed`);
+  }
   for (const job of comparisonJobs) {
     const expected = comparisonRequired ? "success" : "skipped";
     assert.equal(needs[job]?.result, expected, `${job} must be ${expected} for this event`);
@@ -48,6 +51,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     needs: JSON.parse(process.env.HELIOS_AUDIT_NEEDS ?? "null"),
   });
   console.log(comparisonRequired
-    ? "Audit passed: functional checks, frozen baseline, every visual group, and historical focus succeeded."
-    : "Audit passed: functional checks succeeded; comparison and history jobs do not apply to this event.");
+    ? "Audit passed: static/HTTP checks, every browser group, frozen baseline, every visual group, and historical focus succeeded."
+    : "Audit passed: static/HTTP checks and every browser group succeeded; comparison and history jobs do not apply to this event.");
 }

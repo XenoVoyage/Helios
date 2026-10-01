@@ -192,6 +192,12 @@ context only, not an active owner gate.
 - `npm test` runs the static contract, body, scale, Kepler, sky, galaxy,
   cosmic-web, time, HTTP, browser, WebGL, desktop, and touch-sized checks.
 - `npm run test:static` runs deterministic and HTTP checks without a browser.
+- `HELIOS_SCREENSHOT_DIR=browser-stills npm run test:browser -- --group <group>`
+  runs one complete browser section from a clean checkout and empty evidence directory:
+  `platform`, `desktop-scenes`, `desktop-bodies`, or `touch`. Without `--group`,
+  the browser command retains the complete sequential local audit. CI runs the
+  four sections on separate runners after static/HTTP checks pass; each artifact
+  includes its source identity, completed section, duration and output hashes.
 - `npm run serve` serves the Pages-equivalent path at
   `http://127.0.0.1:4173/Helios/`.
 - Add a focused regression for every confirmed math, catalog, or behavior
@@ -202,10 +208,10 @@ context only, not an active owner gate.
 
 ### Audit execution and evidence
 
-The required `Audit / audit` job aggregates the functional suite and every
-comparison job applicable to the event. A failed, cancelled, or unexpectedly
-skipped dependency must fail that gate. Same-repository pull requests to
-`develop` also run all five visual groups and the historical focus comparison;
+The required `Audit / audit` job aggregates static/HTTP checks, all four browser
+sections, and every comparison job applicable to the event. A failed, cancelled,
+or unexpectedly skipped dependency must fail that gate. Same-repository pull requests to
+`develop` also run all ten visual groups and the historical focus comparison;
 pushes, production promotion pull requests, and manual main audits retain the
 complete functional suite.
 
@@ -224,6 +230,14 @@ complete, hash-verified captures may satisfy an alias. All 349 comparison
 scenarios and the separate 30 historical focus captures remain required.
 Capture success and identical-tree reuse do not replace visual review or
 automatically approve a new baseline.
+
+The ten visual lanes are `bodies-inner` (48), `bodies-giants` (23), `bodies-outer`
+(13), `moons-inner` (31), `moons-outer` (30), `touch-controls` (47), `responsive`
+(40), `desktop-states` (26), `touch-states` (28), and `ordinary` (63). Each lane
+retains complete per-object or scene sequences and compares its source trees
+on one runner. Per-lane elapsed clocks and input histories cover that lane;
+the local `all` capture retains the full ordering. Functional screenshots live in four
+`helios-browser-<group>` artifacts; do not mistake one shard for the full suite.
 
 Keep full-resolution originals in the seven-day Actions artifacts, with run
 links and exact commit/tree identities in the pull request. Preserve evidence

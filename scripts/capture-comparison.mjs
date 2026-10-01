@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const labels = ["main", "develop", "candidate"];
-const groupCounts = { bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 115, ordinary: 63 };
+const groupCounts = { "bodies-inner": 48, "bodies-giants": 23, "bodies-outer": 13, "moons-inner": 31, "moons-outer": 30, "touch-controls": 47, responsive: 40, "desktop-states": 26, "touch-states": 28, ordinary: 63 };
 const defaultHarness = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const git = (root, ...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();

@@ -57,21 +57,49 @@ jobs:
       - name: Install test dependencies
         run: npm ci
 
+      - name: Run static and HTTP tests
+        run: npm run test:static
+
+  browser:
+    name: browser (${{ matrix.group }})
+    needs: functional
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [platform, desktop-scenes, desktop-bodies, touch]
+    steps:
+      - name: Check out repository
+        # Match the static job's proposed merge checkout on pull requests.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Install test dependencies
+        run: npm ci
+
       - name: Install browser
         run: npx playwright install --with-deps chromium
 
-      - name: Run tests
-        run: npm test
+      - name: Run complete browser group
+        run: node tests/browser-smoke.mjs --group "$BROWSER_GROUP"
         env:
+          BROWSER_GROUP: ${{ matrix.group }}
           HELIOS_SCREENSHOT_DIR: browser-stills
 
       - name: Upload rendered evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: helios-browser-stills
+          name: helios-browser-${{ matrix.group }}
           path: browser-stills/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   comparison-baseline:
@@ -112,7 +140,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [bodies, desktop-moons, touch-moons, other, ordinary]
+        group: [bodies-inner, bodies-giants, bodies-outer, moons-inner, moons-outer, touch-controls, responsive, desktop-states, touch-states, ordinary]
     steps:
       - name: Require the frozen main identity
         run: |
@@ -187,7 +215,7 @@ jobs:
   audit:
     name: audit
     if: always()
-    needs: [functional, comparison-baseline, visual-capture, focus-history]
+    needs: [functional, browser, comparison-baseline, visual-capture, focus-history]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
