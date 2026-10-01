@@ -192,6 +192,10 @@ context only, not an active owner gate.
 - `npm test` runs the static contract, body, scale, Kepler, sky, galaxy,
   cosmic-web, time, HTTP, browser, WebGL, desktop, and touch-sized checks.
 - `npm run test:static` runs deterministic and HTTP checks without a browser.
+- Controlled visual captures save the final verified stable PNG for settled
+  full-viewport views. The stability intervals, attempt limit, exact-image
+  comparison, and semantic checks still apply. Moving views, crops, and failed
+  settling acquire fresh images; buffers never carry across capture calls.
 - `npm run serve` serves the Pages-equivalent path at
   `http://127.0.0.1:4173/Helios/`.
 - Add a focused regression for every confirmed math, catalog, or behavior
