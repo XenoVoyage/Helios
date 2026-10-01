@@ -8,7 +8,7 @@ import test from "node:test";
 import { captureClasses, runComparison, validateEvidence } from "../scripts/capture-comparison.mjs";
 
 const labels = ["main", "develop", "candidate"];
-const counts = { bodies: 84, "desktop-moons": 61, "touch-moons": 26, other: 115, ordinary: 63 };
+const counts = { "bodies-inner": 48, "bodies-giants": 23, "bodies-outer": 13, "moons-inner": 31, "moons-outer": 30, "touch-controls": 47, responsive: 40, "desktop-states": 26, "touch-states": 28, ordinary: 63 };
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const git = (root, ...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const commit = (root, message) => {
@@ -17,7 +17,7 @@ const commit = (root, message) => {
 };
 const sourceIdentity = (root, label) => ({ label, commit: git(root, "rev-parse", "HEAD"), tree: git(root, "rev-parse", "HEAD^{tree}") });
 const fullExpected = Object.entries(counts).flatMap(([group, count]) => Array.from({ length: count }, (_, index) =>
-  group === "desktop-moons" && index < 5 ? `focus-tracking-desktop-io-400-${index * 500}ms` : `${group}-fixture-${index}`));
+  group === "moons-inner" && index < 5 ? `focus-tracking-desktop-io-400-${index * 500}ms` : `${group}-fixture-${index}`));
 
 async function fixture(t, trees = ["same", "same", "same"]) {
   const root = await mkdtemp(path.join(os.tmpdir(), "helios-comparison-"));
@@ -42,7 +42,7 @@ async function fixture(t, trees = ["same", "same", "same"]) {
     focusTracking: { file: "tests/focus-tracking.mjs", sha256: digest(await readFile(path.join(harnessRoot, "tests/focus-tracking.mjs"))), bytes: 25 },
   };
   harness.focusTracking.bytes = (await readFile(path.join(harnessRoot, "tests/focus-tracking.mjs"))).length;
-  const options = { roots, output: path.join(root, "evidence"), harnessRoot, group: "desktop-moons" };
+  const options = { roots, output: path.join(root, "evidence"), harnessRoot, group: "moons-inner" };
   const captures = [], inventories = new Map();
   const operations = {
     inventoryFor: async ({ root, label, group }) => {
@@ -112,13 +112,13 @@ test("identical trees capture once and alias verified originals without fake man
     assert.equal(source.status, "passed");
     assert.equal(source.capturedBy, "candidate");
     assert.equal(source.reused, source.label !== "candidate");
-    assert.equal(source.evidence, "candidate/desktop-moons/capture-details.json");
-    assert.deepEqual(source.coverage, { expected: 61, captured: 61, trackingReports: 1, completeMatrix: 349 });
+    assert.equal(source.evidence, "candidate/moons-inner/capture-details.json");
+    assert.deepEqual(source.coverage, { expected: 31, captured: 31, trackingReports: 1, completeMatrix: 349 });
     assert.match(source.manifest.sha256, /^[a-f0-9]{64}$/);
     assert.equal(source.timing["page.screenshot"].wallMilliseconds, 10);
   }
-  assert.deepEqual((await readdir(context.options.output)).sort(), ["candidate", "comparison-index-desktop-moons.json"]);
-  assert.deepEqual(JSON.parse(await readFile(path.join(context.options.output, "comparison-index-desktop-moons.json"), "utf8")), index);
+  assert.deepEqual((await readdir(context.options.output)).sort(), ["candidate", "comparison-index-moons-inner.json"]);
+  assert.deepEqual(JSON.parse(await readFile(path.join(context.options.output, "comparison-index-moons-inner.json"), "utf8")), index);
 });
 
 test("changed trees capture independently while identical main/develop use strict develop evidence", async (t) => {
@@ -244,7 +244,7 @@ test("old evidence cannot satisfy a new attempt, with or without an old index", 
   const context = await fixture(t);
   assert.equal((await runComparison(context.options, context.operations)).status, "passed");
   await assert.rejects(runComparison(context.options, context.operations), { code: "EEXIST" });
-  await rm(path.join(context.options.output, "comparison-index-desktop-moons.json"));
+  await rm(path.join(context.options.output, "comparison-index-moons-inner.json"));
   const index = await runComparison(context.options, context.operations);
   assert.equal(index.status, "failed");
   assert.equal(index.sources[2].status, "failed");

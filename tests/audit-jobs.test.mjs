@@ -6,7 +6,8 @@ import { verifyAuditJobs } from "../scripts/verify-audit-jobs.mjs";
 
 const repository = "owner/helios";
 const comparisonJobs = ["comparison-baseline", "visual-capture", "focus-history"];
-const jobNames = ["functional", ...comparisonJobs];
+const functionalJobs = ["functional", "browser"];
+const jobNames = [...functionalJobs, ...comparisonJobs];
 
 function fixture({ eventName = "pull_request", base = "develop", headRepository = repository, ref = "refs/pull/1/merge" } = {}) {
   const comparisonRequired = eventName === "pull_request" && base === "develop" && headRepository === repository;
@@ -19,7 +20,7 @@ function fixture({ eventName = "pull_request", base = "develop", headRepository 
       },
     } : {},
     needs: Object.fromEntries(jobNames.map((job) => [job, {
-      result: job === "functional" || comparisonRequired ? "success" : "skipped",
+      result: functionalJobs.includes(job) || comparisonRequired ? "success" : "skipped",
       outputs: job === "comparison-baseline" && comparisonRequired ? {
         main_sha: "a".repeat(40), main_tree: "b".repeat(40),
       } : {},
@@ -59,9 +60,11 @@ test("inapplicable comparisons are explicitly skipped for push, main PR, manual 
         assert.throws(() => verifyAuditJobs(input), assert.AssertionError, `${JSON.stringify(options)} ${job}: ${result}`);
       }
     }
-    const missingFunctional = fixture(options);
-    missingFunctional.needs.functional.result = "skipped";
-    assert.throws(() => verifyAuditJobs(missingFunctional), /functional must succeed/);
+    for (const job of functionalJobs) {
+      const missingFunctional = fixture(options);
+      missingFunctional.needs[job].result = "skipped";
+      assert.throws(() => verifyAuditJobs(missingFunctional), /must succeed/);
+    }
     for (const job of comparisonJobs) {
       const unexpectedlyRun = fixture(options);
       unexpectedlyRun.needs[job].result = "success";
@@ -112,6 +115,21 @@ test("actual workflow conditions match aggregate applicability and preserve all 
   assert.deepEqual(dependencies, jobNames.toSorted());
   assert.match(jobs.audit, /run: node scripts\/verify-audit-jobs\.mjs/);
   assert.match(jobs.audit, /HELIOS_AUDIT_NEEDS: \$\{\{ toJSON\(needs\) \}\}/);
+  assert.match(jobs.functional, /run: npm run test:static/);
+  assert.doesNotMatch(jobs.functional, /run: npm test|playwright install/);
+  assert.match(jobs.browser, /^    needs: functional$/m);
+  assert.doesNotMatch(jobs.browser, /^    if:/m);
+  assert.match(jobs.browser, /fail-fast: false/);
+  const browserGroups = jobs.browser.match(/group: \[([^\]]+)\]/)?.[1].split(/,\s*/);
+  assert.deepEqual(browserGroups, ["platform", "desktop-scenes", "desktop-bodies", "touch"]);
+  assert.match(jobs.browser, /run: node tests\/browser-smoke\.mjs --group "\$BROWSER_GROUP"/);
+  assert.match(jobs.browser, /BROWSER_GROUP: \$\{\{ matrix\.group \}\}/);
+  assert.match(jobs.browser, /name: helios-browser-\$\{\{ matrix\.group \}\}/);
+  assert.match(jobs.browser, /if-no-files-found: error/);
+  for (const job of [jobs.functional, jobs.browser]) {
+    assert.match(job, /uses: actions\/checkout@[0-9a-f]{40}/);
+    assert.doesNotMatch(job, /^          ref:/m, "functional jobs preserve the same default merge-ref checkout");
+  }
   for (const job of comparisonJobs) {
     const expression = jobs[job].match(/^    if: >-\n((?:      .*\n)+)/m)?.[1];
     assert.ok(expression, `${job} declares event applicability`);
@@ -128,7 +146,8 @@ test("actual workflow conditions match aggregate applicability and preserve all 
   }
   assert.match(jobs["visual-capture"], /^    needs: comparison-baseline$/m);
   assert.match(jobs["visual-capture"], /fail-fast: false/);
-  assert.match(jobs["visual-capture"], /group: \[bodies, desktop-moons, touch-moons, other, ordinary\]/);
+  const visualGroups = jobs["visual-capture"].match(/group: \[([^\]]+)\]/)?.[1].split(/,\s*/);
+  assert.deepEqual(visualGroups, ["bodies-inner", "bodies-giants", "bodies-outer", "moons-inner", "moons-outer", "touch-controls", "responsive", "desktop-states", "touch-states", "ordinary"]);
   assert.match(jobs["visual-capture"], /ref: \$\{\{ needs\.comparison-baseline\.outputs\.main_sha \}\}/);
   assert.doesNotMatch(jobs["visual-capture"], /ref: refs\/heads\/main/);
   assert.match(jobs["comparison-baseline"], /ref: refs\/heads\/main/);
