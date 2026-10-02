@@ -125,6 +125,7 @@ export const CONFIG = Object.freeze({
   // Resolve crowded world-name targets locally without moving their bodies.
   bodyLabelGapPx: 4,
   bodyLabelOffsetStepPx: 24,
+  bodyLabelFocusPaddingPx: 0.5,
   bodyLabelFallbackOffsetStepPx: 12,
   bodyLabelMaxOffsetPx: 96,
   cameraOrbitStep: 0.12,
@@ -966,14 +967,18 @@ export function describeDaysPerSecond(daysPerSecond) {
 
 /** Fit normal selected-body framing between measured chrome without moving the camera. */
 export function compactFocusFrame(width, height, radius, labelWidth, labelHeight, obstacles, inset = 8) {
+  // Keep the label inside its seat through fractional projection and the last
+  // easing frames; touching a strict chrome boundary can make it disappear.
+  const labelHalfWidth = labelWidth / 2 + CONFIG.bodyLabelFocusPaddingPx;
+  const labelTop = labelHeight * 1.2 + CONFIG.bodyLabelFocusPaddingPx;
   const clear = (box) => box.left >= inset && box.right <= width - inset
     && box.top >= inset && box.bottom <= height - inset
     && obstacles.every((other) => box.right <= other.left || box.left >= other.right
       || box.bottom <= other.top || box.top >= other.bottom);
   const extent = (x, y, scale) => ({
-    left: x - Math.max(radius * scale, labelWidth / 2),
-    right: x + Math.max(radius * scale, labelWidth / 2),
-    top: y - Math.max(radius * scale, labelHeight * 1.2),
+    left: x - Math.max(radius * scale, labelHalfWidth),
+    right: x + Math.max(radius * scale, labelHalfWidth),
+    top: y - Math.max(radius * scale, labelTop),
     bottom: y + radius * scale,
   });
   const centered = { x: width / 2, y: height / 2, zoom: 1 };
@@ -985,18 +990,18 @@ export function compactFocusFrame(width, height, radius, labelWidth, labelHeight
   let best = null;
   for (let left = 0; left < xs.length - 1; left += 1) {
     for (let right = left + 1; right < xs.length; right += 1) {
-      if (xs[right] - xs[left] < labelWidth) continue;
+      if (xs[right] - xs[left] < labelHalfWidth * 2) continue;
       for (let top = 0; top < ys.length - 1; top += 1) {
         for (let bottom = top + 1; bottom < ys.length; bottom += 1) {
           const box = { left: xs[left], right: xs[right], top: ys[top], bottom: ys[bottom] };
           if (!clear(box)) continue;
           const room = Math.min((box.right - box.left) / 2,
-            (box.bottom - box.top) / 2, box.bottom - box.top - labelHeight * 1.2);
+            (box.bottom - box.top) / 2, box.bottom - box.top - labelTop);
           if (room <= 0) continue;
           const zoom = Math.min(1, room / radius);
-          const x = Math.max(box.left + Math.max(radius * zoom, labelWidth / 2),
-            Math.min(width / 2, box.right - Math.max(radius * zoom, labelWidth / 2)));
-          const y = Math.max(box.top + Math.max(radius * zoom, labelHeight * 1.2),
+          const x = Math.max(box.left + Math.max(radius * zoom, labelHalfWidth),
+            Math.min(width / 2, box.right - Math.max(radius * zoom, labelHalfWidth)));
+          const y = Math.max(box.top + Math.max(radius * zoom, labelTop),
             Math.min(height / 2, box.bottom - radius * zoom));
           const displacement = Math.hypot(x - width / 2, y - height / 2);
           if (!best || zoom > best.zoom + 1e-9

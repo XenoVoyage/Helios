@@ -91,6 +91,8 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
     };
     const inspect = async (id, expanded, name) => {
       const sample = await settled(id);
+      const observation = { name, expanded, passed: false, ...sample };
+      report.observations.push(observation);
       const sphere = { left: sample.x - sample.radius, right: sample.x + sample.radius,
         top: sample.y - sample.radius, bottom: sample.y + sample.radius };
       assert.ok(sample.radius > 0 && Number.isFinite(sample.radius), `${name}: finite rendered sphere`);
@@ -131,7 +133,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
       const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.id, sample);
       assert.equal(hit, "viewport", `${name}: the globe center is reachable`);
       assert.equal(await page.locator("#camera-toggle").getAttribute("aria-expanded"), String(expanded));
-      report.observations.push({ name, expanded, ...sample });
+      observation.passed = true;
       return sample;
     };
     for (const [width, height] of [[320, 568], [568, 320]]) {

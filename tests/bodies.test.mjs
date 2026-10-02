@@ -64,6 +64,31 @@ test("compact framing clears chrome with the whole globe and a full-size label",
   assert.deepEqual(compactFocusFrame(1440, 900, 125, 100, 44, []), { x: 720, y: 450, zoom: 1 });
 });
 
+test("compact focus keeps Mercury eligible through fractional Camera-open settling", () => {
+  // Measured 320x568 chrome from PR179's first rendered run; obstacles include
+  // the unchanged 8px clearance used by the real label-placement predicate.
+  const obstacles = [
+    { left: 4, right: 144.625, top: 2, bottom: 56.59375 },
+    { left: 0, right: 320, top: 93.625, bottom: 292 },
+    { left: 4, right: 212, top: 292, bottom: 400 },
+    { left: 0, right: 320, top: 396, bottom: 564 },
+    { left: 221.015625, right: 322, top: -2, bottom: 58 },
+  ];
+  const node = { labelWidth: 80.75, labelHeight: 44 };
+  const fits = runInNewContext(`${appSource.slice(appSource.indexOf("function bodyLabelFits("),
+    appSource.indexOf("function placeBodyLabel("))}\nbodyLabelFits`, {
+    BODY_LABEL_CLEARANCE: 8, bodyLabelObstacles: obstacles,
+  });
+  assert.equal(fits(252.375 - 0.019, 344.8 + 0.0095, node, 320, 568), false,
+    "the former boundary seat hides a label with the observed subpixel residual");
+  const frame = compactFocusFrame(320, 568, 19.2858, node.labelWidth, node.labelHeight, obstacles);
+  assert.equal(frame.zoom, 1, "reserving label space does not shrink Mercury");
+  for (const dx of [-0.05, 0, 0.05]) for (const dy of [-0.05, 0, 0.05]) {
+    assert.equal(fits(frame.x + dx, frame.y + dy, node, 320, 568), true,
+      `the real eligibility gate accepts the label throughout settling (${dx}, ${dy})`);
+  }
+});
+
 function labelTouchInput() {
   const makeSurface = (id) => {
     const captures = new Set();
