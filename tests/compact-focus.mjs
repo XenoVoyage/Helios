@@ -1,6 +1,29 @@
 import assert from "node:assert/strict";
 import { BODIES, visualBodyRadius, visualRingRadius } from "../js/bodies.js";
 
+export function compactLayoutMatches(sample, live) {
+  return Boolean(sample && live && sample.resizeEpoch === live.resizeEpoch
+    && sample.viewport.width === live.viewport.width && sample.viewport.height === live.viewport.height
+    && sample.cameraExpanded === live.cameraExpanded
+    && sample.clearances.camera === live.clearances.camera && sample.clearances.dock === live.clearances.dock
+    && sample.controls.length === live.controls.length
+    && sample.controls.every((box, index) => box.id === live.controls[index].id
+      && ["left", "right", "top", "bottom", "width", "height"].every((key) => box[key] === live.controls[index][key])));
+}
+
+export function compactClearancesReady(layout) {
+  return ["camera", "dock"].every((name) => {
+    const box = layout.controls.find((control) => control.id === (name === "camera" ? "camera-controls" : "dock"));
+    return box && layout.clearances[name] === Math.ceil(box.height);
+  });
+}
+
+export function compactLayoutSettled(previous, sample, live) {
+  return Boolean(previous && sample && live && sample.frame === previous.frame + 1
+    && compactLayoutMatches(previous, sample) && compactLayoutMatches(sample, live)
+    && compactClearancesReady(sample) && compactClearancesReady(live));
+}
+
 export function assertCompactLabelBounds(label, viewport, name) {
   const box = label.box;
   assert.ok(label.layoutWidth >= 44 && label.layoutHeight >= 44, `${name}: label layout retains a 44px target`);
@@ -71,9 +94,19 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
       const original = THREE.Scene.prototype.onAfterRender;
       const before = THREE.Scene.prototype.onBeforeRender, meshAfter = THREE.Mesh.prototype.onAfterRender;
       const meshes = new Map(), world = new THREE.Vector3(), projected = new THREE.Vector3(), scale = new THREE.Vector3();
-      let sample = null, targetId = "earth", drawn = false, frame = 0, resizeEpoch = 0;
+      let sample = null, previous = null, targetId = "earth", drawn = false, frame = 0, resizeEpoch = 0;
       const resized = () => { resizeEpoch += 1; };
       window.addEventListener("resize", resized);
+      const readLayout = () => {
+        const style = getComputedStyle(document.documentElement);
+        const clearances = { camera: parseFloat(style.getPropertyValue("--camera-clearance")),
+          dock: parseFloat(style.getPropertyValue("--dock-clearance")) };
+        const controls = [".topbar", "#body-card", "#camera-controls", "#dock", "#version-label"]
+          .map((selector) => document.querySelector(selector)).filter((element) => !element.hidden && element.getClientRects().length)
+          .map((element) => ({ id: element.id || element.className, ...element.getBoundingClientRect().toJSON() }));
+        return { resizeEpoch, clearances, controls, viewport: { width: innerWidth, height: innerHeight },
+          cameraExpanded: document.querySelector("#camera-toggle").getAttribute("aria-expanded") === "true" };
+      };
       THREE.Scene.prototype.onBeforeRender = function (...args) { before.apply(this, args); drawn = false; };
       THREE.Mesh.prototype.onAfterRender = function (...args) {
         meshAfter.apply(this, args);
@@ -94,14 +127,13 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
         const pixels = radius * camera.projectionMatrix.elements[5] * innerHeight
           / (2 * Math.sqrt(depth * depth - radius * radius));
         const x = (projected.x + 1) * innerWidth / 2, y = (1 - projected.y) * innerHeight / 2;
-        const controls = [".topbar", "#body-card", "#camera-controls", "#dock", "#version-label"]
-          .map((selector) => document.querySelector(selector)).filter((element) => !element.hidden && element.getClientRects().length)
-          .map((element) => ({ id: element.id || element.className, ...element.getBoundingClientRect().toJSON() }));
+        const layout = readLayout();
         const label = document.querySelector(`[data-body-id="${id}"]`);
         const labelBox = label.getBoundingClientRect().toJSON();
         const labelAnchor = label.style.transform.match(/translate\(([-+\deE.]+)px,\s*([-+\deE.]+)px\)/);
         const gl = renderer.getContext();
-        sample = { id, frame: ++frame, resizeEpoch,
+        previous = sample;
+        sample = { ...layout, id, frame: ++frame,
           buffer: { width: gl.drawingBufferWidth, height: gl.drawingBufferHeight,
             canvasWidth: renderer.domElement.width, canvasHeight: renderer.domElement.height },
           x, y, radius: pixels, worldRadius: radius, depth, verticalProjection: camera.projectionMatrix.elements[5], ndc: projected.toArray(), drawn,
@@ -112,10 +144,11 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
           principalPoint: { x: (1 - camera.projectionMatrix.elements[8]) * innerWidth / 2,
             y: (1 + camera.projectionMatrix.elements[9]) * innerHeight / 2 },
           cardHidden: document.querySelector("#body-card").hidden,
-          busy: document.querySelector("#viewport").getAttribute("aria-busy"),
-          viewport: { width: innerWidth, height: innerHeight }, controls };
+          busy: document.querySelector("#viewport").getAttribute("aria-busy") };
       };
       return { sample: () => sample,
+        snapshot: (point = sample) => ({ previous, sample, live: readLayout(),
+          hit: point ? document.elementFromPoint(point.x, point.y)?.id : null }),
         captureState: () => ({ resizeEpoch, frame, viewport: { width: innerWidth, height: innerHeight } }),
         target: (id) => { targetId = id; }, restore: () => {
         THREE.Scene.prototype.onAfterRender = original;
@@ -124,24 +157,36 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
         window.removeEventListener("resize", resized);
       } };
     });
-    const settled = async (id) => {
-      let previous;
+    const settled = async (id, name = id) => {
+      let snapshot;
       for (let attempt = 0; attempt < 140; attempt += 1) {
-        await page.clock.fastForward(50);
-        const sample = await observer.evaluate((value) => value.sample());
+        // Deliver consecutive RAFs so ResizeObserver can finish the chrome reflow.
+        // Elapsed time alone is insufficient: prove measured layout convergence.
+        await page.clock.runFor(50);
+        snapshot = await observer.evaluate((value) => value.snapshot());
+        const { previous, sample, live } = snapshot;
         if (sample?.id === id && sample.busy === "false" && previous?.id === id
+          && compactLayoutSettled(previous, sample, live)
           && Math.hypot(sample.x - sample.principalPoint.x, sample.y - sample.principalPoint.y) < 0.05
           && Math.hypot(sample.x - previous.x, sample.y - previous.y) < 0.02
           && Math.hypot(...sample.camera.map((value, index) => value - previous.camera[index])) < 0.0001) return sample;
-        previous = sample;
       }
-      throw new Error(`Compact selection failed to settle: ${JSON.stringify(previous)}`);
+      const error = new Error(`Compact selection failed to settle: ${JSON.stringify(snapshot)}`);
+      error.compactLayout = snapshot;
+      error.compactScenario = name;
+      throw error;
     };
     const inspect = async (id, expanded, name, suppliedSample = null, existingObservation = null) => {
-      const sample = suppliedSample ?? await settled(id);
+      const sample = suppliedSample ?? await settled(id, name);
       const observation = existingObservation ?? { name, expanded };
       Object.assign(observation, sample, { passed: false });
       if (!existingObservation) report.observations.push(observation);
+      const current = await observer.evaluate((value, point) => value.snapshot(point), sample);
+      observation.liveLayout = current.live;
+      observation.hit = current.hit;
+      assert.equal(current.sample.frame, sample.frame, `${name}: geometry and hit testing use the same rendered frame`);
+      assert.ok(compactLayoutMatches(sample, current.live), `${name}: live chrome matches the rendered geometry`);
+      assert.ok(compactLayoutSettled(current.previous, current.sample, current.live), `${name}: chrome reflow is complete`);
       const sphere = { left: sample.x - sample.radius, right: sample.x + sample.radius,
         top: sample.y - sample.radius, bottom: sample.y + sample.radius };
       assert.ok(sample.radius > 0 && Number.isFinite(sample.radius), `${name}: finite rendered sphere`);
@@ -178,8 +223,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
         for (const box of sample.controls) assert.ok(sample.x + ringRadius <= box.left - 7 || sample.x - ringRadius >= box.right + 7
           || sample.y + ringRadius <= box.top - 7 || sample.y - ringRadius >= box.bottom + 7, `${name}: entire ring envelope clears ${box.id}`);
       }
-      const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.id, sample);
-      assert.equal(hit, "viewport", `${name}: the globe center is reachable`);
+      assert.equal(current.hit, "viewport", `${name}: the globe center is reachable`);
       assert.equal(await page.locator("#camera-toggle").getAttribute("aria-expanded"), String(expanded));
       observation.passed = true;
       return sample;
@@ -282,7 +326,8 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
     assert.equal(closed.zoom, 1);
     assert.deepEqual(report.errors, [], "compact focus has no browser errors");
   } catch (error) {
-    report.failure = { message: error.message, scenario: report.observations.at(-1)?.name ?? null };
+    report.failure = { message: error.message, scenario: error.compactScenario ?? report.observations.at(-1)?.name ?? null };
+    if (error.compactLayout) report.failure.layout = error.compactLayout;
     try {
       await onStill(page, "compact-focus-failure", { timeout: 10_000 });
     } catch (captureError) {

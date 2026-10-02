@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.10.2b](https://img.shields.io/badge/version-v2026.10.2b-66f7ff)](VERSION.txt)
+[![Version v2026.10.2c](https://img.shields.io/badge/version-v2026.10.2c-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D solar system and universe explorer.
