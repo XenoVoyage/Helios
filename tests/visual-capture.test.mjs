@@ -26,7 +26,7 @@ function inventory(group) {
   });
 }
 
-const counts = { "bodies-inner": 48, "bodies-giants": 23, "bodies-outer": 13, "moons-inner": 31, "moons-outer": 30, "touch-controls": 47, responsive: 40, "desktop-states": 26, "touch-states": 28, ordinary: 63 };
+const counts = { "bodies-inner": 48, "bodies-giants": 23, "bodies-outer": 13, "moons-inner": 31, "moons-jovian": 18, "moons-outer": 12, "touch-controls": 47, responsive: 40, "desktop-phases": 8, "desktop-lifecycle": 10, "desktop-states": 8, "touch-states": 28, "cosmic-scenes": 40, ordinary: 23 };
 test("visual lanes partition all 349 captures and retain the 30 focus captures", () => {
   const all = inventory("all");
   const captured = Object.entries(counts).flatMap(([group, count]) => {
@@ -89,7 +89,7 @@ async function sweep(group, touch = null) {
 test("partitioned body and moon sweeps retain every complete per-object input and capture sequence", async () => {
   for (const [groups, touch] of [
     [["bodies-inner", "bodies-giants", "bodies-outer"], null],
-    [["moons-inner", "moons-outer"], false],
+    [["moons-inner", "moons-jovian", "moons-outer"], false],
     [["touch-controls"], true],
   ]) {
     const all = await sweep("all", touch);
@@ -100,7 +100,56 @@ test("partitioned body and moon sweeps retain every complete per-object input an
   }
 });
 
-test("visual lane dispatch runs every complete scenario once across the ten lanes", async () => {
+test("moon lane boundaries keep Io's transient history and start the other lanes with settled captures", async () => {
+  for (const [group, ids] of [
+    ["moons-inner", ["moon", "phobos", "deimos", "io"]],
+    ["moons-jovian", ["europa", "ganymede", "callisto"]],
+    ["moons-outer", ["titan", "triton"]],
+  ]) {
+    const sequences = await sweep(group, false);
+    assert.deepEqual([...sequences.keys()], ids);
+    const firstCapture = sequences.get(ids[0]).find(([operation]) => operation === "capture");
+    assert.equal(firstCapture[1], `desktop-moon-parent-min-${ids[0]}`);
+    assert.notEqual(firstCapture[3], true, "the first capture must settle before retaining pixels");
+    if (group === "moons-inner") {
+      const io = sequences.get("io");
+      assert.deepEqual(io.slice(0, 6), [
+        ["select", "io"], ["zoomMinimum"], ["advance", 32],
+        ["capture", "desktop-moon-parent-transition-io-start", { transitionOffset: 32 }, true],
+        ["advance", 350],
+        ["capture", "desktop-moon-parent-transition-io-mid", { transitionOffset: 382 }, true],
+      ]);
+    }
+  }
+});
+
+const ordinaryStart = source.indexOf("async function ordinaryViews()");
+const ordinaryEnd = source.indexOf("\ntry {", ordinaryStart);
+assert.ok(ordinaryStart >= 0 && ordinaryEnd > ordinaryStart);
+const ordinaryFunctions = ["ordinaryOverviewAndConstellations", "ordinaryDirectViews", "ordinaryHandoff", "ordinaryTransitions", "ordinaryFarSky", "ordinarySolstice", "ordinaryTouch", "ordinaryTriton", "ordinaryFallback"];
+async function ordinarySequence(group) {
+  const calls = [];
+  const context = { expected: inventory(group).expected, scenario: async (_label, run) => run() };
+  for (const name of ordinaryFunctions) context[name] = async (...args) => calls.push([name, ...args]);
+  const run = runInNewContext(`${source.slice(ordinaryStart, ordinaryEnd)}\nordinaryViews`, context);
+  await run();
+  return calls;
+}
+
+test("ordinary and cosmic lanes preserve whole page sequences and the unpartitioned ordering", async () => {
+  const original = [
+    ["ordinaryOverviewAndConstellations"], ["ordinaryDirectViews"], ["ordinaryHandoff"],
+    ["ordinaryTransitions"], ["ordinaryFarSky"],
+    ["ordinarySolstice", "earth-june-solstice", "2000-06-21"],
+    ["ordinarySolstice", "earth-december-solstice", "2000-12-21", true],
+    ["ordinaryTouch"], ["ordinaryTriton"], ["ordinaryFallback"],
+  ];
+  assert.deepEqual(await ordinarySequence("all"), original);
+  assert.deepEqual(await ordinarySequence("cosmic-scenes"), [original[1], original[3], original[4]]);
+  assert.deepEqual(await ordinarySequence("ordinary"), original.filter((_item, index) => ![1, 3, 4].includes(index)));
+});
+
+test("visual lane dispatch runs every complete scenario once across the fourteen lanes", async () => {
   const dispatchStart = source.indexOf('  if (["all", "bodies-inner", "bodies-giants", "bodies-outer"].includes(group)) await scenario(');
   const dispatchEnd = source.indexOf("\n} catch (error)", dispatchStart);
   assert.ok(dispatchStart >= 0 && dispatchEnd > dispatchStart, "capture dispatch is available");
@@ -114,8 +163,9 @@ test("visual lane dispatch runs every complete scenario once across the ten lane
       captureFocusTracking: async () => {
         for (const { id } of inventory(group).activeTrackingScenarios) calls.push(`focus:${id}`);
       },
+      ordinaryViews: async () => { calls.push(...(await ordinarySequence(group)).map((call) => JSON.stringify(call))); },
     };
-    for (const name of ["primaryTouch", "phases", "lifecycle", "ringsAndSky", "controlledLegacyViews", "responsive", "timeRates", "ordinaryViews", "observeDeepLoadWallClock"]) {
+    for (const name of ["primaryTouch", "phases", "lifecycle", "ringsAndSky", "controlledLegacyViews", "responsive", "timeRates", "observeDeepLoadWallClock"]) {
       context[name] = async (touch) => { calls.push(typeof touch === "boolean" ? `${name}:${touch}` : name); };
     }
     await runInNewContext(`(async () => { ${source.slice(dispatchStart, dispatchEnd)} })()`, context);
@@ -127,6 +177,9 @@ test("visual lane dispatch runs every complete scenario once across the ten lane
   assert.deepEqual(combined.sort(), (await dispatch("all")).sort(), "lane execution matches the complete audit");
   assert.deepEqual(await dispatch("touch-controls"), ["primaryTouch", "moon:true:moon", "moon:true:phobos", "moon:true:io", "moon:true:triton", "timeRates"]);
   assert.deepEqual(await dispatch("responsive"), ["responsive"]);
+  assert.deepEqual(await dispatch("desktop-phases"), ["phases:false"]);
+  assert.deepEqual(await dispatch("desktop-lifecycle"), ["lifecycle:false"]);
+  assert.deepEqual(await dispatch("desktop-states"), ["ringsAndSky", "controlledLegacyViews"]);
   assert.deepEqual(await dispatch("focus"), focusTrackingScenarios.map(({ id }) => `focus:${id}`));
 });
 

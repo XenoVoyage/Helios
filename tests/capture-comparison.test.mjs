@@ -8,7 +8,7 @@ import test from "node:test";
 import { captureClasses, runComparison, validateEvidence } from "../scripts/capture-comparison.mjs";
 
 const labels = ["main", "develop", "candidate"];
-const counts = { "bodies-inner": 48, "bodies-giants": 23, "bodies-outer": 13, "moons-inner": 31, "moons-outer": 30, "touch-controls": 47, responsive: 40, "desktop-states": 26, "touch-states": 28, ordinary: 63 };
+const counts = { "bodies-inner": 48, "bodies-giants": 23, "bodies-outer": 13, "moons-inner": 31, "moons-jovian": 18, "moons-outer": 12, "touch-controls": 47, responsive: 40, "desktop-phases": 8, "desktop-lifecycle": 10, "desktop-states": 8, "touch-states": 28, "cosmic-scenes": 40, ordinary: 23 };
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const git = (root, ...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const commit = (root, message) => {
