@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { errors } from "playwright";
 import { BODIES, visualBodyRadius, visualRingRadius } from "../js/bodies.js";
 
 export function compactLayoutMatches(sample, live) {
@@ -62,6 +63,49 @@ export function assertCompactCaptureContent(metrics, name) {
     `${name}: saved PNG contains the rendered globe, not a cleared WebGL surface: ${JSON.stringify(metrics)}`);
 }
 
+export function assertCompactCaptureState(expected, current, name) {
+  assert.equal(expected.playing, false, `${name}: PNG acquisition starts with simulation paused`);
+  assert.equal(current.playing, false, `${name}: simulation stays paused during PNG acquisition`);
+  assert.equal(current.hit, "viewport", `${name}: globe center remains reachable during PNG acquisition`);
+  assert.ok(compactLayoutMatches(current.sample, current.live), `${name}: capture layout matches its rendered frame`);
+  assert.deepEqual(current, expected, `${name}: PNG acquisition preserves the exact frame, body, buffer and live geometry`);
+}
+
+export async function captureCompactScreenshot(page, verifyState, acquisition) {
+  acquisition.attempts = [];
+  acquisition.recovered = false;
+  const acquire = async (timeout) => {
+    const attempt = { timeoutMilliseconds: timeout, status: "pending" };
+    acquisition.attempts.push(attempt);
+    const started = performance.now();
+    try {
+      const png = await page.screenshot({ timeout });
+      attempt.status = "captured";
+      return png;
+    } catch (error) {
+      attempt.status = "failed";
+      attempt.error = { name: error.name, message: error.message };
+      throw error;
+    } finally {
+      attempt.elapsedMilliseconds = performance.now() - started;
+    }
+  };
+  await verifyState();
+  let png;
+  try {
+    png = await acquire(30_000);
+  } catch (error) {
+    if (!(error instanceof errors.TimeoutError)) throw error;
+    // A timed-out acquisition can recover on the same frozen frame. Never
+    // advance the clock or retry geometry, content validation, or file writes.
+    await verifyState();
+    png = await acquire(10_000);
+    acquisition.recovered = true;
+  }
+  await verifyState();
+  return png;
+}
+
 export async function auditCompactFocus(browser, base, { onStill, onReport }) {
   const report = { observations: [], errors: [] };
   const context = await browser.newContext({ viewport: { width: 320, height: 568 },
@@ -94,7 +138,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
       const original = THREE.Scene.prototype.onAfterRender;
       const before = THREE.Scene.prototype.onBeforeRender, meshAfter = THREE.Mesh.prototype.onAfterRender;
       const meshes = new Map(), world = new THREE.Vector3(), projected = new THREE.Vector3(), scale = new THREE.Vector3();
-      let sample = null, previous = null, targetId = "earth", drawn = false, frame = 0, resizeEpoch = 0;
+      let sample = null, previous = null, targetId = "earth", drawn = false, frame = 0, resizeEpoch = 0, gl = null;
       const resized = () => { resizeEpoch += 1; };
       window.addEventListener("resize", resized);
       const readLayout = () => {
@@ -131,7 +175,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
         const label = document.querySelector(`[data-body-id="${id}"]`);
         const labelBox = label.getBoundingClientRect().toJSON();
         const labelAnchor = label.style.transform.match(/translate\(([-+\deE.]+)px,\s*([-+\deE.]+)px\)/);
-        const gl = renderer.getContext();
+        gl = renderer.getContext();
         previous = sample;
         sample = { ...layout, id, frame: ++frame,
           buffer: { width: gl.drawingBufferWidth, height: gl.drawingBufferHeight,
@@ -149,7 +193,14 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
       return { sample: () => sample,
         snapshot: (point = sample) => ({ previous, sample, live: readLayout(),
           hit: point ? document.elementFromPoint(point.x, point.y)?.id : null }),
-        captureState: () => ({ resizeEpoch, frame, viewport: { width: innerWidth, height: innerHeight } }),
+        captureState: () => ({ resizeEpoch, frame, viewport: { width: innerWidth, height: innerHeight },
+          sample, live: readLayout(), hit: document.elementFromPoint(sample.x, sample.y)?.id,
+          buffer: { width: gl.drawingBufferWidth, height: gl.drawingBufferHeight,
+            canvasWidth: gl.canvas.width, canvasHeight: gl.canvas.height },
+          playing: document.querySelector("#play-button").getAttribute("aria-pressed") === "true",
+          date: document.querySelector("#clock").textContent,
+          selectedLabels: [...document.querySelectorAll(".sky-label.is-active")].map((label) => ({
+            id: label.dataset.bodyId, hidden: label.hidden, box: label.getBoundingClientRect().toJSON() })) }),
         target: (id) => { targetId = id; }, restore: () => {
         THREE.Scene.prototype.onAfterRender = original;
         THREE.Scene.prototype.onBeforeRender = before;
@@ -249,9 +300,18 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
       assert.equal(sample.drawn, true, `${name}: capture follows a submitted globe`);
       await inspect(observation.id, observation.expanded, name, sample, observation);
       observation.passed = false;
-      const png = await onStill(page, name);
+      const expectedState = await observer.evaluate((value) => value.captureState());
+      assert.deepEqual(expectedState.sample, sample, `${name}: acquisition starts on the inspected frame`);
+      assert.deepEqual(expectedState.buffer, sample.buffer, `${name}: drawing buffer is unchanged before acquisition`);
+      const acquisition = observation.capture.acquisition = {};
+      const png = await captureCompactScreenshot(page, async () => {
+        assert.deepEqual(report.errors, [], `${name}: PNG acquisition has no browser errors`);
+        assertCompactCaptureState(expectedState, await observer.evaluate((value) => value.captureState()), name);
+      }, acquisition);
+      await onStill(name, png);
       const capturedState = await observer.evaluate((value) => value.captureState());
       observation.capture.afterSave = capturedState;
+      assertCompactCaptureState(expectedState, capturedState, name);
       assert.deepEqual(capturedState.viewport, sample.viewport, `${name}: viewport remains unchanged through PNG acquisition`);
       assert.equal(capturedState.resizeEpoch, sample.resizeEpoch, `${name}: no resize occurs during PNG acquisition`);
       assert.ok(png?.length > 24, `${name}: capture returns the exact saved PNG bytes`);
@@ -329,7 +389,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
     report.failure = { message: error.message, scenario: error.compactScenario ?? report.observations.at(-1)?.name ?? null };
     if (error.compactLayout) report.failure.layout = error.compactLayout;
     try {
-      await onStill(page, "compact-focus-failure", { timeout: 10_000 });
+      await onStill("compact-focus-failure", await page.screenshot({ timeout: 10_000 }));
     } catch (captureError) {
       report.failure.screenshotError = String(captureError);
     }
