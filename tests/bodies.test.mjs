@@ -30,9 +30,181 @@ import {
 import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
 import { assertCompactLabelBounds, compactCaptureMetrics, assertCompactCaptureContent,
-  compactLayoutMatches, compactLayoutSettled, assertCompactCaptureState, captureCompactScreenshot } from "./compact-focus.mjs";
+  compactLayoutMatches, compactLayoutSettled, assertCompactCaptureState, captureCompactScreenshot,
+  waitForCompactGpu, auditCompactFocus } from "./compact-focus.mjs";
 
 const appSource = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
+
+function compactGpuHarness(statuses = [11]) {
+  const events = [], timers = new Set();
+  let elapsed = 0;
+  const state = { frame: 9, id: "earth", resizeEpoch: 1, viewport: { width: 320, height: 568 },
+    buffer: { width: 320, height: 568, canvasWidth: 320, canvasHeight: 568 }, playing: false };
+  const gl = { SYNC_GPU_COMMANDS_COMPLETE: 10, ALREADY_SIGNALED: 11, CONDITION_SATISFIED: 12, TIMEOUT_EXPIRED: 13,
+    WAIT_FAILED: 14, isContextLost: () => false,
+    fenceSync: (...args) => { events.push(["fence", ...args]); return {}; },
+    flush: () => events.push(["flush"]),
+    clientWaitSync: (sync, ...args) => { events.push(["poll", ...args]); return statuses.length > 1 ? statuses.shift() : statuses[0]; },
+    deleteSync: () => events.push(["delete"]) };
+  const handle = { gpuFence: null, gpuContext: () => gl, gpuFrame: () => structuredClone(state) };
+  const observer = { evaluate: async (fn, operation) => fn(handle, operation) };
+  const timing = { now: () => elapsed,
+    pause: async (milliseconds) => { events.push(["yield", milliseconds]); elapsed += milliseconds; },
+    setTimer: (callback, milliseconds) => { const timer = { callback, milliseconds }; timers.add(timer); return timer; },
+    clearTimer: (timer) => timers.delete(timer) };
+  return { events, timers, state, gl, handle, observer, timing,
+    expire: () => { const timer = [...timers][0]; elapsed += timer.milliseconds; timer.callback(); } };
+}
+
+test("compact GPU completion yields between polls without adding or changing rendered frames", async () => {
+  for (const ready of [11, 12]) {
+    const harness = compactGpuHarness([13, ready]), telemetry = {};
+    const state = structuredClone(harness.state);
+    await waitForCompactGpu(harness.observer, telemetry, harness.timing);
+    assert.deepEqual(harness.events, [["fence", 10, 0], ["flush"], ["yield", 16], ["poll", 0, 0],
+      ["yield", 16], ["poll", 0, 0], ["delete"]]);
+    assert.deepEqual(harness.state, state);
+    assert.equal(harness.handle.gpuFence, null);
+    assert.equal(harness.timers.size, 0);
+    assert.deepEqual(telemetry, { timeoutMilliseconds: 10_000, polls: 2, status: "completed",
+      frame: 9, id: "earth", submitted: state, elapsedMilliseconds: 32 });
+  }
+});
+
+test("compact GPU completion rejects unavailable fences, context loss and failed status", async () => {
+  for (const kind of ["null", "lost-before", "lost-during", "wait-failed", "unknown"]) {
+    const harness = compactGpuHarness([kind === "unknown" ? 99 : 14]), telemetry = {};
+    if (kind === "null") harness.gl.fenceSync = () => null;
+    if (kind === "lost-before") harness.gl.isContextLost = () => true;
+    if (kind === "lost-during") {
+      const pause = harness.timing.pause;
+      harness.timing.pause = async (ms) => { await pause(ms); harness.gl.isContextLost = () => true; };
+    }
+    await assert.rejects(waitForCompactGpu(harness.observer, telemetry, harness.timing), /Compact GPU/);
+    assert.equal(telemetry.status, "failed", kind);
+    assert.ok(telemetry.error.message);
+    assert.equal(harness.handle.gpuFence, null);
+    assert.equal(harness.events.filter(([event]) => event === "delete").length,
+      ["null", "lost-before"].includes(kind) ? 0 : 1);
+    assert.equal(harness.timers.size, 0);
+  }
+});
+
+test("compact GPU completion rejects frame, body, viewport, buffer and simulation drift", async () => {
+  for (const change of [
+    (s) => { s.frame += 1; }, (s) => { s.id = "mars"; }, (s) => { s.resizeEpoch += 1; },
+    (s) => { s.viewport.width += 1; }, (s) => { s.buffer.width += 1; },
+    (s) => { s.buffer.canvasHeight += 1; }, (s) => { s.playing = true; },
+  ]) {
+    const harness = compactGpuHarness(), telemetry = {}, pause = harness.timing.pause;
+    harness.timing.pause = async (ms) => { await pause(ms); change(harness.state); };
+    await assert.rejects(waitForCompactGpu(harness.observer, telemetry, harness.timing), /preserves the submitted frame/);
+    assert.equal(harness.handle.gpuFence, null);
+    assert.equal(telemetry.status, "failed");
+  }
+});
+
+test("compact GPU polling exhausts one wall deadline and releases its single fence", async () => {
+  const harness = compactGpuHarness([13]), telemetry = {};
+  await assert.rejects(waitForCompactGpu(harness.observer, telemetry, harness.timing), /10000ms polling deadline/);
+  assert.equal(telemetry.elapsedMilliseconds, 10_000);
+  assert.equal(telemetry.polls, 624);
+  assert.equal(harness.events.filter(([event]) => event === "fence").length, 1);
+  assert.equal(harness.events.filter(([event]) => event === "delete").length, 1);
+  assert.equal(harness.timers.size, 0);
+});
+
+test("compact GPU bounds a hung RPC, observes late rejection and preserves the primary failure", async () => {
+  for (const stalled of ["begin", "poll"]) {
+    const harness = compactGpuHarness(), telemetry = {}, evaluate = harness.observer.evaluate;
+    let rejectPending;
+    harness.observer.evaluate = (fn, operation) => {
+      if (operation === stalled) return new Promise((resolve, reject) => { rejectPending = reject; });
+      if (operation === "delete") throw new Error("cleanup also failed");
+      return evaluate(fn, operation);
+    };
+    const waiting = waitForCompactGpu(harness.observer, telemetry, harness.timing);
+    const rejected = assert.rejects(waiting, (error) => {
+      assert.match(error.message, new RegExp(`${stalled} exceeded its wall-time deadline`));
+      assert.equal(error.compactGpuRpcTimeout, true);
+      return true;
+    });
+    await new Promise(setImmediate);
+    assert.equal(harness.timers.size, 1);
+    harness.expire();
+    await rejected;
+    rejectPending(new Error("late protocol failure"));
+    await new Promise(setImmediate);
+    assert.equal(telemetry.elapsedMilliseconds, 10_000);
+    assert.match(telemetry.error.message, new RegExp(`${stalled} exceeded`));
+    assert.equal(telemetry.cleanupError.message, "cleanup also failed");
+    assert.equal(telemetry.rpcDeadlineExceeded, true);
+    assert.equal(harness.timers.size, 0);
+  }
+});
+
+test("compact GPU cleanup has its own bound and cannot silently pass", async () => {
+  const harness = compactGpuHarness(), telemetry = {}, evaluate = harness.observer.evaluate;
+  harness.observer.evaluate = (fn, operation) => operation === "delete" ? new Promise(() => {}) : evaluate(fn, operation);
+  const waiting = waitForCompactGpu(harness.observer, telemetry, harness.timing);
+  const rejected = assert.rejects(waiting, /delete exceeded its wall-time deadline/);
+  await new Promise(setImmediate);
+  assert.equal([...harness.timers][0].milliseconds, 1_000);
+  harness.expire();
+  await rejected;
+  assert.equal(telemetry.status, "failed");
+  assert.match(telemetry.cleanupError.message, /delete exceeded/);
+  assert.equal(telemetry.rpcDeadlineExceeded, true);
+  assert.equal(harness.timers.size, 0);
+});
+
+test("an unresponsive compact GPU context is closed without further page RPCs or masking its failure", async () => {
+  for (const cleanupFails of [false, true]) {
+    const failure = Object.assign(new Error("GPU RPC deadline"), { compactGpuRpcTimeout: true });
+    const events = [];
+    let report;
+    const page = { on: () => {}, clock: { install: async () => { throw failure; } } };
+    const context = { newPage: async () => page, close: async () => {
+      events.push("close");
+      if (cleanupFails) throw new Error("close failed");
+    } };
+    await assert.rejects(auditCompactFocus({ newContext: async () => context }, "unused", {
+      onStill: async () => assert.fail("an unresponsive context must not acquire another PNG"),
+      onReport: async (value) => {
+        events.push("report"); report = value;
+        if (cleanupFails) throw new Error("write failed");
+      },
+    }), (error) => error === failure);
+    assert.deepEqual(events, ["close", "report"]);
+    assert.match(report.failure.screenshotUnavailable, /no further page RPC/);
+    assert.match(report.failure.restoreUnavailable, /Closing the unresponsive context/);
+    if (cleanupFails) {
+      assert.match(report.failure.contextCloseError, /close failed/);
+      assert.match(failure.message, /report write failed/);
+    }
+  }
+});
+
+test("a hung compact context close cannot suppress the retained report and primary failure", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const failure = Object.assign(new Error("GPU RPC deadline"), { compactGpuRpcTimeout: true });
+  let report, rejectClose;
+  const page = { on: () => {}, clock: { install: async () => { throw failure; } } };
+  const context = { newPage: async () => page,
+    close: () => new Promise((resolve, reject) => { rejectClose = reject; }) };
+  const waiting = auditCompactFocus({ newContext: async () => context }, "unused", {
+    onStill: async () => assert.fail("no screenshot after an unresponsive RPC"),
+    onReport: async (value) => { report = value; },
+  });
+  const rejected = assert.rejects(waiting, (error) => error === failure);
+  await new Promise(setImmediate);
+  t.mock.timers.tick(1_000);
+  await rejected;
+  assert.match(report.failure.contextCloseError, /1000ms deadline/);
+  assert.equal(report.failure.message, "GPU RPC deadline");
+  rejectClose(new Error("late close failure"));
+  await new Promise(setImmediate);
+});
 
 test("compact PNG acquisition returns the original bytes without recovery on success", async () => {
   const png = Buffer.from("original PNG bytes"), acquisition = {}, calls = [];

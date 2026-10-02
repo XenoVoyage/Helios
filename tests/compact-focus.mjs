@@ -71,6 +71,101 @@ export function assertCompactCaptureState(expected, current, name) {
   assert.deepEqual(current, expected, `${name}: PNG acquisition preserves the exact frame, body, buffer and live geometry`);
 }
 
+// Runs in the page through JSHandle.evaluate; keep this function self-contained.
+export function compactGpuFence(observer, operation) {
+  const gl = observer.gpuContext();
+  if (operation === "delete") {
+    try {
+      if (observer.gpuFence) gl.deleteSync(observer.gpuFence);
+    } finally {
+      observer.gpuFence = null;
+    }
+    return;
+  }
+  if (!gl || typeof gl.fenceSync !== "function") throw new Error("Compact GPU wait requires WebGL2");
+  if (gl.isContextLost()) throw new Error("Compact GPU wait lost its WebGL context");
+  if (operation === "begin") {
+    if (observer.gpuFence) throw new Error("Compact GPU wait already owns a fence");
+    observer.gpuFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (!observer.gpuFence) throw new Error("Compact GPU wait could not create a fence");
+    gl.flush();
+    return observer.gpuFrame();
+  }
+  if (operation !== "poll" || !observer.gpuFence) throw new Error("Compact GPU wait has no active fence");
+  const status = gl.clientWaitSync(observer.gpuFence, 0, 0);
+  if (status !== gl.ALREADY_SIGNALED && status !== gl.CONDITION_SATISFIED && status !== gl.TIMEOUT_EXPIRED) {
+    throw new Error(`Compact GPU wait failed with status ${status}`);
+  }
+  return { completed: status !== gl.TIMEOUT_EXPIRED, frame: observer.gpuFrame() };
+}
+
+export async function waitForCompactGpu(observer, telemetry, timing = {
+  now: () => performance.now(), pause: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  setTimer: setTimeout, clearTimer: clearTimeout,
+}) {
+  const started = timing.now(), timeout = 10_000;
+  Object.assign(telemetry, { timeoutMilliseconds: timeout, polls: 0, status: "pending" });
+  const evaluate = async (operation, milliseconds) => {
+    let timer;
+    // Racing does not cancel CDP. On failure the audit closes its context;
+    // Promise.race also observes any later rejection from the pending RPC.
+    const expired = new Promise((resolve, reject) => {
+      timer = timing.setTimer(() => {
+        const error = new Error(`Compact GPU ${operation} exceeded its wall-time deadline`);
+        error.compactGpuRpcTimeout = true;
+        reject(error);
+      }, milliseconds);
+      timer?.unref?.();
+    });
+    try {
+      return await Promise.race([observer.evaluate(compactGpuFence, operation), expired]);
+    } finally {
+      timing.clearTimer(timer);
+    }
+  };
+  let failure;
+  try {
+    const expected = await evaluate("begin", timeout);
+    Object.assign(telemetry, { frame: expected.frame, id: expected.id, submitted: expected });
+    assert.equal(expected.playing, false, "Compact GPU wait starts with simulation paused");
+    while (true) {
+      const remaining = timeout - (timing.now() - started);
+      if (remaining <= 0) throw new Error("Compact GPU completion exceeded its 10000ms polling deadline");
+      // A WebGLSync cannot signal in its creating task. Yield real wall time,
+      // leaving the fake clock paused and every submitted application frame intact.
+      await timing.pause(Math.min(16, remaining));
+      if (timing.now() - started >= timeout) throw new Error("Compact GPU completion exceeded its 10000ms polling deadline");
+      const current = await evaluate("poll", timeout - (timing.now() - started));
+      telemetry.polls += 1;
+      assert.deepEqual(current.frame, expected, "Compact GPU wait preserves the submitted frame, body, viewport and buffer");
+      if (timing.now() - started >= timeout) throw new Error("Compact GPU completion exceeded its 10000ms polling deadline");
+      if (current.completed) {
+        telemetry.status = "completed";
+        return;
+      }
+    }
+  } catch (error) {
+    failure = error;
+    telemetry.status = "failed";
+    telemetry.error = { name: error.name, message: error.message };
+    if (error.compactGpuRpcTimeout) telemetry.rpcDeadlineExceeded = true;
+    throw error;
+  } finally {
+    telemetry.elapsedMilliseconds = timing.now() - started;
+    try {
+      await evaluate("delete", 1_000);
+    } catch (error) {
+      telemetry.cleanupError = { name: error.name, message: error.message };
+      telemetry.status = "failed";
+      if (error.compactGpuRpcTimeout) {
+        telemetry.rpcDeadlineExceeded = true;
+        if (failure) failure.compactGpuRpcTimeout = true;
+      }
+      if (!failure) throw error;
+    }
+  }
+}
+
 export async function captureCompactScreenshot(page, verifyState, acquisition) {
   acquisition.attempts = [];
   acquisition.recovered = false;
@@ -107,7 +202,7 @@ export async function captureCompactScreenshot(page, verifyState, acquisition) {
 }
 
 export async function auditCompactFocus(browser, base, { onStill, onReport }) {
-  const report = { observations: [], errors: [] };
+  const report = { observations: [], gpuWaits: [], errors: [] };
   const context = await browser.newContext({ viewport: { width: 320, height: 568 },
     deviceScaleFactor: 1, hasTouch: true, isMobile: true });
   const page = await context.newPage();
@@ -115,6 +210,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
   page.on("console", (message) => { if (message.type() === "error") report.errors.push(message.text()); });
   page.on("requestfailed", (request) => report.errors.push(request.url()));
   let observer;
+  let unresponsiveGpuError;
   try {
     await page.clock.install({ time: new Date("2026-09-05T00:00:00Z") });
     await page.addInitScript(() => {
@@ -190,7 +286,12 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
           cardHidden: document.querySelector("#body-card").hidden,
           busy: document.querySelector("#viewport").getAttribute("aria-busy") };
       };
-      return { sample: () => sample,
+      return { sample: () => sample, gpuFence: null, gpuContext: () => gl,
+        gpuFrame: () => ({ frame, id: sample.id, resizeEpoch,
+          viewport: { width: innerWidth, height: innerHeight },
+          buffer: { width: gl.drawingBufferWidth, height: gl.drawingBufferHeight,
+            canvasWidth: gl.canvas.width, canvasHeight: gl.canvas.height },
+          playing: document.querySelector("#play-button").getAttribute("aria-pressed") === "true" }),
         snapshot: (point = sample) => ({ previous, sample, live: readLayout(),
           hit: point ? document.elementFromPoint(point.x, point.y)?.id : null }),
         captureState: () => ({ resizeEpoch, frame, viewport: { width: innerWidth, height: innerHeight },
@@ -208,12 +309,21 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
         window.removeEventListener("resize", resized);
       } };
     });
+    const gpuReady = async (name, phase) => {
+      const wait = { name, phase };
+      report.gpuWaits.push(wait);
+      try { await waitForCompactGpu(observer, wait); } catch (error) {
+        error.compactScenario = name;
+        throw error;
+      }
+    };
     const settled = async (id, name = id) => {
       let snapshot;
       for (let attempt = 0; attempt < 140; attempt += 1) {
         // Deliver consecutive RAFs so ResizeObserver can finish the chrome reflow.
         // Elapsed time alone is insufficient: prove measured layout convergence.
         await page.clock.runFor(50);
+        await gpuReady(name, "settling");
         snapshot = await observer.evaluate((value) => value.snapshot());
         const { previous, sample, live } = snapshot;
         if (sample?.id === id && sample.busy === "false" && previous?.id === id
@@ -286,6 +396,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
       // fastForward delivers one RAF regardless of its jump. Run consecutive
       // frames before capturing a resized surface, then validate the saved PNG.
       await page.clock.runFor(64);
+      await gpuReady(name, "capture");
       const sample = await observer.evaluate((value) => value.sample());
       observation.capture = { frame: sample.frame, previousFrame: before.frame, resizeEpoch: sample.resizeEpoch,
         buffer: sample.buffer, viewport: sample.viewport, metrics: null,
@@ -388,15 +499,37 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
   } catch (error) {
     report.failure = { message: error.message, scenario: error.compactScenario ?? report.observations.at(-1)?.name ?? null };
     if (error.compactLayout) report.failure.layout = error.compactLayout;
-    try {
-      await onStill("compact-focus-failure", await page.screenshot({ timeout: 10_000 }));
-    } catch (captureError) {
-      report.failure.screenshotError = String(captureError);
+    if (error.compactGpuRpcTimeout) {
+      unresponsiveGpuError = error;
+      report.failure.screenshotUnavailable = "GPU evaluation deadline exceeded; no further page RPC is safe before context closure";
+    } else {
+      try {
+        await onStill("compact-focus-failure", await page.screenshot({ timeout: 10_000 }));
+      } catch (captureError) {
+        report.failure.screenshotError = String(captureError);
+      }
     }
     throw error;
   } finally {
-    if (observer) { await observer.evaluate((value) => value.restore()); await observer.dispose(); }
-    await onReport(report);
-    await context.close();
+    if (unresponsiveGpuError) {
+      report.failure.restoreUnavailable = "Closing the unresponsive context releases its observer and GPU fence";
+      let closeTimer;
+      try {
+        const expired = new Promise((resolve, reject) => {
+          closeTimer = setTimeout(() => reject(new Error("Compact context close exceeded its 1000ms deadline")), 1_000);
+          closeTimer.unref?.();
+        });
+        await Promise.race([context.close(), expired]);
+      } catch (error) {
+        report.failure.contextCloseError = String(error);
+      } finally {
+        clearTimeout(closeTimer);
+      }
+      try { await onReport(report); } catch (error) { unresponsiveGpuError.message += `\nCompact report write failed: ${error}`; }
+    } else {
+      if (observer) { await observer.evaluate((value) => value.restore()); await observer.dispose(); }
+      await onReport(report);
+      await context.close();
+    }
   }
 }

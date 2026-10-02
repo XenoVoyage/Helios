@@ -262,6 +262,14 @@ focus captures plus an 80-state check of all 20 bodies at 320×568 and 568×320,
 with Camera closed and open. It checks actual rendered globe/ring and label
 clearance, useful size, picking, rotation, and restoration of desktop framing.
 Its full inventory is 436 screenshots and 16 reports, before group manifests.
+After each compact-focus 50ms settling or 64ms pre-capture frame batch, wait for
+a WebGL2 fence to signal before submitting the next batch. Poll from separate
+browser evaluations with bounded Node wall-time delays; do not advance the page
+clock while waiting.
+Reject lost contexts, invalid fences, wait failures, deadline exhaustion, or a
+changed frame/body/drawing buffer. Retain completion timings in the compact
+report. This proves prior WebGL commands completed, not that the compositor or
+saved PNG is correct; all layout, capture-state and actual-PNG checks still apply.
 Compact focus PNG acquisition permits one 10-second recovery only after the
 initial 30-second screenshot call raises Playwright's `TimeoutError`. Retain
 both attempts in `compact-focus.json` and prove the exact paused frame, body,
