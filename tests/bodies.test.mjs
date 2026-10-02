@@ -4,7 +4,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import * as THREE from "../vendor/three.module.min.js";
-import { CONFIG, formatDaysPerSecond, pinchZoomDistance } from "../js/config.js";
+import { CONFIG, compactFocusFrame, formatDaysPerSecond, pinchZoomDistance } from "../js/config.js";
 import {
   BODIES,
   bodyOrientationBasis,
@@ -28,8 +28,130 @@ import {
 } from "../js/bodies.js";
 import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
+import { assertCompactLabelBounds, compactCaptureMetrics, assertCompactCaptureContent } from "./compact-focus.mjs";
 
 const appSource = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
+
+test("compact screenshot validation rejects cleared scene pixels even when HTML labels are painted", () => {
+  const width = 80, height = 80, data = new Uint8Array(width * height * 4);
+  const sample = { x: 40, y: 40, radius: 30 };
+  const label = { left: 20, right: 60, top: 18, bottom: 34 };
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    data.set(x >= label.left && x <= label.right && y >= label.top && y <= label.bottom
+      ? [255, 255, 255, 255] : [2, 5, 12, 255], (y * width + x) * 4);
+  }
+  const blank = compactCaptureMetrics({ data, width, height, left: 0, top: 0 }, sample, [label]);
+  assert.equal(blank.coloredFraction, 0, "overlaid text cannot count as rendered globe content");
+  assert.throws(() => assertCompactCaptureContent(blank, "cleared resize"), /cleared WebGL surface/);
+  assert.throws(() => assertCompactCaptureContent({ samples: 1000, coloredFraction: 1,
+    meanBackgroundDifference: 200, luminanceStdDev: 0 }, "uniform surface"), /cleared WebGL surface/);
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    if (Math.hypot(x + 0.5 - sample.x, y + 0.5 - sample.y) < 18) data.set([x * 2, y * 2, 150, 255], (y * width + x) * 4);
+  }
+  assert.doesNotThrow(() => assertCompactCaptureContent(
+    compactCaptureMetrics({ data, width, height, left: 0, top: 0 }, sample, [label]), "rendered globe"));
+});
+
+test("compact target measurement tolerates DOMRect roundoff but rejects smaller or clipped targets", () => {
+  const label = { layoutWidth: 64, layoutHeight: 44, box: {
+    width: 64.375, height: 43.999996185302734,
+    left: 127.80693054199219, right: 192.1819305419922,
+    top: 57.08046340942383, bottom: 101.08045959472656,
+  } };
+  const viewport = { width: 320, height: 568 };
+  assert.doesNotThrow(() => assertCompactLabelBounds(label, viewport, "observed Venus"));
+  assert.throws(() => assertCompactLabelBounds({ ...label, layoutHeight: 43 }, viewport, "short layout"), /44px target/);
+  assert.throws(() => assertCompactLabelBounds({ ...label, box: { ...label.box, height: 43.9 } }, viewport, "scaled target"), /full target size/);
+  assert.throws(() => assertCompactLabelBounds({ ...label, box: { ...label.box, height: 43.999 } }, viewport, "beyond roundoff"), /full target size/);
+  assert.throws(() => assertCompactLabelBounds({ ...label, box: { ...label.box, left: 6.99999 } }, viewport, "clipped target"), /stays on screen/);
+});
+
+test("compact framing clears chrome with the whole globe and a full-size label", () => {
+  const obstacles = [
+    { left: 4, right: 145, top: 2, bottom: 52 },
+    { left: 244, right: 564, top: 4, bottom: 190 },
+    { left: 4, right: 212, top: 100, bottom: 208 },
+    { left: 0, right: 568, top: 204, bottom: 320 },
+  ];
+  const radius = 44, width = 568, height = 320;
+  for (const labelWidth of [56, 95]) {
+    const frame = compactFocusFrame(width, height, radius, labelWidth, 44, obstacles);
+    assert.ok(frame.zoom > 0.75 && frame.zoom <= 1, "compact globe retains meaningful visible size");
+    const bounds = { left: frame.x - Math.max(radius * frame.zoom, labelWidth / 2),
+      right: frame.x + Math.max(radius * frame.zoom, labelWidth / 2),
+      top: frame.y - Math.max(radius * frame.zoom, 52.8), bottom: frame.y + radius * frame.zoom };
+    assert.ok(bounds.left >= 8 && bounds.right <= width - 8 && bounds.top >= 8 && bounds.bottom <= height - 8);
+    for (const box of obstacles) assert.ok(bounds.right <= box.left || bounds.left >= box.right
+      || bounds.bottom <= box.top || bounds.top >= box.bottom);
+    const camera = new THREE.PerspectiveCamera(CONFIG.cameraFovDegrees, width / height, 0.05, 100);
+    camera.zoom = frame.zoom;
+    camera.setViewOffset(width, height, width / 2 - frame.x, height / 2 - frame.y, width, height);
+    camera.position.set(0, 0, 10);
+    camera.updateMatrixWorld(true);
+    const screen = new THREE.Vector3().project(camera);
+    assert.ok(Math.abs((screen.x + 1) * width / 2 - frame.x) < 1e-9);
+    assert.ok(Math.abs((1 - screen.y) * height / 2 - frame.y) < 1e-9);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(screen.x, screen.y), camera);
+    assert.ok(ray.ray.distanceToPoint(new THREE.Vector3()) < 1e-9, "shifted scene picking follows projection inverse");
+    assert.deepEqual(camera.position.toArray(), [0, 0, 10], "framing never moves the world camera");
+  }
+  assert.deepEqual(compactFocusFrame(1440, 900, 125, 100, 44, []), { x: 720, y: 450, zoom: 1 });
+});
+
+test("compact focus keeps Mercury eligible through fractional Camera-open settling", () => {
+  // Measured 320x568 chrome from PR179's first rendered run; obstacles include
+  // the unchanged 8px clearance used by the real label-placement predicate.
+  const obstacles = [
+    { left: 4, right: 144.625, top: 2, bottom: 56.59375 },
+    { left: 0, right: 320, top: 93.625, bottom: 292 },
+    { left: 4, right: 212, top: 292, bottom: 400 },
+    { left: 0, right: 320, top: 396, bottom: 564 },
+    { left: 221.015625, right: 322, top: -2, bottom: 58 },
+  ];
+  const node = { labelWidth: 80.75, labelHeight: 44 };
+  const fits = runInNewContext(`${appSource.slice(appSource.indexOf("function bodyLabelFits("),
+    appSource.indexOf("function placeBodyLabel("))}\nbodyLabelFits`, {
+    BODY_LABEL_CLEARANCE: 8, bodyLabelObstacles: obstacles,
+  });
+  assert.equal(fits(252.375 - 0.019, 344.8 + 0.0095, node, 320, 568), false,
+    "the former boundary seat hides a label with the observed subpixel residual");
+  const frame = compactFocusFrame(320, 568, 19.2858, node.labelWidth, node.labelHeight, obstacles);
+  assert.equal(frame.zoom, 1, "reserving label space does not shrink Mercury");
+  for (const dx of [-0.05, 0, 0.05]) for (const dy of [-0.05, 0, 0.05]) {
+    assert.equal(fits(frame.x + dx, frame.y + dy, node, 320, 568), true,
+      `the real eligibility gate accepts the label throughout settling (${dx}, ${dy})`);
+  }
+});
+
+test("minimum landscape keeps the widest world label and globe clear with Camera open", () => {
+  // PR179's rendered Ganymede failure: a 99px layout target plus its 1px
+  // projection reserve cannot fit the former 99.375px strip beside the card.
+  const obstacles = [
+    { left: 4, right: 144.625, top: 2, bottom: 53.59375 },
+    { left: 244, right: 564, top: 4, bottom: 186.375 },
+    { left: 4, right: 212, top: 100, bottom: 208 },
+    { left: 0, right: 568, top: 204, bottom: 316 },
+    { left: 4, right: 104.984375, top: 46, bottom: 106 },
+  ];
+  const node = { labelWidth: 99, labelHeight: 44 }, radius = 11.56061564;
+  assert.deepEqual(compactFocusFrame(568, 320, radius, node.labelWidth, node.labelHeight, obstacles),
+    { x: 284, y: 160, zoom: 1 }, "the former card leaves no valid label seat");
+  obstacles[1].left += 4;
+  const frame = compactFocusFrame(568, 320, radius, node.labelWidth, node.labelHeight, obstacles);
+  assert.equal(frame.zoom, 1, "the corrected card keeps Ganymede at its normal apparent size");
+  const fits = runInNewContext(`${appSource.slice(appSource.indexOf("function bodyLabelFits("),
+    appSource.indexOf("function placeBodyLabel("))}\nbodyLabelFits`, {
+    BODY_LABEL_CLEARANCE: 8, bodyLabelObstacles: obstacles,
+  });
+  for (const dx of [-0.05, 0, 0.05]) for (const dy of [-0.05, 0, 0.05]) {
+    assert.equal(fits(frame.x + dx, frame.y + dy, node, 568, 320), true,
+      "the widest label retains its full target and projection reserve");
+  }
+  for (const box of obstacles) assert.ok(frame.x + radius <= box.left || frame.x - radius >= box.right
+    || frame.y + radius <= box.top || frame.y - radius >= box.bottom, "the entire globe clears chrome");
+});
+
 function labelTouchInput() {
   const makeSurface = (id) => {
     const captures = new Set();

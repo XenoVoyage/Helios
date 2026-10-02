@@ -1,6 +1,7 @@
 import * as THREE from "../vendor/three.module.min.js";
 import {
   CONFIG,
+  compactFocusFrame,
   describeDaysPerSecond,
   formatDaysPerSecond,
   isShortcutTargetInteractive,
@@ -1462,6 +1463,10 @@ function tick(now) {
   asteroidBelt.rotation.y = state.days * (Math.PI * 2) / 1682;
   kuiperBelt.rotation.y = state.days * (Math.PI * 2) / 90560;
   paintScaleLayer();
+  if (bodyLabelLayoutDirty) {
+    paintBodyLabelObstacles();
+    paintFocusFraming();
+  }
   placeCamera(1 - Math.exp(-CONFIG.focusLerp * cameraDt));
   updateLabels();
   paintClock();
@@ -1872,6 +1877,32 @@ function paintBodyLabelObstacles() {
     });
   }
   bodyLabelLayoutDirty = false;
+}
+
+function paintFocusFraming() {
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  const node = nodes.get(state.selectedId);
+  if (earthSkyLook || !node || (width > 840 && height > 500)) {
+    camera.zoom = 1;
+    camera.clearViewOffset();
+    return;
+  }
+  // The normal selection distance owns this fit. User zoom remains free to
+  // enlarge the body, and the physical camera/parent-globe route is unchanged.
+  const distance = Math.max(node.radius * 7.5, 5.5);
+  const outerRadius = node.body.ringOuterKm
+    ? Math.max(node.radius, visualRingRadius(node.body, node.body.ringOuterKm)) : node.radius;
+  const radius = outerRadius * height / (2 * Math.tan(camera.fov * DEG / 2)
+    * Math.sqrt(distance * distance - outerRadius * outerRadius));
+  const frame = compactFocusFrame(width, height, radius,
+    node.labelWidth, node.labelHeight, bodyLabelObstacles, BODY_LABEL_CLEARANCE);
+  camera.zoom = frame.zoom;
+  if (frame.x === width / 2 && frame.y === height / 2 && frame.zoom === 1) {
+    camera.clearViewOffset();
+  } else {
+    camera.setViewOffset(width, height, width / 2 - frame.x, height / 2 - frame.y, width, height);
+  }
 }
 
 function bodyLabelFits(anchorX, anchorY, node, viewportWidth, viewportHeight) {

@@ -78,7 +78,7 @@ test("runner and evidence failures cannot produce successful completion or run l
   }
 });
 
-test("the disjoint evidence inventory retains all 422 PNGs and 15 original reports", () => {
+test("the disjoint evidence inventory retains all 422 original PNGs and 15 reports plus compact focus evidence", () => {
   // Independent filename pins from the successful pre-sharding run 36860838260.
   // These pin membership only, never rendered pixels or a replacement baseline.
   const pins = {
@@ -89,7 +89,7 @@ test("the disjoint evidence inventory retains all 422 PNGs and 15 original repor
   };
   const all = [];
   for (const group of browserGroups) {
-    const files = expectedBrowserEvidence(group);
+    const files = expectedBrowserEvidence(group).filter((file) => !file.startsWith("compact-focus"));
     assert.equal(files.filter((file) => file.endsWith(".png")).length, pins[group][0]);
     assert.equal(files.filter((file) => file.endsWith(".json")).length, pins[group][1]);
     assert.equal(sha256(files.join("\n") + "\n"), pins[group][2]);
@@ -99,6 +99,10 @@ test("the disjoint evidence inventory retains all 422 PNGs and 15 original repor
   assert.equal(new Set(all).size, 437);
   assert.equal(all.filter((file) => file.endsWith(".png")).length, 422);
   assert.equal(all.filter((file) => file.endsWith(".json")).length, 15);
+  const added = expectedBrowserEvidence("touch").filter((file) => file.startsWith("compact-focus"));
+  assert.equal(added.filter((file) => file.endsWith(".png")).length, 14);
+  assert.deepEqual(added.filter((file) => file.endsWith(".json")), ["compact-focus.json"]);
+  assert.equal(browserGroups.flatMap(expectedBrowserEvidence).length, 452);
   assert.throws(() => expectedBrowserEvidence("unknown"), /known browser group/);
 });
 
@@ -124,7 +128,7 @@ test("isolated evidence records exact source, completed group, and hashes of eve
     assert.deepEqual(JSON.parse(await readFile(path.join(directory, `browser-audit-${group}.json`))), report);
     completedGroups.push(group);
   }
-  assert.equal((await readdir(directory)).length, 441);
+  assert.equal((await readdir(directory)).length, 456);
 });
 
 test("stale, empty, missing, extra, wrong-group and invalid evidence fail closed", async (t) => {
