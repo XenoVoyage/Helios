@@ -4,7 +4,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import * as THREE from "../vendor/three.module.min.js";
-import { CONFIG, formatDaysPerSecond, pinchZoomDistance } from "../js/config.js";
+import { CONFIG, compactFocusFrame, formatDaysPerSecond, pinchZoomDistance } from "../js/config.js";
 import {
   BODIES,
   bodyOrientationBasis,
@@ -30,6 +30,40 @@ import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
 
 const appSource = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
+
+test("compact framing clears chrome with the whole globe and a full-size label", () => {
+  const obstacles = [
+    { left: 4, right: 145, top: 2, bottom: 52 },
+    { left: 244, right: 564, top: 4, bottom: 190 },
+    { left: 4, right: 212, top: 100, bottom: 208 },
+    { left: 0, right: 568, top: 204, bottom: 320 },
+  ];
+  const radius = 44, width = 568, height = 320;
+  for (const labelWidth of [56, 95]) {
+    const frame = compactFocusFrame(width, height, radius, labelWidth, 44, obstacles);
+    assert.ok(frame.zoom > 0.75 && frame.zoom <= 1, "compact globe retains meaningful visible size");
+    const bounds = { left: frame.x - Math.max(radius * frame.zoom, labelWidth / 2),
+      right: frame.x + Math.max(radius * frame.zoom, labelWidth / 2),
+      top: frame.y - Math.max(radius * frame.zoom, 52.8), bottom: frame.y + radius * frame.zoom };
+    assert.ok(bounds.left >= 8 && bounds.right <= width - 8 && bounds.top >= 8 && bounds.bottom <= height - 8);
+    for (const box of obstacles) assert.ok(bounds.right <= box.left || bounds.left >= box.right
+      || bounds.bottom <= box.top || bounds.top >= box.bottom);
+    const camera = new THREE.PerspectiveCamera(CONFIG.cameraFovDegrees, width / height, 0.05, 100);
+    camera.zoom = frame.zoom;
+    camera.setViewOffset(width, height, width / 2 - frame.x, height / 2 - frame.y, width, height);
+    camera.position.set(0, 0, 10);
+    camera.updateMatrixWorld(true);
+    const screen = new THREE.Vector3().project(camera);
+    assert.ok(Math.abs((screen.x + 1) * width / 2 - frame.x) < 1e-9);
+    assert.ok(Math.abs((1 - screen.y) * height / 2 - frame.y) < 1e-9);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(screen.x, screen.y), camera);
+    assert.ok(ray.ray.distanceToPoint(new THREE.Vector3()) < 1e-9, "shifted scene picking follows projection inverse");
+    assert.deepEqual(camera.position.toArray(), [0, 0, 10], "framing never moves the world camera");
+  }
+  assert.deepEqual(compactFocusFrame(1440, 900, 125, 100, 44, []), { x: 720, y: 450, zoom: 1 });
+});
+
 function labelTouchInput() {
   const makeSurface = (id) => {
     const captures = new Set();

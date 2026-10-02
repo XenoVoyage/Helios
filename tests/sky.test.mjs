@@ -436,7 +436,7 @@ test("All-mode live layout reuses candidate, packing, rectangle, and Set storage
       return name === "constellation-labels" ? labels : null;
     },
   };
-  const camera = { fov: 52, near: 0.1, matrixWorldInverse: {} };
+  const camera = { fov: 52, zoom: 1, near: 0.1, matrixWorldInverse: {} };
   const viewport = { width: 800, height: 400, topInset: 40, bottomInset: 60 };
 
   const first = updateConstellationLabels(sky, camera, viewport);
@@ -459,6 +459,11 @@ test("All-mode live layout reuses candidate, packing, rectangle, and Set storage
     assert.deepEqual(current, ["Ori", "Men"], "camera motion preserves deterministic selection");
   }
   assert.equal(workspace.rects.length, CONSTELLATION_LAYOUT.maxBudget);
+  const originalWidth = labels.children[0].userData.layoutCandidate.width;
+  camera.zoom = 0.5;
+  updateConstellationLabels(sky, camera, viewport);
+  assert.equal(labels.children[0].userData.layoutCandidate.width, originalWidth / 2,
+    "collision bounds track compact camera framing without changing label world positions");
 });
 
 test("faint backdrop stars densify the solar sky without touching the catalog", async () => {

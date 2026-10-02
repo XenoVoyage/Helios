@@ -88,7 +88,9 @@ async function installObserver(page, bodyId) {
         world: world.toArray(), ndc: projected.toArray(),
         projected: { x: (projected.x * 0.5 + 0.5) * viewport.width + viewport.x,
           y: (-projected.y * 0.5 + 0.5) * viewport.height + viewport.y },
-        camera: { world: cameraWorld.toArray(), quaternion: camera.quaternion.toArray(), near: camera.near, far: camera.far },
+        camera: { world: cameraWorld.toArray(), quaternion: camera.quaternion.toArray(), near: camera.near, far: camera.far,
+          principalPoint: { x: (1 - camera.projectionMatrix.elements[8]) * viewport.width / 2 + viewport.x,
+            y: (1 + camera.projectionMatrix.elements[9]) * viewport.height / 2 + viewport.y } },
         drawn, playing, effectiveRate,
         clockText: document.querySelector("#clock")?.textContent,
         expectedClockText: new Date(expectedStamp).toISOString().split("T")[0], expectedDays,
@@ -254,7 +256,8 @@ export async function runFocusTracking(browser, base, {
         await page.clock.fastForward(50);
         last = await refresh();
         if (last && previous && last.busy !== "true" && last.drawn && !last.label?.hidden
-          && Math.hypot(last.projected.x - viewport.width / 2, last.projected.y - viewport.height / 2) < 0.25
+          && Math.hypot(last.projected.x - (scenario.touch ? last.camera.principalPoint.x : viewport.width / 2),
+            last.projected.y - (scenario.touch ? last.camera.principalPoint.y : viewport.height / 2)) < 0.25
           && Math.hypot(last.projected.x - previous.projected.x, last.projected.y - previous.projected.y) < 0.02) {
           settled = true;
           break;
@@ -263,7 +266,7 @@ export async function runFocusTracking(browser, base, {
       if (!last) throw new Error("Cached THREE observer received no target render callbacks");
       report.anchor = { ...last.projected, ndcZ: last.ndc[2], world: last.world, frame: last.index, timestamp: last.timestamp };
       report.initial.selection = { settled, frames: report.frames.length, anchor: report.anchor };
-      if (!settled) fail("selection", "paused selection did not settle to the projected center within the bounded setup");
+      if (!settled) fail("selection", "paused selection did not settle to the camera's projected principal point within the bounded setup");
       const selection = report.frames.filter((frame) => frame.phase === "selection");
       if (selection.some((frame) => frame.playing || frame.clockText !== "2000-01-01") || selection.some((frame) => distance(frame.world, last.world) > 1e-9)) fail("selection", "paused selection advanced the body or date");
       if (scenario.bodyId === "mercury" && !selection.some((frame) => Math.hypot(frame.projected.x - last.projected.x, frame.projected.y - last.projected.y) > 1)) fail("selection", "paused selection skipped its existing easing");

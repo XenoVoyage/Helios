@@ -521,7 +521,7 @@ async function settle(page) {
   };
 }
 
-async function capture(page, name, details = {}, moving = false) {
+async function capture(page, name, details = {}, moving = false, projectionObserver = null) {
   const started = performance.now();
   assert.ok(expected.has(name), `unexpected filename ${name}`);
   assert.ok(!manifest.captures.some((entry) => entry.name === name), `duplicate capture ${name}`);
@@ -533,6 +533,13 @@ async function capture(page, name, details = {}, moving = false) {
   const reuseStableFrame = settled?.stable === true && !details.clip;
   const png = reuseStableFrame ? frame.png : await screenshot(page, name, details.clip || null);
   await writeFile(path.join(output, `${name}.png`), png);
+  if (details.surfaceGeometry) {
+    assert.ok(projectionObserver, "surface geometry requires its rendered projection observer");
+    const renderedProjection = await projectionObserver.evaluate((observer) => observer.snapshot());
+    assert.ok(renderedProjection?.matrix?.length === 16 && renderedProjection.matrix.every(Number.isFinite),
+      `${name}: surface geometry records the finite projection used by the rendered camera`);
+    details = { ...details, surfaceGeometry: { ...details.surfaceGeometry, renderedProjection } };
+  }
   const entry = {
     name, file: `${name}.png`, sha256: sha256(png), bytes: png.length,
     viewport: page.viewportSize(), touchEmulation: state.touch,
@@ -694,6 +701,27 @@ async function moonSweep(touch) {
       await orbit(page, delta.dx, delta.dy);
       await capture(page, `${prefix}-moon-parent-pick-target-${id}`);
       await click(page, "#card-close");
+      // A compact card can shift the projection; closing it restores the
+      // centered view on RAF. Use the same bounded, paused frame barrier for
+      // every source before retaining the existing public center-pick input.
+      const closeFrameBarrier = await page.evaluateHandle(() => {
+        const barrier = { frames: 0 };
+        requestAnimationFrame(() => {
+          barrier.frames += 1;
+          requestAnimationFrame(() => { barrier.frames += 1; });
+        });
+        return barrier;
+      });
+      try {
+        await advance(page, 32);
+        assert.equal(await closeFrameBarrier.evaluate((value) => value.frames), 2,
+          "two application frame opportunities follow card close before centered picking");
+        assert.equal(await page.locator("#body-card").evaluate((element) => element.hidden), true);
+        assert.equal(await page.locator("#play-button").getAttribute("aria-pressed"), "false",
+          "card-close projection barrier preserves the paused simulation");
+      } finally { await closeFrameBarrier.dispose(); }
+      states.get(page).inputs.push({ at: states.get(page).elapsed,
+        kind: "card-close projection frame barrier", controlledMilliseconds: 32, frames: 2 });
       // Match the existing raycast test: keep labels visible but let the center reach the canvas.
       await page.locator(".sky-label").evaluateAll((labels) => labels.forEach((label) => { label.style.pointerEvents = "none"; }));
       try {
@@ -717,18 +745,37 @@ async function moonSweep(touch) {
 async function phases(touch) {
   const prefix = touch ? "touch-portrait" : "desktop";
   const page = await newPage(touch);
+  let projectionObserver;
   try {
+    projectionObserver = await page.evaluateHandle(async () => {
+      const THREE = await import(new URL("vendor/three.module.min.js", location.href).href);
+      const prototype = THREE.Scene.prototype;
+      const own = Object.getOwnPropertyDescriptor(prototype, "onAfterRender");
+      const original = prototype.onAfterRender;
+      let latest = null;
+      prototype.onAfterRender = function (renderer, scene, camera) {
+        original.call(this, renderer, scene, camera);
+        const viewport = document.querySelector("#viewport").getBoundingClientRect();
+        latest = { matrix: [...camera.projectionMatrix.elements], zoom: camera.zoom,
+          viewOffset: camera.view ? { ...camera.view } : null,
+          viewport: { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height } };
+      };
+      return { snapshot: () => latest, restore() {
+        if (own) Object.defineProperty(prototype, "onAfterRender", own);
+        else delete prototype.onAfterRender;
+      } };
+    });
     for (const id of ["uranus", "neptune"]) await scenario(`${prefix} phases ${id}`, async () => {
       const body = findBody(id), position = keplerOffset(body, findBody(body.parent), 0);
       const geometry = (distance, azimuth = CONFIG.cameraAzimuth, elevation = CONFIG.cameraElevation) => ({
         center: position, radius: radius(id), distance, azimuth, elevation,
         fieldOfViewDegrees: 52, geometryDays: 0,
-        limit: "Reconstructed from source-owned data and commanded input; camera coordinates are not exposed by the app. Exclude observable.uiObstacles plus a 3px margin for surface metrics.",
+        limit: "Physical center, radius, distance and angles are reconstructed from source-owned data and commanded input. Use the independently observed renderedProjection.matrix for display rays, including compact zoom and view offset; fieldOfViewDegrees alone does not describe that projection. Exclude observable.uiObstacles plus a 3px margin for surface metrics.",
       });
       await select(page, id);
-      await capture(page, `${prefix}-night-side-framed-${id}`, { expectedDistance: framedDistance(id), surfaceGeometry: geometry(framedDistance(id)) });
+      await capture(page, `${prefix}-night-side-framed-${id}`, { expectedDistance: framedDistance(id), surfaceGeometry: geometry(framedDistance(id)) }, false, projectionObserver);
       await zoomMinimum(page);
-      await capture(page, `${prefix}-night-side-minimum-${id}`, { expectedDistance: minimumDistance(id), surfaceGeometry: geometry(minimumDistance(id)) });
+      await capture(page, `${prefix}-night-side-minimum-${id}`, { expectedDistance: minimumDistance(id), surfaceGeometry: geometry(minimumDistance(id)) }, false, projectionObserver);
       const sunAzimuth = Math.atan2(-position.x, -position.z);
       const sunElevation = Math.asin(-position.y / Math.hypot(position.x, position.y, position.z));
       for (const [seat, azimuth, elevation] of [["half-lit", sunAzimuth + Math.PI / 2, 0], ["sunward", sunAzimuth, sunElevation]]) {
@@ -736,10 +783,17 @@ async function phases(touch) {
         await settle(page);
         const delta = Math.atan2(Math.sin(azimuth - CONFIG.cameraAzimuth), Math.cos(azimuth - CONFIG.cameraAzimuth));
         await orbit(page, -delta / 0.005, (elevation - CONFIG.cameraElevation) / 0.004);
-        await capture(page, `${prefix}-night-side-${seat}-${id}`, { expectedDistance: framedDistance(id), surfaceGeometry: geometry(framedDistance(id), azimuth, elevation) });
+        await capture(page, `${prefix}-night-side-${seat}-${id}`, { expectedDistance: framedDistance(id), surfaceGeometry: geometry(framedDistance(id), azimuth, elevation) }, false, projectionObserver);
       }
     });
-  } finally { await closePage(page); }
+  } finally {
+    try {
+      if (projectionObserver) {
+        await projectionObserver.evaluate((observer) => observer.restore());
+        await projectionObserver.dispose();
+      }
+    } finally { await closePage(page); }
+  }
 }
 
 async function lifecycle(touch) {

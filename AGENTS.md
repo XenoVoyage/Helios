@@ -94,6 +94,13 @@ and **Escape** resets the view. Camera commands preserve the same globe safety,
 zoom limits, and scale transitions as drag, wheel, and pinch. The fixed
 `?look=sky` diagnostic view has no camera navigation.
 
+On viewports at most 840px wide or 500px high, normal body focus fits the
+selected globe, rings, and label into the space left by visible controls.
+This adjusts the projection without moving the physical camera or changing
+moon safety paths. User zoom can still intentionally crop a globe at minimum
+distance. Closing the card or returning to an unobstructed desktop view
+restores the centered projection; picking and labels use the rendered view.
+
 Zoom out past the solar overview and the orrery shrinks to a Sun among the
 stars. The Hipparcos sky, IAU figures, and Gaia band stay at constant brightness
 through the solar cap, so the first extra-zoom frame is already inside the
@@ -218,6 +225,12 @@ or unexpectedly skipped dependency must fail that gate. Same-repository pull req
 `develop` also run all fourteen visual groups and the historical focus comparison;
 pushes, production promotion pull requests, and manual main audits retain the
 complete functional suite.
+
+The browser suite retains its original 422 screenshots and adds 14 compact
+focus captures plus an 80-state check of all 20 bodies at 320×568 and 568×320,
+with Camera closed and open. It checks actual rendered globe/ring and label
+clearance, useful size, picking, rotation, and restoration of desktop framing.
+Its full inventory is 436 screenshots and 16 reports, before group manifests.
 
 Each comparison run freezes `main` once and uses the event's exact develop base
 and candidate head. Functional PR tests use GitHub's proposed merge checkout;

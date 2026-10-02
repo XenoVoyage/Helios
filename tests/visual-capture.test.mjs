@@ -50,20 +50,47 @@ test("visual lanes partition all 349 captures and retain the 30 focus captures",
 
 // Exercise the actual sweep loops with recorded public inputs and captures. Each
 // lane must preserve the full per-object sequence of the unpartitioned audit.
-async function sweep(group, touch = null) {
+async function sweep(group, touch = null, {
+  frameLimit = Infinity, playing = "false", closeWorks = true, onPick = () => {},
+} = {}) {
   const name = touch === null ? "bodySweep" : "moonSweep";
   const start = source.indexOf(`async function ${name}(`);
   const end = source.indexOf("\nasync function ", start + 1);
   assert.ok(start >= 0 && end > start, `${name} is available`);
   const sequences = new Map();
   let current;
+  let cardHidden = false;
+  let animationFrames = [];
   const record = (operation, ...args) => sequences.get(current).push(JSON.parse(JSON.stringify([operation, ...args])));
+  const pick = () => { onPick(); cardHidden = false; };
   const page = {
     viewportSize: () => ({ width: 1440, height: 900 }),
-    mouse: { click: async (...args) => record("centered click", ...args) },
-    locator: () => ({
+    mouse: { click: async (...args) => { record("centered click", ...args); pick(); } },
+    evaluateHandle: async (callback) => {
+      record("frame barrier installed");
+      const value = runInNewContext(`(${callback.toString()})()`, {
+        requestAnimationFrame: (callback) => animationFrames.push(callback),
+      });
+      return {
+        evaluate: async (callback) => {
+          const observed = callback(value);
+          record("frame barrier observed", observed);
+          return observed;
+        },
+        dispose: async () => record("frame barrier disposed"),
+      };
+    },
+    locator: (selector) => ({
       textContent: async () => findBody(current).name,
-      evaluate: async () => false,
+      evaluate: async (callback) => {
+        assert.equal(selector, "#body-card");
+        return callback({ hidden: cardHidden });
+      },
+      getAttribute: async (name) => {
+        assert.equal(selector, "#play-button");
+        assert.equal(name, "aria-pressed");
+        return playing;
+      },
       evaluateAll: async () => {},
     }),
   };
@@ -75,12 +102,28 @@ async function sweep(group, touch = null) {
     scenario: async (_label, run) => run(),
     framedDistance: () => 100, minimumDistance: () => 10,
     parentDelta: () => ({ dx: 2, dy: 3 }),
-    select: async (_page, id) => { current = id; sequences.set(id, [["select", id]]); },
-    states: new Map([[page, { elapsed: 0, inputs: [], cdp: { send: async (...args) => record("touch input", ...args) } }]]),
+    select: async (_page, id) => { current = id; cardHidden = false; sequences.set(id, [["select", id]]); },
+    states: new Map([[page, { elapsed: 0, inputs: [], cdp: { send: async (...args) => {
+      record("touch input", ...args);
+      if (args[1].type === "touchEnd") pick();
+    } } }]]),
   };
-  for (const name of ["capture", "settle", "zoomMinimum", "zoomDistance", "advance", "orbit", "pinch", "wheel", "click"]) {
+  for (const name of ["capture", "settle", "zoomMinimum", "zoomDistance", "orbit", "pinch", "wheel"]) {
     context[name] = async (_page, ...args) => record(name, ...args);
   }
+  context.click = async (_page, selector) => {
+    record("click", selector);
+    if (selector === "#card-close" && closeWorks) cardHidden = true;
+  };
+  context.advance = async (_page, milliseconds) => {
+    record("advance", milliseconds);
+    context.states.get(page).elapsed += milliseconds;
+    for (let frame = 0; frame < Math.min(Math.floor(milliseconds / 16), frameLimit); frame += 1) {
+      const callbacks = animationFrames;
+      animationFrames = [];
+      for (const callback of callbacks) callback();
+    }
+  };
   const run = runInNewContext(`${source.slice(start, end)}\n${name}`, context);
   await run(touch);
   return sequences;
@@ -120,6 +163,41 @@ test("moon lane boundaries keep Io's transient history and start the other lanes
         ["capture", "desktop-moon-parent-transition-io-mid", { transitionOffset: 382 }, true],
       ]);
     }
+  }
+});
+
+test("moon center picks follow a bounded paused card-close frame barrier", async () => {
+  for (const touch of [false, true]) {
+    const sequences = await sweep("all", touch);
+    for (const [id, sequence] of sequences) {
+      const close = sequence.findIndex(([operation, selector]) => operation === "click" && selector === "#card-close");
+      assert.deepEqual(sequence.slice(close, close + 5), [
+        ["click", "#card-close"], ["frame barrier installed"], ["advance", 32],
+        ["frame barrier observed", 2], ["frame barrier disposed"],
+      ], `${id}: no picking before the two queued frames execute`);
+      const pick = sequence[close + 5];
+      if (touch) {
+        assert.equal(pick[0], "touch input");
+        assert.equal(pick[2].type, "touchStart");
+        assert.deepEqual(pick[2].touchPoints.map(({ x, y }) => [x, y]), [[720, 450]]);
+      } else assert.deepEqual(pick, ["centered click", 720, 450]);
+    }
+    const prefix = touch ? "touch-portrait" : "desktop";
+    const io = sequences.get("io");
+    for (const [seat, offset, advance] of [["start", 32, 32], ["mid", 382, 350]]) {
+      const index = io.findIndex(([operation, name]) => operation === "capture" && name === `${prefix}-moon-parent-transition-io-${seat}`);
+      assert.deepEqual(io[index - 1], ["advance", advance]);
+      assert.deepEqual(io[index].slice(2), [{ transitionOffset: offset }, true], "historical moving transition timing stays intact");
+    }
+  }
+});
+
+test("moon picking stops if card-close frames, hidden state or paused state are missing", async () => {
+  for (const options of [{ frameLimit: 1 }, { closeWorks: false }, { playing: "true" }]) {
+    let picks = 0;
+    await assert.rejects(sweep("all", false, { ...options, onPick: () => { picks += 1; } }),
+      { name: "AssertionError" });
+    assert.equal(picks, 0, "a failed frame barrier cannot produce misleading pick evidence");
   }
 });
 
@@ -274,8 +352,35 @@ function captureHarness({ frames, busy = ["false"], observedBusy = "false" }) {
     flush: async () => {}, console: { log() {} },
   });
   return { advances, screenshots, writes, manifest,
-    run: (name = "seat", details = {}, moving = false) => capture(page, name, details, moving) };
+    run: (name = "seat", details = {}, moving = false, projectionObserver = null) => capture(page, name, details, moving, projectionObserver) };
 }
+
+test("surface captures retain independent physical geometry and the post-settle rendered projection", async () => {
+  const harness = captureHarness({ frames: [Buffer.from("same"), Buffer.from("same")] });
+  const physical = { center: { x: 10, y: 20, z: 30 }, radius: 2, distance: 15,
+    azimuth: 1, elevation: 0.5, fieldOfViewDegrees: 52, geometryDays: 0 };
+  const renderedProjection = { matrix: [1, 0, 0, 0, 0, 2, 0, 0, 0.3, -0.4, -1, -1, 0, 0, -0.1, 0],
+    zoom: 0.8, viewOffset: { enabled: true, offsetX: 30, offsetY: -40 }, viewport: { x: 0, y: 0, width: 390, height: 844 } };
+  const observer = { evaluate: async (callback) => {
+    assert.deepEqual(harness.advances, [1500, 400], "projection is read after the stable pair");
+    assert.equal(harness.screenshots.length, 2);
+    return callback({ snapshot: () => renderedProjection });
+  } };
+  const entry = await harness.run("seat", { surfaceGeometry: physical }, false, observer);
+  assert.deepEqual(JSON.parse(JSON.stringify(entry.surfaceGeometry)), { ...physical, renderedProjection });
+  assert.equal(Object.hasOwn(physical, "renderedProjection"), false, "physical source data remains unmodified");
+  assert.equal(harness.screenshots.length, 2, "metadata adds no extra image acquisition");
+});
+
+test("surface geometry cannot silently omit or invent a projection", async () => {
+  for (const projectionObserver of [null, { evaluate: async () => null },
+    { evaluate: async () => ({ matrix: Array(16).fill(NaN) }) }]) {
+    const harness = captureHarness({ frames: [Buffer.from("same"), Buffer.from("same")] });
+    await assert.rejects(harness.run("seat", { surfaceGeometry: { radius: 2, distance: 15 } }, false, projectionObserver),
+      { name: "AssertionError" });
+    assert.equal(harness.manifest.captures.length, 0);
+  }
+});
 
 test("a settled full viewport saves the last verified frame without a third acquisition", async () => {
   const first = Buffer.from("stable frame"), verified = Buffer.from("stable frame");

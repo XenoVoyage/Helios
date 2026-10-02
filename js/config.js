@@ -15,7 +15,7 @@
  * compressed-Mpc, or compressed-Gpc mappings, not AU.
  */
 export const CONFIG = Object.freeze({
-  VERSION: "v2026.10.2",
+  VERSION: "v2026.10.2a",
   BRAND: "MarinsVoyage",
   earthRadiusKm: 6371,
   auKm: 149597870.7,
@@ -962,4 +962,50 @@ export function describeDaysPerSecond(daysPerSecond) {
     unit = "second";
   }
   return `${value} ${unit}${value === 1 ? "" : "s"} per second`;
+}
+
+/** Fit normal selected-body framing between measured chrome without moving the camera. */
+export function compactFocusFrame(width, height, radius, labelWidth, labelHeight, obstacles, inset = 8) {
+  const clear = (box) => box.left >= inset && box.right <= width - inset
+    && box.top >= inset && box.bottom <= height - inset
+    && obstacles.every((other) => box.right <= other.left || box.left >= other.right
+      || box.bottom <= other.top || box.top >= other.bottom);
+  const extent = (x, y, scale) => ({
+    left: x - Math.max(radius * scale, labelWidth / 2),
+    right: x + Math.max(radius * scale, labelWidth / 2),
+    top: y - Math.max(radius * scale, labelHeight * 1.2),
+    bottom: y + radius * scale,
+  });
+  const centered = { x: width / 2, y: height / 2, zoom: 1 };
+  if (clear(extent(centered.x, centered.y, 1))) return centered;
+  const xs = [...new Set([inset, width - inset, ...obstacles.flatMap(({ left, right }) => [left, right])])]
+    .filter((x) => x >= inset && x <= width - inset).sort((a, b) => a - b);
+  const ys = [...new Set([inset, height - inset, ...obstacles.flatMap(({ top, bottom }) => [top, bottom])])]
+    .filter((y) => y >= inset && y <= height - inset).sort((a, b) => a - b);
+  let best = null;
+  for (let left = 0; left < xs.length - 1; left += 1) {
+    for (let right = left + 1; right < xs.length; right += 1) {
+      if (xs[right] - xs[left] < labelWidth) continue;
+      for (let top = 0; top < ys.length - 1; top += 1) {
+        for (let bottom = top + 1; bottom < ys.length; bottom += 1) {
+          const box = { left: xs[left], right: xs[right], top: ys[top], bottom: ys[bottom] };
+          if (!clear(box)) continue;
+          const room = Math.min((box.right - box.left) / 2,
+            (box.bottom - box.top) / 2, box.bottom - box.top - labelHeight * 1.2);
+          if (room <= 0) continue;
+          const zoom = Math.min(1, room / radius);
+          const x = Math.max(box.left + Math.max(radius * zoom, labelWidth / 2),
+            Math.min(width / 2, box.right - Math.max(radius * zoom, labelWidth / 2)));
+          const y = Math.max(box.top + Math.max(radius * zoom, labelHeight * 1.2),
+            Math.min(height / 2, box.bottom - radius * zoom));
+          const displacement = Math.hypot(x - width / 2, y - height / 2);
+          if (!best || zoom > best.zoom + 1e-9
+            || (Math.abs(zoom - best.zoom) < 1e-9 && displacement < best.displacement)) {
+            best = { x, y, zoom, displacement };
+          }
+        }
+      }
+    }
+  }
+  return best ?? centered;
 }

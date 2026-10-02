@@ -26,6 +26,7 @@ import { cmbSkyOpacity, sceneHierarchyId, universeOpacity } from "../js/galaxy.j
 import { equatorialVectorToScene } from "../js/sky.js";
 import { auditCameraNavigation } from "./camera-navigation.mjs";
 import { runFocusTracking } from "./focus-tracking.mjs";
+import { auditCompactFocus } from "./compact-focus.mjs";
 import { MAX_SIMULATION_DAYS, simulationDateLabel } from "../js/time.js";
 import { parseBrowserGroup, prepareBrowserEvidence, runBrowserGroups, writeBrowserGroupEvidence } from "./browser-groups.mjs";
 
@@ -3232,6 +3233,9 @@ async function assertCenteredCanvasPicksMoon(page, bodyId, prefix, cdp) {
   await saveScreenshot(page, `${prefix}-moon-parent-pick-target-${bodyId}`);
   await page.locator("#card-close").click();
   await page.locator("#body-card[hidden]").waitFor({ state: "attached" });
+  // Closing the compact card restores the centered projection on application
+  // frames. Let that public layout change render before the center raycast.
+  await waitForTwoAnimationFrames(page);
   await page.locator(".sky-label").evaluateAll((labels) => {
     for (const label of labels) label.style.pointerEvents = "none";
   });
@@ -3266,17 +3270,73 @@ async function assertCenteredCanvasPicksMoon(page, bodyId, prefix, cdp) {
   });
 }
 
+async function observeRenderedProjection(page, bodyId = null) {
+  return page.evaluateHandle(async (id) => {
+    const THREE = await import(new URL("vendor/three.module.min.js", location.href).href);
+    const prototype = THREE.Scene.prototype;
+    const own = Object.getOwnPropertyDescriptor(prototype, "onAfterRender");
+    const original = prototype.onAfterRender;
+    const world = new THREE.Vector3();
+    const projected = new THREE.Vector3();
+    let target = null;
+    let latest = null;
+    prototype.onAfterRender = function (renderer, scene, camera) {
+      original.call(this, renderer, scene, camera);
+      if (id && !target) this.traverse((object) => {
+        if (object.isMesh && object.userData.bodyId === id) target = object;
+      });
+      const viewport = document.querySelector("#viewport").getBoundingClientRect();
+      const projection = [...camera.projectionMatrix.elements];
+      let anchor = null;
+      if (target) {
+        // Observe the world matrix used by the real render, independently of
+        // the DOM label and without moving the body or updating its matrices.
+        world.setFromMatrixPosition(target.matrixWorld);
+        projected.copy(world).project(camera);
+        anchor = { x: (projected.x + 1) * viewport.width / 2 + viewport.x,
+          y: (1 - projected.y) * viewport.height / 2 + viewport.y, z: projected.z };
+      }
+      latest = { projection, anchor, viewport: viewport.toJSON(),
+        principalPoint: { x: (1 - projection[8]) * viewport.width / 2 + viewport.x,
+          y: (1 + projection[9]) * viewport.height / 2 + viewport.y } };
+    };
+    return { snapshot: () => latest, restore() {
+      if (own) Object.defineProperty(prototype, "onAfterRender", own);
+      else delete prototype.onAfterRender;
+    } };
+  }, bodyId);
+}
+
 async function waitForCenteredBodyLabel(page, bodyId, tolerance = 2) {
-  await page.waitForFunction(({ id, tolerance }) => {
-    const label = document.querySelector(`[data-body-id="${id}"]`);
-    if (!label || label.hidden) return false;
-    const match = label.style.transform.match(
-      /translate\(([-\d.eE]+)px,\s*([-\d.eE]+)px\)$/,
-    );
-    if (!match) return false;
-    return Math.abs(Number(match[1]) - innerWidth / 2) <= tolerance
-      && Math.abs(Number(match[2]) - innerHeight / 2) <= tolerance;
-  }, { id: bodyId, tolerance }, { timeout: 20_000 });
+  const observer = await observeRenderedProjection(page, bodyId);
+  try {
+    await page.waitForFunction(({ observer, id, tolerance }) => {
+      const sample = observer.snapshot();
+      const label = document.querySelector(`[data-body-id="${id}"]`);
+      if (!sample?.anchor || !label || label.hidden) return false;
+      const match = label.style.transform.match(
+        /translate\(([-\d.eE]+)px,\s*([-\d.eE]+)px\)$/,
+      );
+      if (!match || sample.anchor.z <= -1 || sample.anchor.z >= 1) return false;
+      if (sample.anchor.x < sample.viewport.x || sample.anchor.x > sample.viewport.right
+        || sample.anchor.y < sample.viewport.y || sample.anchor.y > sample.viewport.bottom) return false;
+      const normalDesktop = sample.viewport.width > 840 && sample.viewport.height > 500;
+      const expected = normalDesktop
+        ? { x: sample.viewport.x + sample.viewport.width / 2,
+          y: sample.viewport.y + sample.viewport.height / 2 }
+        : sample.principalPoint;
+      // A compact card may shift the principal point. The real target must
+      // still reach that point, and its label must track the projected world.
+      // Normal desktop retains the independent viewport-center expectation.
+      return Math.abs(sample.anchor.x - expected.x) <= tolerance
+        && Math.abs(sample.anchor.y - expected.y) <= tolerance
+        && Math.abs(Number(match[1]) + sample.viewport.x - sample.anchor.x) <= tolerance
+        && Math.abs(Number(match[2]) + sample.viewport.y - sample.anchor.y) <= tolerance;
+    }, { observer, id: bodyId, tolerance }, { timeout: 20_000 });
+  } finally {
+    await observer.evaluate((value) => value.restore());
+    await observer.dispose();
+  }
 }
 
 async function waitForMoonCameraSettled(page) {
@@ -3289,8 +3349,17 @@ async function waitForMoonCameraSettled(page) {
 }
 
 async function assertFocusedGlobeSurfaceVisible(page, label) {
-  const png = await page.locator("#viewport").screenshot();
-  const metrics = await page.evaluate(async (source) => {
+  const observer = await observeRenderedProjection(page);
+  let png, projection;
+  try {
+    await page.waitForFunction((value) => value.snapshot() !== null, observer, { timeout: 20_000 });
+    png = await page.locator("#viewport").screenshot();
+    projection = await observer.evaluate((value) => value.snapshot());
+  } finally {
+    await observer.evaluate((value) => value.restore());
+    await observer.dispose();
+  }
+  const metrics = await page.evaluate(async ({ source, projection }) => {
     const image = new Image();
     const ready = new Promise((resolve, reject) => {
       image.addEventListener("load", resolve, { once: true });
@@ -3303,10 +3372,14 @@ async function assertFocusedGlobeSurfaceVisible(page, label) {
     surface.height = image.naturalHeight;
     const context = surface.getContext("2d", { willReadFrequently: true });
     context.drawImage(image, 0, 0);
-    const x = Math.floor(surface.width * 0.4);
-    const y = Math.floor(surface.height * 0.4);
     const width = Math.max(1, Math.floor(surface.width * 0.2));
     const height = Math.max(1, Math.floor(surface.height * 0.2));
+    const centerX = (projection.principalPoint.x - projection.viewport.x)
+      * surface.width / projection.viewport.width;
+    const centerY = (projection.principalPoint.y - projection.viewport.y)
+      * surface.height / projection.viewport.height;
+    const x = Math.max(0, Math.min(surface.width - width, Math.floor(centerX - surface.width * 0.1)));
+    const y = Math.max(0, Math.min(surface.height - height, Math.floor(centerY - surface.height * 0.1)));
     const pixels = context.getImageData(x, y, width, height).data;
     let luminance = 0;
     let dark = 0;
@@ -3318,7 +3391,7 @@ async function assertFocusedGlobeSurfaceVisible(page, label) {
       samples += 1;
     }
     return { mean: luminance / samples, dark: dark / samples };
-  }, png.toString("base64"));
+  }, { source: png.toString("base64"), projection });
   assert.ok(
     metrics.mean > 40,
     `${label} closest view shows globe surface (mean=${metrics.mean.toFixed(1)})`,
@@ -3334,8 +3407,18 @@ async function outerPlanetSurfaceMetrics(
   azimuth = CONFIG.cameraAzimuth, elevation = CONFIG.cameraElevation,
 ) {
   const body = findBody(bodyId);
-  const png = await stableCanvasFrame(page, page.locator("#viewport"));
-  return page.evaluate(async ({ source, center, radius, distance, azimuth, elevation }) => {
+  const observer = await observeRenderedProjection(page);
+  let png, projection;
+  try {
+    png = await stableCanvasFrame(page, page.locator("#viewport"));
+    projection = await observer.evaluate((value) => value.snapshot()?.projection);
+    assert.ok(projection?.length === 16 && projection.every(Number.isFinite),
+      `${bodyId}: surface mask observes a finite rendered projection`);
+  } finally {
+    await observer.evaluate((value) => value.restore());
+    await observer.dispose();
+  }
+  return page.evaluate(async ({ source, center, radius, distance, azimuth, elevation, projection }) => {
     const THREE = await import("./vendor/three.module.min.js");
     const image = new Image();
     const ready = new Promise((resolve, reject) => {
@@ -3366,6 +3449,20 @@ async function outerPlanetSurfaceMetrics(
     ).multiplyScalar(distance));
     camera.lookAt(globeCenter);
     camera.updateMatrixWorld();
+    if (viewport.width > 840 && viewport.height > 500) {
+      // Preserve the desktop mask's independent 52-degree, centered, unit-zoom
+      // contract. Depth terms 10 and 14 follow near/far clipping and do not
+      // describe screen framing; they may still reflect finite camera settling.
+      const expectedProjection = camera.projectionMatrix.elements;
+      if (projection.some((value, index) => index !== 10 && index !== 14
+        && Math.abs(value - expectedProjection[index]) > 1e-10)) {
+        throw new Error("Desktop surface projection differs from the independently commanded camera");
+      }
+    }
+    // Keep the independently commanded world camera and analytic globe. Only
+    // the display projection follows the compact view offset and zoom.
+    camera.projectionMatrix.fromArray(projection);
+    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
     const sphere = new THREE.Sphere(globeCenter, radius);
     const raycaster = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
@@ -3411,6 +3508,7 @@ async function outerPlanetSurfaceMetrics(
     distance,
     azimuth,
     elevation,
+    projection,
   });
 }
 
@@ -5461,6 +5559,12 @@ async function auditDesktopBodies() {
 }
 
 async function auditTouch() {
+  await auditCompactFocus(browser, base, {
+    onStill: saveScreenshot,
+    onReport: async (report) => {
+      if (screenshotDir) await writeFile(path.join(screenshotDir, "compact-focus.json"), JSON.stringify(report, null, 2) + "\n");
+    },
+  });
   const touch = await browser.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 1,
