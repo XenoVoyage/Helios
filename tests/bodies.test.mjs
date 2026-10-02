@@ -28,8 +28,23 @@ import {
 } from "../js/bodies.js";
 import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
+import { assertCompactLabelBounds } from "./compact-focus.mjs";
 
 const appSource = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
+
+test("compact target measurement tolerates DOMRect roundoff but rejects smaller or clipped targets", () => {
+  const label = { layoutWidth: 64, layoutHeight: 44, box: {
+    width: 64.375, height: 43.999996185302734,
+    left: 127.80693054199219, right: 192.1819305419922,
+    top: 57.08046340942383, bottom: 101.08045959472656,
+  } };
+  const viewport = { width: 320, height: 568 };
+  assert.doesNotThrow(() => assertCompactLabelBounds(label, viewport, "observed Venus"));
+  assert.throws(() => assertCompactLabelBounds({ ...label, layoutHeight: 43 }, viewport, "short layout"), /44px target/);
+  assert.throws(() => assertCompactLabelBounds({ ...label, box: { ...label.box, height: 43.9 } }, viewport, "scaled target"), /full target size/);
+  assert.throws(() => assertCompactLabelBounds({ ...label, box: { ...label.box, height: 43.999 } }, viewport, "beyond roundoff"), /full target size/);
+  assert.throws(() => assertCompactLabelBounds({ ...label, box: { ...label.box, left: 6.99999 } }, viewport, "clipped target"), /stays on screen/);
+});
 
 test("compact framing clears chrome with the whole globe and a full-size label", () => {
   const obstacles = [

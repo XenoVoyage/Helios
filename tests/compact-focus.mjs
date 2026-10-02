@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { BODIES, visualBodyRadius, visualRingRadius } from "../js/bodies.js";
 
+export function assertCompactLabelBounds(label, viewport, name) {
+  const box = label.box;
+  assert.ok(label.layoutWidth >= 44 && label.layoutHeight >= 44, `${name}: label layout retains a 44px target`);
+  // Fractional translate coordinates can make a 44px DOMRect read 43.999996px.
+  const epsilon = 1e-4;
+  assert.ok(box.width + epsilon >= 44 && box.height + epsilon >= 44, `${name}: rendered label retains its full target size`);
+  assert.ok(box.left >= 7 && box.right <= viewport.width - 7
+    && box.top >= 7 && box.bottom <= viewport.height - 7, `${name}: full-size label stays on screen`);
+}
+
 export async function auditCompactFocus(browser, base, { onStill, onReport }) {
   const report = { observations: [], errors: [] };
   const context = await browser.newContext({ viewport: { width: 320, height: 568 },
@@ -62,6 +72,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
         const labelAnchor = label.style.transform.match(/translate\(([-+\deE.]+)px,\s*([-+\deE.]+)px\)/);
         sample = { id, x, y, radius: pixels, worldRadius: radius, depth, verticalProjection: camera.projectionMatrix.elements[5], ndc: projected.toArray(), drawn,
           label: { hidden: label.hidden, active: label.classList.contains("is-active"), box: labelBox,
+            layoutWidth: label.offsetWidth, layoutHeight: label.offsetHeight,
             anchor: labelAnchor ? { x: Number(labelAnchor[1]), y: Number(labelAnchor[2]) } : null },
           camera: camera.position.toArray(), zoom: camera.zoom,
           principalPoint: { x: (1 - camera.projectionMatrix.elements[8]) * innerWidth / 2,
@@ -116,8 +127,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
         || sphere.bottom <= box.top - 7 || sphere.top >= box.bottom + 7,
       `${name}: whole globe clears ${box.id}: ${JSON.stringify(sample)}`);
       const label = sample.label.box;
-      assert.ok(label.width >= 44 && label.height >= 44 && label.left >= 7 && label.right <= sample.viewport.width - 7
-        && label.top >= 7 && label.bottom <= sample.viewport.height - 7, `${name}: full-size label stays on screen`);
+      assertCompactLabelBounds(sample.label, sample.viewport, name);
       for (const box of sample.controls) assert.ok(label.right <= box.left - 7 || label.left >= box.right + 7
         || label.bottom <= box.top - 7 || label.top >= box.bottom + 7, `${name}: label clears ${box.id}`);
       if (body.ringOuterKm) {
@@ -177,6 +187,14 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
     assert.deepEqual(closed.principalPoint, { x: 284, y: 160 }, "closing the card restores centered projection");
     assert.equal(closed.zoom, 1);
     assert.deepEqual(report.errors, [], "compact focus has no browser errors");
+  } catch (error) {
+    report.failure = { message: error.message, scenario: report.observations.at(-1)?.name ?? null };
+    try {
+      await onStill(page, "compact-focus-failure", { timeout: 10_000 });
+    } catch (captureError) {
+      report.failure.screenshotError = String(captureError);
+    }
+    throw error;
   } finally {
     if (observer) { await observer.evaluate((value) => value.restore()); await observer.dispose(); }
     await onReport(report);
