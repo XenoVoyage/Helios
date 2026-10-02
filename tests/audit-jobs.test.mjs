@@ -147,7 +147,7 @@ test("actual workflow conditions match aggregate applicability and preserve all 
   assert.match(jobs["visual-capture"], /^    needs: comparison-baseline$/m);
   assert.match(jobs["visual-capture"], /fail-fast: false/);
   const visualGroups = jobs["visual-capture"].match(/group: \[([^\]]+)\]/)?.[1].split(/,\s*/);
-  assert.deepEqual(visualGroups, ["bodies-inner", "bodies-giants", "bodies-outer", "moons-inner", "moons-outer", "touch-controls", "responsive", "desktop-states", "touch-states", "ordinary"]);
+  assert.deepEqual(visualGroups, ["bodies-inner", "bodies-giants", "bodies-outer", "moons-inner", "moons-jovian", "moons-outer", "touch-controls", "responsive", "desktop-phases", "desktop-lifecycle", "desktop-states", "touch-states", "cosmic-scenes", "ordinary"]);
   assert.match(jobs["visual-capture"], /ref: \$\{\{ needs\.comparison-baseline\.outputs\.main_sha \}\}/);
   assert.doesNotMatch(jobs["visual-capture"], /ref: refs\/heads\/main/);
   assert.match(jobs["comparison-baseline"], /ref: refs\/heads\/main/);

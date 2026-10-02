@@ -215,7 +215,7 @@ context only, not an active owner gate.
 The required `Audit / audit` job aggregates static/HTTP checks, all four browser
 sections, and every comparison job applicable to the event. A failed, cancelled,
 or unexpectedly skipped dependency must fail that gate. Same-repository pull requests to
-`develop` also run all ten visual groups and the historical focus comparison;
+`develop` also run all fourteen visual groups and the historical focus comparison;
 pushes, production promotion pull requests, and manual main audits retain the
 complete functional suite.
 
@@ -235,12 +235,20 @@ scenarios and the separate 30 historical focus captures remain required.
 Capture success and identical-tree reuse do not replace visual review or
 automatically approve a new baseline.
 
-The ten visual lanes are `bodies-inner` (48), `bodies-giants` (23), `bodies-outer`
-(13), `moons-inner` (31), `moons-outer` (30), `touch-controls` (47), `responsive`
-(40), `desktop-states` (26), `touch-states` (28), and `ordinary` (63). Each lane
-retains complete per-object or scene sequences and compares its source trees
-on one runner. Per-lane elapsed clocks and input histories cover that lane;
-the local `all` capture retains the full ordering. Functional screenshots live in four
+The fourteen visual lanes are `bodies-inner` (48), `bodies-giants` (23),
+`bodies-outer` (13), `moons-inner` (31), `moons-jovian` (18), `moons-outer` (12),
+`touch-controls` (47), `responsive` (40), `desktop-phases` (8),
+`desktop-lifecycle` (10), `desktop-states` (8), `touch-states` (28),
+`cosmic-scenes` (40), and `ordinary` (23). Each lane retains complete per-object
+or independent page sequences and compares its source trees on one runner.
+Keep Moon → Phobos → Deimos → Io together for Io's transient frames; the other
+moon lanes begin with a fully settled minimum view. All twenty cosmic zoom
+stops and all six far-sky directions retain their original page and input
+history. Per-lane elapsed clocks and input histories cover that lane; the local
+`all` capture retains the full ordering. Fourteen visual lanes, four browser
+sections, and one history job bound the heavy audit work to nineteen jobs;
+extra lanes add setup cost, so rebalance from measured timings rather than
+splitting indiscriminately. Functional screenshots live in four
 `helios-browser-<group>` artifacts; do not mistake one shard for the full suite.
 
 Keep full-resolution originals in the seven-day Actions artifacts, with run

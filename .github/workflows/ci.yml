@@ -140,7 +140,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [bodies-inner, bodies-giants, bodies-outer, moons-inner, moons-outer, touch-controls, responsive, desktop-states, touch-states, ordinary]
+        group: [bodies-inner, bodies-giants, bodies-outer, moons-inner, moons-jovian, moons-outer, touch-controls, responsive, desktop-phases, desktop-lifecycle, desktop-states, touch-states, cosmic-scenes, ordinary]
     steps:
       - name: Require the frozen main identity
         run: |

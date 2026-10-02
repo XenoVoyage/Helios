@@ -20,8 +20,8 @@ const inventoryOnly = options.has("--inventory-only");
 for (const name of ["--source-root", "--source-label", ...(inventoryOnly ? [] : ["--output"])]) assert.ok(options.has(name), `${name} is required`);
 for (const name of options.keys()) assert.ok(["--source-root", "--output", "--source-label", "--inventory-only", "--group"].includes(name), `unknown argument ${name}`);
 const group = options.get("--group") || "all";
-assert.ok(["all", "bodies-inner", "bodies-giants", "bodies-outer", "moons-inner", "moons-outer", "touch-controls", "responsive", "desktop-states", "touch-states", "ordinary", "focus"].includes(group),
-  "group must be all, bodies-inner, bodies-giants, bodies-outer, moons-inner, moons-outer, touch-controls, responsive, desktop-states, touch-states, ordinary or focus");
+assert.ok(["all", "bodies-inner", "bodies-giants", "bodies-outer", "moons-inner", "moons-jovian", "moons-outer", "touch-controls", "responsive", "desktop-phases", "desktop-lifecycle", "desktop-states", "touch-states", "cosmic-scenes", "ordinary", "focus"].includes(group),
+  "group must be all, bodies-inner, bodies-giants, bodies-outer, moons-inner, moons-jovian, moons-outer, touch-controls, responsive, desktop-phases, desktop-lifecycle, desktop-states, touch-states, cosmic-scenes, ordinary or focus");
 const sourceRoot = path.resolve(options.get("--source-root"));
 const output = options.has("--output") ? path.resolve(options.get("--output")) : null;
 const sourceLabel = options.get("--source-label");
@@ -159,8 +159,16 @@ const bodyGroupFor = (id) => {
   return ["jupiter", "saturn"].includes(system) ? "bodies-giants"
     : ["uranus", "neptune", "pluto"].includes(system) ? "bodies-outer" : "bodies-inner";
 };
-const moonGroupFor = (id) => ["moon", "phobos", "deimos", "io"].includes(id) ? "moons-inner" : "moons-outer";
+// Io retains Moon -> Phobos -> Deimos -> Io camera history for its transient
+// frames. The other lane boundaries begin with a fully settled minimum view.
+const moonGroupFor = (id) => ["moon", "phobos", "deimos", "io"].includes(id) ? "moons-inner"
+  : ["europa", "ganymede", "callisto"].includes(id) ? "moons-jovian" : "moons-outer";
+const cosmicNames = new Set([
+  ...ordinaryDirectLooks.map((look) => `desktop-${look}`),
+  ...ordinaryNames.filter((name) => name.startsWith("desktop-transition-") || name.startsWith("desktop-far-sky-")),
+]);
 const groupFor = (name) => {
+  if (cosmicNames.has(name)) return "cosmic-scenes";
   if (ordinaryNameSet.has(name)) return "ordinary";
   const tracking = trackingNames.get(name);
   if (tracking) return tracking.touch ? "touch-states" : tracking.bodyId === "io" ? "moons-inner" : "bodies-inner";
@@ -173,12 +181,14 @@ const groupFor = (name) => {
   const body = name.match(/^desktop-minimum-zoom-(.+)$|^supplement-desktop-(.+)-(?:framed|intermediate|zoom-back-out)$/);
   if (body) return bodyGroupFor(body[1] || body[2]);
   if (name.startsWith("touch-portrait-night-side-") || name.startsWith("supplement-touch-portrait-busy-")) return "touch-states";
+  if (name.startsWith("desktop-night-side-")) return "desktop-phases";
+  if (name.startsWith("supplement-desktop-busy-")) return "desktop-lifecycle";
   return "desktop-states";
 };
 for (const name of expected) {
   if (group === "focus" ? !trackingNames.has(name) : group !== "all" && groupFor(name) !== group) expected.delete(name);
 }
-assert.equal(expected.size, { all: 349, "bodies-inner": 48, "bodies-giants": 23, "bodies-outer": 13, "moons-inner": 31, "moons-outer": 30, "touch-controls": 47, responsive: 40, "desktop-states": 26, "touch-states": 28, ordinary: 63, focus: 30 }[group]);
+assert.equal(expected.size, { all: 349, "bodies-inner": 48, "bodies-giants": 23, "bodies-outer": 13, "moons-inner": 31, "moons-jovian": 18, "moons-outer": 12, "touch-controls": 47, responsive: 40, "desktop-phases": 8, "desktop-lifecycle": 10, "desktop-states": 8, "touch-states": 28, "cosmic-scenes": 40, ordinary: 23, focus: 30 }[group]);
 const activeTrackingScenarios = focusTrackingScenarios.filter((item) =>
   expected.has(`focus-tracking-${item.id}-${focusTrackingOffsets[0]}ms`));
 
@@ -1423,16 +1433,18 @@ async function observeDeepLoadWallClock({ browser, base, source, report, onSampl
 }
 
 async function ordinaryViews() {
-  await scenario("ordinary constellations and overview", ordinaryOverviewAndConstellations);
-  await ordinaryDirectViews();
-  await scenario("ordinary solar handoff", ordinaryHandoff);
-  await scenario("ordinary20 scale transitions", ordinaryTransitions);
-  await scenario("ordinary6 far-sky directions", ordinaryFarSky);
-  await scenario("ordinary June solstice", () => ordinarySolstice("earth-june-solstice", "2000-06-21"));
-  await scenario("ordinary December solstice", () => ordinarySolstice("earth-december-solstice", "2000-12-21", true));
-  await scenario("ordinary touch card and cosmology", ordinaryTouch);
-  await scenario("ordinary Triton crops", ordinaryTriton);
-  await scenario("ordinary WebGL fallback", ordinaryFallback);
+  // Partition only whole independent page sequences. The all command retains
+  // their original ordering, including every intermediate cosmic zoom stop.
+  if (expected.has("desktop-overview")) await scenario("ordinary constellations and overview", ordinaryOverviewAndConstellations);
+  if (expected.has("desktop-sky")) await ordinaryDirectViews();
+  if (expected.has("desktop-solar-handoff-start")) await scenario("ordinary solar handoff", ordinaryHandoff);
+  if (expected.has("desktop-transition-virgo-web-15")) await scenario("ordinary20 scale transitions", ordinaryTransitions);
+  if (expected.has("desktop-far-sky-forward")) await scenario("ordinary6 far-sky directions", ordinaryFarSky);
+  if (expected.has("earth-june-solstice")) await scenario("ordinary June solstice", () => ordinarySolstice("earth-june-solstice", "2000-06-21"));
+  if (expected.has("earth-december-solstice")) await scenario("ordinary December solstice", () => ordinarySolstice("earth-december-solstice", "2000-12-21", true));
+  if (expected.has("touch-card")) await scenario("ordinary touch card and cosmology", ordinaryTouch);
+  if (expected.has("triton-rotation-a")) await scenario("ordinary Triton crops", ordinaryTriton);
+  if (expected.has("webgl-fallback")) await scenario("ordinary WebGL fallback", ordinaryFallback);
 }
 
 try {
@@ -1449,11 +1461,9 @@ try {
   if (["all", "bodies-inner", "bodies-giants", "bodies-outer"].includes(group)) await scenario("desktop body sweep", bodySweep);
   if (["all", "touch-controls"].includes(group)) await scenario("touch primary minimum", primaryTouch);
   for (const touch of [false, true]) {
-    if (["all", ...(touch ? ["touch-controls"] : ["moons-inner", "moons-outer"])].includes(group)) await scenario(`moon sweep touch=${touch}`, () => moonSweep(touch));
-    if (["all", touch ? "touch-states" : "desktop-states"].includes(group)) {
-      await scenario(`phases touch=${touch}`, () => phases(touch));
-      await scenario(`lifecycle touch=${touch}`, () => lifecycle(touch));
-    }
+    if (["all", ...(touch ? ["touch-controls"] : ["moons-inner", "moons-jovian", "moons-outer"])].includes(group)) await scenario(`moon sweep touch=${touch}`, () => moonSweep(touch));
+    if (["all", touch ? "touch-states" : "desktop-phases"].includes(group)) await scenario(`phases touch=${touch}`, () => phases(touch));
+    if (["all", touch ? "touch-states" : "desktop-lifecycle"].includes(group)) await scenario(`lifecycle touch=${touch}`, () => lifecycle(touch));
   }
   if (["all", "desktop-states"].includes(group)) {
     await scenario("Saturn and Earth sky", ringsAndSky);
@@ -1461,8 +1471,8 @@ try {
   }
   if (["all", "responsive"].includes(group)) await responsive();
   if (["all", "touch-controls"].includes(group)) await timeRates();
+  if (["all", "cosmic-scenes", "ordinary"].includes(group)) await ordinaryViews();
   if (["all", "ordinary"].includes(group)) {
-    await ordinaryViews();
     manifest.deepLoadObservations = {};
     await scenario("observational deep-load wall clock", () => observeDeepLoadWallClock({
       browser, base, source: sourceIdentity, report: manifest.deepLoadObservations, onSample: flush,
