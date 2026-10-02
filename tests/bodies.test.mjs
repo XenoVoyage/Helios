@@ -28,9 +28,36 @@ import {
 } from "../js/bodies.js";
 import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
-import { assertCompactLabelBounds, compactCaptureMetrics, assertCompactCaptureContent } from "./compact-focus.mjs";
+import { assertCompactLabelBounds, compactCaptureMetrics, assertCompactCaptureContent,
+  compactLayoutMatches, compactLayoutSettled } from "./compact-focus.mjs";
 
 const appSource = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
+
+test("compact layout settling rejects the observed delayed 48px Camera clearance reflow", () => {
+  // Develop's Io-open render saw the expanded panel before ResizeObserver
+  // updated its clearance; the subsequent live card covered the old globe.
+  const box = (id, left, top, width, height) => ({ id, left, top, width, height,
+    right: left + width, bottom: top + height });
+  const intermediate = { frame: 430, resizeEpoch: 0, viewport: { width: 320, height: 568 },
+    cameraExpanded: true, clearances: { camera: 44, dock: 152 }, controls: [
+      box("body-card", 8, 149.625, 304, 182.375),
+      box("camera-controls", 12, 300, 192, 92), box("dock", 8, 404, 304, 152),
+    ] };
+  const final = structuredClone(intermediate);
+  final.frame = 431;
+  final.clearances.camera = 92;
+  final.controls[0] = box("body-card", 8, 101.625, 304, 182.375);
+  assert.equal(compactLayoutMatches(intermediate, final), false, "a live card 48px above the render is stale evidence");
+  assert.equal(compactLayoutSettled({ ...intermediate, frame: 429 }, intermediate, final), false);
+  assert.equal(compactLayoutSettled({ ...intermediate, frame: 429 }, intermediate, intermediate), false,
+    "even unchanged live rectangles cannot accept an undelivered Camera clearance");
+  assert.equal(compactLayoutSettled(intermediate, final, final), false, "one fresh reflow frame has not converged");
+  const next = { ...final, frame: 432 };
+  assert.equal(compactLayoutSettled(final, next, next), true, "consecutive final render and live geometry agree");
+  assert.equal(compactLayoutSettled(next, next, next), false, "reusing one rendered frame cannot prove settling");
+  assert.equal(compactLayoutSettled(final, next, { ...next, resizeEpoch: 1 }), false, "pending viewport work stays unsettled");
+  assert.equal(compactLayoutSettled(final, next, { ...next, clearances: { camera: 92, dock: 151 } }), false);
+});
 
 test("compact screenshot validation rejects cleared scene pixels even when HTML labels are painted", () => {
   const width = 80, height = 80, data = new Uint8Array(width * height * 4);
