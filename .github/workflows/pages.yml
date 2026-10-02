@@ -66,6 +66,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HELIOS_AUDIT_RUN_ID: ${{ github.event.workflow_run.id || inputs.audit_run_id }}
 
+      - name: Install test dependencies
+        run: npm ci
+
       - name: Verify static release
         run: npm run test:static
 

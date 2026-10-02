@@ -12,9 +12,9 @@ export function parseBrowserGroup(args) {
   return args[1];
 }
 
-// These are the existing successful suite's filenames, not new captures or
-// baselines. Exact membership prevents a missing scenario being hidden by a
-// replacement file or an equal-sized shard.
+// Retain the original suite and explicitly enumerate each new regression.
+// Exact membership prevents a missing scenario being hidden by a replacement
+// file or an equal-sized shard; filenames never approve rendered baselines.
 export function expectedBrowserEvidence(group) {
   assert.ok(browserGroups.includes(group), "known browser group required");
   const files = [];
@@ -77,6 +77,13 @@ export function expectedBrowserEvidence(group) {
     moonViews("desktop", ["moon", "phobos", "deimos", "io", "europa", "ganymede", "callisto", "titan", "triton"]);
     for (const seat of ["front", "back", "lit"]) png(`desktop-saturn-rings-${seat}`);
   } else {
+    for (const size of ["320x568", "568x320"]) {
+      for (const id of ["earth", "saturn", "ganymede"]) {
+        for (const state of ["closed", "open"]) png(`compact-focus-${size}-${id}-${state}`);
+      }
+    }
+    png("compact-focus-rotate-720x501", "compact-focus-rotate-1440x900");
+    json("compact-focus");
     nightViews("touch-portrait");
     png("touch-portrait-solarfar-label-collisions", "touch-portrait-label-collision-pointer", "touch-portrait-label-collision-keyboard",
       "touch-landscape-compact-labels", "touch-landscape-compact-mars-touch", "touch-landscape-compact-mars-keyboard",

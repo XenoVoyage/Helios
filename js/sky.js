@@ -836,7 +836,7 @@ export function updateConstellationLabels(sky, camera, {
     data.projected.copy(data.world).project(camera);
     const depth = -data.cameraSpace.z;
     const pixelsPerWorld = depth > 0
-      ? height / (2 * depth * Math.tan(fov / 2))
+      ? height * camera.zoom / (2 * depth * Math.tan(fov / 2))
       : 0;
     candidate.retained = retained.has(candidate.id);
     candidate.eligible = depth > camera.near

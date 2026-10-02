@@ -613,6 +613,12 @@ input[type="range"] {
 }
 
 @media (orientation: portrait) and (max-height: 680px) and (max-width: 360px) {
+  /* Keep both primary actions on one row, leaving room for the selected world. */
+  #play-button { order: 0; }
+  #reset-button { order: 1; }
+  .speed-group { order: 2; }
+  .constellation-control { order: 3; }
+
   #stage:has(#camera-controls:not([hidden])):has(#camera-panel[hidden]) .card {
     padding-top: 10px;
     padding-bottom: 10px;
@@ -670,7 +676,7 @@ input[type="range"] {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 4px;
-    width: 208px;
+    width: 192px;
     background: var(--chrome-backing);
     box-shadow: 0 0 0 6px var(--chrome-backing);
   }
@@ -697,7 +703,7 @@ input[type="range"] {
 
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
   .card {
-    width: min(324px, calc(100vw - 24px));
+    width: min(300px, calc(100vw - 24px));
     max-height: calc(
       100dvh - var(--dock-clearance) - 34px
       - env(safe-area-inset-top) - env(safe-area-inset-bottom)
@@ -714,4 +720,11 @@ input[type="range"] {
     right: auto;
     left: max(12px, env(safe-area-inset-left));
   }
+}
+
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 720px),
+  (orientation: portrait) and (max-height: 680px) and (max-width: 360px) {
+  .card { display: block; }
+  #card-close { position: absolute; top: 8px; right: 12px; }
+  #card-kind, #card-name { padding-right: 52px; }
 }

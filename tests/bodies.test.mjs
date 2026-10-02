@@ -3,8 +3,9 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
+import { errors } from "playwright";
 import * as THREE from "../vendor/three.module.min.js";
-import { CONFIG, formatDaysPerSecond, pinchZoomDistance } from "../js/config.js";
+import { CONFIG, compactFocusFrame, formatDaysPerSecond, pinchZoomDistance } from "../js/config.js";
 import {
   BODIES,
   bodyOrientationBasis,
@@ -28,8 +29,529 @@ import {
 } from "../js/bodies.js";
 import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
+import { assertCompactLabelBounds, compactCaptureMetrics, assertCompactCaptureContent,
+  compactLayoutMatches, compactLayoutSettled, assertCompactCaptureState, captureCompactScreenshot,
+  waitForCompactGpu, waitForCompactResize, auditCompactFocus } from "./compact-focus.mjs";
 
 const appSource = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
+
+function compactGpuHarness(statuses = [11]) {
+  const events = [], timers = new Set();
+  let elapsed = 0;
+  const state = { frame: 9, id: "earth", resizeEpoch: 1, viewport: { width: 320, height: 568 },
+    buffer: { width: 320, height: 568, canvasWidth: 320, canvasHeight: 568 }, playing: false };
+  const gl = { SYNC_GPU_COMMANDS_COMPLETE: 10, ALREADY_SIGNALED: 11, CONDITION_SATISFIED: 12, TIMEOUT_EXPIRED: 13,
+    WAIT_FAILED: 14, isContextLost: () => false,
+    fenceSync: (...args) => { events.push(["fence", ...args]); return {}; },
+    flush: () => events.push(["flush"]),
+    clientWaitSync: (sync, ...args) => { events.push(["poll", ...args]); return statuses.length > 1 ? statuses.shift() : statuses[0]; },
+    deleteSync: () => events.push(["delete"]) };
+  const handle = { gpuFence: null, gpuContext: () => gl, gpuFrame: () => structuredClone(state) };
+  const observer = { evaluate: async (fn, operation) => fn(handle, operation) };
+  const timing = { now: () => elapsed,
+    pause: async (milliseconds) => { events.push(["yield", milliseconds]); elapsed += milliseconds; },
+    setTimer: (callback, milliseconds) => { const timer = { callback, milliseconds }; timers.add(timer); return timer; },
+    clearTimer: (timer) => timers.delete(timer) };
+  return { events, timers, state, gl, handle, observer, timing,
+    expire: () => { const timer = [...timers][0]; elapsed += timer.milliseconds; timer.callback(); } };
+}
+
+function compactResizeHarness() {
+  const harness = compactGpuHarness();
+  harness.handle.resizeState = () => ({ ...structuredClone(harness.state), contextLost: false });
+  return harness;
+}
+
+test("compact rotation waits for the actual resize before advancing frames or fencing GPU work", async () => {
+  const harness = compactResizeHarness(), readiness = {}, completion = {};
+  Object.assign(harness.state, { frame: 4955, resizeEpoch: 2,
+    viewport: { width: 1440, height: 900 },
+    buffer: { width: 720, height: 501, canvasWidth: 720, canvasHeight: 501 } });
+  const pause = harness.timing.pause;
+  harness.timing.pause = async (milliseconds) => {
+    await pause(milliseconds);
+    harness.state.resizeEpoch = 3;
+    harness.state.buffer = { width: 1440, height: 900, canvasWidth: 1440, canvasHeight: 900 };
+  };
+  await waitForCompactResize(harness.observer, { width: 1440, height: 900 }, readiness, harness.timing);
+  assert.deepEqual(harness.events, [["yield", 16]], "readiness neither submits a frame nor inserts a fence");
+  assert.equal(readiness.initial.buffer.width, 720);
+  assert.equal(readiness.initial.resizeEpoch, 2);
+  assert.equal(readiness.observed.resizeEpoch, 3);
+  assert.equal(readiness.initial.frame, readiness.observed.frame);
+  assert.equal(readiness.status, "completed");
+  assert.equal(readiness.polls, 2);
+  assert.equal(readiness.elapsedMilliseconds, 16);
+  harness.events.push(["runFor", 50]);
+  harness.state.frame += 3;
+  await waitForCompactGpu(harness.observer, completion, harness.timing);
+  assert.deepEqual(harness.events.slice(0, 3), [["yield", 16], ["runFor", 50], ["fence", 10, 0]]);
+  assert.deepEqual(completion.submitted, harness.state);
+  assert.equal(completion.status, "completed");
+});
+
+test("compact resize readiness requires viewport, canvas and drawing buffer agreement", async () => {
+  for (const mismatch of ["viewport", "buffer", "canvas"]) {
+    const harness = compactResizeHarness(), readiness = {}, requested = { width: 320, height: 568 };
+    if (mismatch === "viewport") harness.state.viewport.width = 319;
+    else if (mismatch === "buffer") harness.state.buffer.width = 319;
+    else harness.state.buffer.canvasWidth = 319;
+    const pause = harness.timing.pause;
+    harness.timing.pause = async (milliseconds) => {
+      await pause(milliseconds);
+      harness.state.viewport.width = harness.state.buffer.width = harness.state.buffer.canvasWidth = 320;
+    };
+    await waitForCompactResize(harness.observer, requested, readiness, harness.timing);
+    assert.equal(readiness.polls, 2, `${mismatch} disagreement cannot pass the first observation`);
+    assert.deepEqual(harness.events, [["yield", 16]]);
+    assert.equal(harness.timers.size, 0);
+  }
+});
+
+test("initial compact viewport readiness works before any rendered sample exists", async () => {
+  const harness = compactResizeHarness(), readiness = {};
+  harness.state.frame = 0;
+  harness.state.resizeEpoch = 0;
+  harness.handle.gpuFrame = () => assert.fail("no submitted GPU frame exists yet");
+  await waitForCompactResize(harness.observer, { width: 320, height: 568 }, readiness, harness.timing);
+  assert.equal(readiness.status, "completed");
+  assert.equal(readiness.polls, 1);
+  assert.equal(readiness.observed.frame, 0);
+  assert.deepEqual(harness.events, []);
+});
+
+test("compact resize readiness fails on context loss, unpausing, frame advance or observation errors", async () => {
+  for (const kind of ["lost", "playing", "frame", "missing"]) {
+    const harness = compactResizeHarness(), readiness = {}, read = harness.handle.resizeState;
+    if (kind === "lost") harness.handle.resizeState = () => ({ ...read(), contextLost: true });
+    if (kind === "playing") harness.state.playing = true;
+    if (kind === "missing") harness.handle.resizeState = () => { throw new Error("missing existing WebGL2 context"); };
+    if (kind === "frame") {
+      harness.state.buffer.width = 319;
+      const pause = harness.timing.pause;
+      harness.timing.pause = async (milliseconds) => { await pause(milliseconds); harness.state.frame += 1; };
+    }
+    await assert.rejects(waitForCompactResize(harness.observer, { width: 320, height: 568 }, readiness, harness.timing));
+    assert.equal(readiness.status, "failed");
+    assert.ok(!harness.events.some(([event]) => event === "fence"));
+    assert.equal(harness.timers.size, 0);
+  }
+});
+
+test("compact resize readiness has one deadline even when the page stays responsive", async () => {
+  const harness = compactResizeHarness(), readiness = {};
+  harness.state.buffer.width = 319;
+  await assert.rejects(waitForCompactResize(harness.observer, { width: 320, height: 568 }, readiness, harness.timing),
+    /resize readiness exceeded its 10000ms deadline/);
+  assert.equal(readiness.elapsedMilliseconds, 10_000);
+  assert.equal(readiness.status, "failed");
+  assert.equal(readiness.rpcDeadlineExceeded, undefined, "responsive mismatches still permit ordinary failure diagnostics");
+  assert.ok(harness.events.every(([event]) => event === "yield"));
+  assert.equal(harness.timers.size, 0);
+});
+
+test("a stalled compact resize observation fails at its deadline and observes late rejection", async () => {
+  const harness = compactResizeHarness(), readiness = {};
+  let rejectPending;
+  harness.observer.evaluate = () => new Promise((resolve, reject) => { rejectPending = reject; });
+  const waiting = waitForCompactResize(harness.observer, { width: 320, height: 568 }, readiness, harness.timing);
+  const rejected = assert.rejects(waiting, (error) => error.compactGpuRpcTimeout === true
+    && /resize observation exceeded/.test(error.message));
+  await new Promise(setImmediate);
+  harness.expire();
+  await rejected;
+  rejectPending(new Error("late resize observation failure"));
+  await new Promise(setImmediate);
+  assert.equal(readiness.elapsedMilliseconds, 10_000);
+  assert.equal(readiness.rpcDeadlineExceeded, true);
+  assert.equal(readiness.status, "failed");
+  assert.equal(harness.timers.size, 0);
+});
+
+test("compact GPU completion yields between polls without adding or changing rendered frames", async () => {
+  for (const ready of [11, 12]) {
+    const harness = compactGpuHarness([13, ready]), telemetry = {};
+    const state = structuredClone(harness.state);
+    await waitForCompactGpu(harness.observer, telemetry, harness.timing);
+    assert.deepEqual(harness.events, [["fence", 10, 0], ["flush"], ["yield", 16], ["poll", 0, 0],
+      ["yield", 16], ["poll", 0, 0], ["delete"]]);
+    assert.deepEqual(harness.state, state);
+    assert.equal(harness.handle.gpuFence, null);
+    assert.equal(harness.timers.size, 0);
+    assert.deepEqual(telemetry, { timeoutMilliseconds: 10_000, polls: 2, status: "completed",
+      frame: 9, id: "earth", submitted: state, elapsedMilliseconds: 32 });
+  }
+});
+
+test("compact GPU completion rejects unavailable fences, context loss and failed status", async () => {
+  for (const kind of ["null", "lost-before", "lost-during", "wait-failed", "unknown"]) {
+    const harness = compactGpuHarness([kind === "unknown" ? 99 : 14]), telemetry = {};
+    if (kind === "null") harness.gl.fenceSync = () => null;
+    if (kind === "lost-before") harness.gl.isContextLost = () => true;
+    if (kind === "lost-during") {
+      const pause = harness.timing.pause;
+      harness.timing.pause = async (ms) => { await pause(ms); harness.gl.isContextLost = () => true; };
+    }
+    await assert.rejects(waitForCompactGpu(harness.observer, telemetry, harness.timing), /Compact GPU/);
+    assert.equal(telemetry.status, "failed", kind);
+    assert.ok(telemetry.error.message);
+    assert.equal(harness.handle.gpuFence, null);
+    assert.equal(harness.events.filter(([event]) => event === "delete").length,
+      ["null", "lost-before"].includes(kind) ? 0 : 1);
+    assert.equal(harness.timers.size, 0);
+  }
+});
+
+test("compact GPU completion rejects frame, body, viewport, buffer and simulation drift", async () => {
+  for (const change of [
+    (s) => { s.frame += 1; }, (s) => { s.id = "mars"; }, (s) => { s.resizeEpoch += 1; },
+    (s) => { s.viewport.width += 1; }, (s) => { s.buffer.width += 1; },
+    (s) => { s.buffer.canvasHeight += 1; }, (s) => { s.playing = true; },
+  ]) {
+    const harness = compactGpuHarness(), telemetry = {}, pause = harness.timing.pause;
+    harness.timing.pause = async (ms) => { await pause(ms); change(harness.state); };
+    await assert.rejects(waitForCompactGpu(harness.observer, telemetry, harness.timing), /preserves the submitted frame/);
+    assert.equal(harness.handle.gpuFence, null);
+    assert.equal(telemetry.status, "failed");
+  }
+});
+
+test("compact GPU polling exhausts one wall deadline and releases its single fence", async () => {
+  const harness = compactGpuHarness([13]), telemetry = {};
+  await assert.rejects(waitForCompactGpu(harness.observer, telemetry, harness.timing), /10000ms polling deadline/);
+  assert.equal(telemetry.elapsedMilliseconds, 10_000);
+  assert.equal(telemetry.polls, 624);
+  assert.equal(harness.events.filter(([event]) => event === "fence").length, 1);
+  assert.equal(harness.events.filter(([event]) => event === "delete").length, 1);
+  assert.equal(harness.timers.size, 0);
+});
+
+test("compact GPU bounds a hung RPC, observes late rejection and preserves the primary failure", async () => {
+  for (const stalled of ["begin", "poll"]) {
+    const harness = compactGpuHarness(), telemetry = {}, evaluate = harness.observer.evaluate;
+    let rejectPending;
+    harness.observer.evaluate = (fn, operation) => {
+      if (operation === stalled) return new Promise((resolve, reject) => { rejectPending = reject; });
+      if (operation === "delete") throw new Error("cleanup also failed");
+      return evaluate(fn, operation);
+    };
+    const waiting = waitForCompactGpu(harness.observer, telemetry, harness.timing);
+    const rejected = assert.rejects(waiting, (error) => {
+      assert.match(error.message, new RegExp(`${stalled} exceeded its wall-time deadline`));
+      assert.equal(error.compactGpuRpcTimeout, true);
+      return true;
+    });
+    await new Promise(setImmediate);
+    assert.equal(harness.timers.size, 1);
+    harness.expire();
+    await rejected;
+    rejectPending(new Error("late protocol failure"));
+    await new Promise(setImmediate);
+    assert.equal(telemetry.elapsedMilliseconds, 10_000);
+    assert.match(telemetry.error.message, new RegExp(`${stalled} exceeded`));
+    assert.equal(telemetry.cleanupError.message, "cleanup also failed");
+    assert.equal(telemetry.rpcDeadlineExceeded, true);
+    assert.equal(harness.timers.size, 0);
+  }
+});
+
+test("compact GPU cleanup has its own bound and cannot silently pass", async () => {
+  const harness = compactGpuHarness(), telemetry = {}, evaluate = harness.observer.evaluate;
+  harness.observer.evaluate = (fn, operation) => operation === "delete" ? new Promise(() => {}) : evaluate(fn, operation);
+  const waiting = waitForCompactGpu(harness.observer, telemetry, harness.timing);
+  const rejected = assert.rejects(waiting, /delete exceeded its wall-time deadline/);
+  await new Promise(setImmediate);
+  assert.equal([...harness.timers][0].milliseconds, 1_000);
+  harness.expire();
+  await rejected;
+  assert.equal(telemetry.status, "failed");
+  assert.match(telemetry.cleanupError.message, /delete exceeded/);
+  assert.equal(telemetry.rpcDeadlineExceeded, true);
+  assert.equal(harness.timers.size, 0);
+});
+
+test("an unresponsive compact GPU context is closed without further page RPCs or masking its failure", async () => {
+  for (const cleanupFails of [false, true]) {
+    const failure = Object.assign(new Error("GPU RPC deadline"), { compactGpuRpcTimeout: true });
+    const events = [];
+    let report;
+    const page = { on: () => {}, clock: { install: async () => { throw failure; } } };
+    const context = { newPage: async () => page, close: async () => {
+      events.push("close");
+      if (cleanupFails) throw new Error("close failed");
+    } };
+    await assert.rejects(auditCompactFocus({ newContext: async () => context }, "unused", {
+      onStill: async () => assert.fail("an unresponsive context must not acquire another PNG"),
+      onReport: async (value) => {
+        events.push("report"); report = value;
+        if (cleanupFails) throw new Error("write failed");
+      },
+    }), (error) => error === failure);
+    assert.deepEqual(events, ["close", "report"]);
+    assert.match(report.failure.screenshotUnavailable, /no further page RPC/);
+    assert.match(report.failure.restoreUnavailable, /Closing the unresponsive context/);
+    if (cleanupFails) {
+      assert.match(report.failure.contextCloseError, /close failed/);
+      assert.match(failure.message, /report write failed/);
+    }
+  }
+});
+
+test("a hung compact context close cannot suppress the retained report and primary failure", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const failure = Object.assign(new Error("GPU RPC deadline"), { compactGpuRpcTimeout: true });
+  let report, rejectClose;
+  const page = { on: () => {}, clock: { install: async () => { throw failure; } } };
+  const context = { newPage: async () => page,
+    close: () => new Promise((resolve, reject) => { rejectClose = reject; }) };
+  const waiting = auditCompactFocus({ newContext: async () => context }, "unused", {
+    onStill: async () => assert.fail("no screenshot after an unresponsive RPC"),
+    onReport: async (value) => { report = value; },
+  });
+  const rejected = assert.rejects(waiting, (error) => error === failure);
+  await new Promise(setImmediate);
+  t.mock.timers.tick(1_000);
+  await rejected;
+  assert.match(report.failure.contextCloseError, /1000ms deadline/);
+  assert.equal(report.failure.message, "GPU RPC deadline");
+  rejectClose(new Error("late close failure"));
+  await new Promise(setImmediate);
+});
+
+test("compact PNG acquisition returns the original bytes without recovery on success", async () => {
+  const png = Buffer.from("original PNG bytes"), acquisition = {}, calls = [];
+  let verifications = 0;
+  const result = await captureCompactScreenshot({ screenshot: async (options) => { calls.push(options); return png; } },
+    async () => { verifications += 1; }, acquisition);
+  assert.equal(result, png);
+  assert.deepEqual(calls, [{ timeout: 30_000 }]);
+  assert.equal(verifications, 2, "the same state is verified before and after ordinary acquisition");
+  assert.equal(acquisition.recovered, false);
+  assert.equal(acquisition.attempts[0].status, "captured");
+  assert.ok(acquisition.attempts[0].elapsedMilliseconds >= 0);
+});
+
+test("compact PNG acquisition records one bounded recovery after a genuine screenshot timeout", async () => {
+  const timeout = new errors.TimeoutError("page.screenshot: Timeout 30000ms exceeded."), acquisition = {}, calls = [];
+  const png = Buffer.from("recovered PNG bytes");
+  let verifications = 0;
+  const result = await captureCompactScreenshot({ screenshot: async (options) => {
+    calls.push(options);
+    if (calls.length === 1) throw timeout;
+    return png;
+  } }, async () => { verifications += 1; }, acquisition);
+  assert.equal(result, png, "the recovery returns its actual bytes, not an earlier buffer");
+  assert.deepEqual(calls, [{ timeout: 30_000 }, { timeout: 10_000 }]);
+  assert.equal(verifications, 3, "state is checked before acquisition, before recovery and after recovery");
+  assert.equal(acquisition.recovered, true);
+  assert.deepEqual(acquisition.attempts.map(({ status }) => status), ["failed", "captured"]);
+  assert.deepEqual(acquisition.attempts[0].error, { name: "TimeoutError", message: timeout.message });
+});
+
+test("compact PNG acquisition does not retry other errors or a second timeout", async () => {
+  const pretender = Object.assign(new Error("not a Playwright timeout"), { name: "TimeoutError" });
+  for (const failure of [pretender, new Error("Target page, context or browser has been closed"),
+    new assert.AssertionError({ message: "invalid screenshot state" })]) {
+    let calls = 0;
+    const acquisition = {};
+    await assert.rejects(captureCompactScreenshot({ screenshot: async () => { calls += 1; throw failure; } },
+      async () => {}, acquisition), (error) => error === failure);
+    assert.equal(calls, 1);
+    assert.equal(acquisition.recovered, false);
+  }
+  const first = new errors.TimeoutError("first acquisition"), second = new errors.TimeoutError("recovery acquisition");
+  let calls = 0;
+  const acquisition = {};
+  await assert.rejects(captureCompactScreenshot({ screenshot: async () => { throw ++calls === 1 ? first : second; } },
+    async () => {}, acquisition), (error) => error === second);
+  assert.equal(calls, 2, "there is no third acquisition or retry-until-green loop");
+  assert.equal(acquisition.recovered, false);
+  assert.deepEqual(acquisition.attempts.map(({ error }) => error.message), [first.message, second.message]);
+});
+
+test("compact capture state failures cannot authorize another screenshot", async () => {
+  for (const [failVerification, initialTimeout, expectedCalls] of [[1, false, 0], [2, false, 1], [2, true, 1], [3, true, 2]]) {
+    const failure = new errors.TimeoutError("state verification failed"), acquisition = {};
+    let calls = 0, verifications = 0;
+    await assert.rejects(captureCompactScreenshot({ screenshot: async () => {
+      calls += 1;
+      if (initialTimeout && calls === 1) throw new errors.TimeoutError("page.screenshot timed out");
+      return Buffer.from("PNG");
+    } }, async () => { if (++verifications === failVerification) throw failure; }, acquisition), (error) => error === failure);
+    assert.equal(calls, expectedCalls);
+  }
+});
+
+test("compact PNG state proof rejects changed frames, selection, layout, buffers and simulation", () => {
+  const layout = { resizeEpoch: 2, viewport: { width: 568, height: 320 }, cameraExpanded: false,
+    clearances: { camera: 44, dock: 100 }, controls: [{ id: "dock", left: 8, right: 560, top: 212, bottom: 312, width: 552, height: 100 }] };
+  const expected = { frame: 91, resizeEpoch: 2, viewport: layout.viewport,
+    sample: { ...layout, frame: 91, id: "ganymede", x: 200, y: 100, radius: 20, camera: [1, 2, 3] },
+    live: layout, hit: "viewport", playing: false, date: "2000-01-01",
+    buffer: { width: 568, height: 320, canvasWidth: 568, canvasHeight: 320 },
+    selectedLabels: [{ id: "ganymede", hidden: false, box: { left: 168, top: 60, width: 64, height: 44 } }] };
+  assert.doesNotThrow(() => assertCompactCaptureState(expected, structuredClone(expected), "frozen"));
+  for (const change of [
+    (value) => { value.frame += 1; }, (value) => { value.resizeEpoch += 1; },
+    (value) => { value.sample.id = "earth"; }, (value) => { value.sample.x += 1; },
+    (value) => { value.sample.camera[0] += 1; }, (value) => { value.viewport.width += 1; },
+    (value) => { value.buffer.width += 1; }, (value) => { value.live.controls[0].top += 1; },
+    (value) => { value.selectedLabels[0].box.left += 1; }, (value) => { value.selectedLabels[0].hidden = true; },
+    (value) => { value.playing = true; }, (value) => { value.date = "2000-01-02"; },
+    (value) => { value.hit = "body-card"; },
+  ]) {
+    const current = structuredClone(expected);
+    change(current);
+    assert.throws(() => assertCompactCaptureState(expected, current, "changed"), assert.AssertionError);
+  }
+});
+
+test("compact layout settling rejects the observed delayed 48px Camera clearance reflow", () => {
+  // Develop's Io-open render saw the expanded panel before ResizeObserver
+  // updated its clearance; the subsequent live card covered the old globe.
+  const box = (id, left, top, width, height) => ({ id, left, top, width, height,
+    right: left + width, bottom: top + height });
+  const intermediate = { frame: 430, resizeEpoch: 0, viewport: { width: 320, height: 568 },
+    cameraExpanded: true, clearances: { camera: 44, dock: 152 }, controls: [
+      box("body-card", 8, 149.625, 304, 182.375),
+      box("camera-controls", 12, 300, 192, 92), box("dock", 8, 404, 304, 152),
+    ] };
+  const final = structuredClone(intermediate);
+  final.frame = 431;
+  final.clearances.camera = 92;
+  final.controls[0] = box("body-card", 8, 101.625, 304, 182.375);
+  assert.equal(compactLayoutMatches(intermediate, final), false, "a live card 48px above the render is stale evidence");
+  assert.equal(compactLayoutSettled({ ...intermediate, frame: 429 }, intermediate, final), false);
+  assert.equal(compactLayoutSettled({ ...intermediate, frame: 429 }, intermediate, intermediate), false,
+    "even unchanged live rectangles cannot accept an undelivered Camera clearance");
+  assert.equal(compactLayoutSettled(intermediate, final, final), false, "one fresh reflow frame has not converged");
+  const next = { ...final, frame: 432 };
+  assert.equal(compactLayoutSettled(final, next, next), true, "consecutive final render and live geometry agree");
+  assert.equal(compactLayoutSettled(next, next, next), false, "reusing one rendered frame cannot prove settling");
+  assert.equal(compactLayoutSettled(final, next, { ...next, resizeEpoch: 1 }), false, "pending viewport work stays unsettled");
+  assert.equal(compactLayoutSettled(final, next, { ...next, clearances: { camera: 92, dock: 151 } }), false);
+});
+
+test("compact screenshot validation rejects cleared scene pixels even when HTML labels are painted", () => {
+  const width = 80, height = 80, data = new Uint8Array(width * height * 4);
+  const sample = { x: 40, y: 40, radius: 30 };
+  const label = { left: 20, right: 60, top: 18, bottom: 34 };
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    data.set(x >= label.left && x <= label.right && y >= label.top && y <= label.bottom
+      ? [255, 255, 255, 255] : [2, 5, 12, 255], (y * width + x) * 4);
+  }
+  const blank = compactCaptureMetrics({ data, width, height, left: 0, top: 0 }, sample, [label]);
+  assert.equal(blank.coloredFraction, 0, "overlaid text cannot count as rendered globe content");
+  assert.throws(() => assertCompactCaptureContent(blank, "cleared resize"), /cleared WebGL surface/);
+  assert.throws(() => assertCompactCaptureContent({ samples: 1000, coloredFraction: 1,
+    meanBackgroundDifference: 200, luminanceStdDev: 0 }, "uniform surface"), /cleared WebGL surface/);
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    if (Math.hypot(x + 0.5 - sample.x, y + 0.5 - sample.y) < 18) data.set([x * 2, y * 2, 150, 255], (y * width + x) * 4);
+  }
+  assert.doesNotThrow(() => assertCompactCaptureContent(
+    compactCaptureMetrics({ data, width, height, left: 0, top: 0 }, sample, [label]), "rendered globe"));
+});
+
+test("compact target measurement tolerates DOMRect roundoff but rejects smaller or clipped targets", () => {
+  const label = { layoutWidth: 64, layoutHeight: 44, box: {
+    width: 64.375, height: 43.999996185302734,
+    left: 127.80693054199219, right: 192.1819305419922,
+    top: 57.08046340942383, bottom: 101.08045959472656,
+  } };
+  const viewport = { width: 320, height: 568 };
+  assert.doesNotThrow(() => assertCompactLabelBounds(label, viewport, "observed Venus"));
+  assert.throws(() => assertCompactLabelBounds({ ...label, layoutHeight: 43 }, viewport, "short layout"), /44px target/);
+  assert.throws(() => assertCompactLabelBounds({ ...label, box: { ...label.box, height: 43.9 } }, viewport, "scaled target"), /full target size/);
+  assert.throws(() => assertCompactLabelBounds({ ...label, box: { ...label.box, height: 43.999 } }, viewport, "beyond roundoff"), /full target size/);
+  assert.throws(() => assertCompactLabelBounds({ ...label, box: { ...label.box, left: 6.99999 } }, viewport, "clipped target"), /stays on screen/);
+});
+
+test("compact framing clears chrome with the whole globe and a full-size label", () => {
+  const obstacles = [
+    { left: 4, right: 145, top: 2, bottom: 52 },
+    { left: 244, right: 564, top: 4, bottom: 190 },
+    { left: 4, right: 212, top: 100, bottom: 208 },
+    { left: 0, right: 568, top: 204, bottom: 320 },
+  ];
+  const radius = 44, width = 568, height = 320;
+  for (const labelWidth of [56, 95]) {
+    const frame = compactFocusFrame(width, height, radius, labelWidth, 44, obstacles);
+    assert.ok(frame.zoom > 0.75 && frame.zoom <= 1, "compact globe retains meaningful visible size");
+    const bounds = { left: frame.x - Math.max(radius * frame.zoom, labelWidth / 2),
+      right: frame.x + Math.max(radius * frame.zoom, labelWidth / 2),
+      top: frame.y - Math.max(radius * frame.zoom, 52.8), bottom: frame.y + radius * frame.zoom };
+    assert.ok(bounds.left >= 8 && bounds.right <= width - 8 && bounds.top >= 8 && bounds.bottom <= height - 8);
+    for (const box of obstacles) assert.ok(bounds.right <= box.left || bounds.left >= box.right
+      || bounds.bottom <= box.top || bounds.top >= box.bottom);
+    const camera = new THREE.PerspectiveCamera(CONFIG.cameraFovDegrees, width / height, 0.05, 100);
+    camera.zoom = frame.zoom;
+    camera.setViewOffset(width, height, width / 2 - frame.x, height / 2 - frame.y, width, height);
+    camera.position.set(0, 0, 10);
+    camera.updateMatrixWorld(true);
+    const screen = new THREE.Vector3().project(camera);
+    assert.ok(Math.abs((screen.x + 1) * width / 2 - frame.x) < 1e-9);
+    assert.ok(Math.abs((1 - screen.y) * height / 2 - frame.y) < 1e-9);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(screen.x, screen.y), camera);
+    assert.ok(ray.ray.distanceToPoint(new THREE.Vector3()) < 1e-9, "shifted scene picking follows projection inverse");
+    assert.deepEqual(camera.position.toArray(), [0, 0, 10], "framing never moves the world camera");
+  }
+  assert.deepEqual(compactFocusFrame(1440, 900, 125, 100, 44, []), { x: 720, y: 450, zoom: 1 });
+});
+
+test("compact focus keeps Mercury eligible through fractional Camera-open settling", () => {
+  // Measured 320x568 chrome from PR179's first rendered run; obstacles include
+  // the unchanged 8px clearance used by the real label-placement predicate.
+  const obstacles = [
+    { left: 4, right: 144.625, top: 2, bottom: 56.59375 },
+    { left: 0, right: 320, top: 93.625, bottom: 292 },
+    { left: 4, right: 212, top: 292, bottom: 400 },
+    { left: 0, right: 320, top: 396, bottom: 564 },
+    { left: 221.015625, right: 322, top: -2, bottom: 58 },
+  ];
+  const node = { labelWidth: 80.75, labelHeight: 44 };
+  const fits = runInNewContext(`${appSource.slice(appSource.indexOf("function bodyLabelFits("),
+    appSource.indexOf("function placeBodyLabel("))}\nbodyLabelFits`, {
+    BODY_LABEL_CLEARANCE: 8, bodyLabelObstacles: obstacles,
+  });
+  assert.equal(fits(252.375 - 0.019, 344.8 + 0.0095, node, 320, 568), false,
+    "the former boundary seat hides a label with the observed subpixel residual");
+  const frame = compactFocusFrame(320, 568, 19.2858, node.labelWidth, node.labelHeight, obstacles);
+  assert.equal(frame.zoom, 1, "reserving label space does not shrink Mercury");
+  for (const dx of [-0.05, 0, 0.05]) for (const dy of [-0.05, 0, 0.05]) {
+    assert.equal(fits(frame.x + dx, frame.y + dy, node, 320, 568), true,
+      `the real eligibility gate accepts the label throughout settling (${dx}, ${dy})`);
+  }
+});
+
+test("minimum landscape keeps the widest world label and globe clear with Camera open", () => {
+  // PR179's rendered Ganymede failure: a 99px layout target plus its 1px
+  // projection reserve cannot fit the former 99.375px strip beside the card.
+  const obstacles = [
+    { left: 4, right: 144.625, top: 2, bottom: 53.59375 },
+    { left: 244, right: 564, top: 4, bottom: 186.375 },
+    { left: 4, right: 212, top: 100, bottom: 208 },
+    { left: 0, right: 568, top: 204, bottom: 316 },
+    { left: 4, right: 104.984375, top: 46, bottom: 106 },
+  ];
+  const node = { labelWidth: 99, labelHeight: 44 }, radius = 11.56061564;
+  assert.deepEqual(compactFocusFrame(568, 320, radius, node.labelWidth, node.labelHeight, obstacles),
+    { x: 284, y: 160, zoom: 1 }, "the former card leaves no valid label seat");
+  obstacles[1].left += 4;
+  const frame = compactFocusFrame(568, 320, radius, node.labelWidth, node.labelHeight, obstacles);
+  assert.equal(frame.zoom, 1, "the corrected card keeps Ganymede at its normal apparent size");
+  const fits = runInNewContext(`${appSource.slice(appSource.indexOf("function bodyLabelFits("),
+    appSource.indexOf("function placeBodyLabel("))}\nbodyLabelFits`, {
+    BODY_LABEL_CLEARANCE: 8, bodyLabelObstacles: obstacles,
+  });
+  for (const dx of [-0.05, 0, 0.05]) for (const dy of [-0.05, 0, 0.05]) {
+    assert.equal(fits(frame.x + dx, frame.y + dy, node, 568, 320), true,
+      "the widest label retains its full target and projection reserve");
+  }
+  for (const box of obstacles) assert.ok(frame.x + radius <= box.left || frame.x - radius >= box.right
+    || frame.y + radius <= box.top || frame.y - radius >= box.bottom, "the entire globe clears chrome");
+});
+
 function labelTouchInput() {
   const makeSurface = (id) => {
     const captures = new Set();

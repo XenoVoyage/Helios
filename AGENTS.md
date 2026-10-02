@@ -8,10 +8,12 @@ standard owns reusable policy.
 **Repository Standard:** [Repository Standard](REPOSITORY_STANDARD.md)
 **Standard Status:** adopting
 
-`adopting` is intentional until the required physical touch-device review, the
-remaining third-party provenance gaps, and the required-check source binding or
-documented exception are closed. Do not claim `verified` from automated checks
-alone.
+`adopting` is intentional until retained physical touch-device evidence and the
+remaining provenance gaps are complete. The owner reported earlier manual
+testing and waived its missing record for that release in
+[#73](https://github.com/XenoVoyage/Helios/issues/73#issuecomment-5823496477);
+that historical exception is not a verified device matrix. Do not claim
+`verified` from automated checks alone.
 
 ## Priorities
 
@@ -94,6 +96,13 @@ and **Escape** resets the view. Camera commands preserve the same globe safety,
 zoom limits, and scale transitions as drag, wheel, and pinch. The fixed
 `?look=sky` diagnostic view has no camera navigation.
 
+On viewports at most 840px wide or 500px high, normal body focus fits the
+selected globe, rings, and label into the space left by visible controls.
+This adjusts the projection without moving the physical camera or changing
+moon safety paths. User zoom can still intentionally crop a globe at minimum
+distance. Closing the card or returning to an unobstructed desktop view
+restores the centered projection; picking and labels use the rendered view.
+
 Zoom out past the solar overview and the orrery shrinks to a Sun among the
 stars. The Hipparcos sky, IAU figures, and Gaia band stay at constant brightness
 through the solar cap, so the first extra-zoom frame is already inside the
@@ -103,10 +112,12 @@ default names), and All; All packs eligible names inside the viewport with a
 responsive collision budget. Extra-zoom sky from the tail through Virgo is a
 camera-centered spherical point-density illustration with unresolved bright
 concentrations and dark gaps. It has no cube faces, named generated objects, or
-claimed survey coordinates. The full disk, neighborhood, Local Group, and Virgo
-are catalog neighbors against that field, not a scatter of invented nearby
-galaxies. After Virgo, seven measured group anchors lead into 42,927 public
-2MRS galaxy directions with approximate redshift distances; there are no
+claimed survey coordinates. The neighborhood and Local Group use catalog
+neighbors against that field. Virgo's center uses the catalog M87 direction
+and cluster distance; its 58 unnamed galaxy sprites are a fixed-seed
+illustration, not measured member positions. After Virgo, seven measured group
+anchors lead into 42,927 public 2MRS galaxy directions with approximate
+redshift distances; there are no
 invented web connections. Beyond the survey's 300 Mpc display cap, a small
 first-party density illustration provides continuity to the Planck-style CMB
 shell. That shell is deliberately drawn at the particle-horizon display radius.
@@ -210,14 +221,68 @@ context only, not an active owner gate.
 - Compare rendered output with the recorded task base and the owner-approved
   visual baseline. Browser automation is not physical-device proof.
 
+### Physical touch-device verification
+
+When recording physical verification, use Safari on a supported iPhone/iPad
+and Chrome on a supported Android device, in portrait and landscape. Record
+the exact commit/tree and URL, date, tester, device, OS/browser versions,
+viewport, DPR, available WebGL renderer, and network/cache state in the issue
+or pull request. Mark each check pass, fail, or untested; a reported earlier
+test without this record does not fill a matrix cell.
+
+1. Load the page; check WebGL startup/fallback, first interaction, and errors.
+2. Orbit with one finger, pinch both ways, select a body, clear it, and close
+   its card. Confirm gestures do not zoom or scroll the page accidentally.
+3. Check 44px targets, focus order/visibility with a keyboard when available,
+   text scaling, safe areas, and the dock/card/credits in both orientations.
+   Focus Earth and Saturn at the normal focus distance and confirm their cards
+   leave the selected world visible; rotate while a card is open. Also check
+   minimum zoom, where intentional globe cropping is allowed.
+4. Traverse the Solar System, Milky Way, Local Group, Virgo, 2MRS/web, and CMB
+   views. Check the first deep zoom, label transitions, and lighting, including
+   both faces of Saturn's rings without changing their approved shading.
+5. Exercise maximum time speed, background/resume, and repeated rotation/zoom;
+   record freezes, reloads, lost gestures, or memory-pressure symptoms.
+
+Attach representative device screenshots or a short recording with the
+results. Keep failures in focused issues and unavailable devices explicitly
+untested. The historical disposition of #73 does not certify later changes.
+
 ### Audit execution and evidence
 
 The required `Audit / audit` job aggregates static/HTTP checks, all four browser
 sections, and every comparison job applicable to the event. A failed, cancelled,
 or unexpectedly skipped dependency must fail that gate. Same-repository pull requests to
-`develop` also run all ten visual groups and the historical focus comparison;
+`develop` also run all fourteen visual groups and the historical focus comparison;
 pushes, production promotion pull requests, and manual main audits retain the
 complete functional suite.
+
+The browser suite retains its original 422 screenshots and adds 14 compact
+focus captures plus an 80-state check of all 20 bodies at 320×568 and 568×320,
+with Camera closed and open. It checks actual rendered globe/ring and label
+clearance, useful size, picking, rotation, and restoration of desktop framing.
+Its full inventory is 436 screenshots and 16 reports, before group manifests.
+After each deliberate compact-test viewport change, wait for the live viewport,
+canvas dimensions and actual WebGL drawing buffer to match before submitting
+frames. Poll with Node wall time under one ten-second deadline, including each
+page observation; keep simulation paused and submit no frames during readiness.
+Record initial/final dimensions, frame, resize epoch, polls and elapsed time.
+Missing/lost contexts, deadline exhaustion and stalled RPCs fail the audit;
+unresponsive RPCs use the existing bounded context-close/report path.
+After each compact-focus 50ms settling or 64ms pre-capture frame batch, wait for
+a WebGL2 fence to signal before submitting the next batch. Poll from separate
+browser evaluations with bounded Node wall-time delays; do not advance the page
+clock while waiting.
+Reject lost contexts, invalid fences, wait failures, deadline exhaustion, or a
+changed frame/body/drawing buffer. Retain completion timings in the compact
+report. This proves prior WebGL commands completed, not that the compositor or
+saved PNG is correct; all layout, capture-state and actual-PNG checks still apply.
+Compact focus PNG acquisition permits one 10-second recovery only after the
+initial 30-second screenshot call raises Playwright's `TimeoutError`. Retain
+both attempts in `compact-focus.json` and prove the exact paused frame, body,
+viewport, drawing buffer and live geometry remain unchanged. Geometry, PNG
+content, browser and file-write failures are never retried; a second acquisition
+failure fails the audit. This bounded recovery does not replace any PNG check.
 
 Each comparison run freezes `main` once and uses the event's exact develop base
 and candidate head. Functional PR tests use GitHub's proposed merge checkout;
@@ -235,17 +300,28 @@ scenarios and the separate 30 historical focus captures remain required.
 Capture success and identical-tree reuse do not replace visual review or
 automatically approve a new baseline.
 
-The ten visual lanes are `bodies-inner` (48), `bodies-giants` (23), `bodies-outer`
-(13), `moons-inner` (31), `moons-outer` (30), `touch-controls` (47), `responsive`
-(40), `desktop-states` (26), `touch-states` (28), and `ordinary` (63). Each lane
-retains complete per-object or scene sequences and compares its source trees
-on one runner. Per-lane elapsed clocks and input histories cover that lane;
-the local `all` capture retains the full ordering. Functional screenshots live in four
+The fourteen visual lanes are `bodies-inner` (48), `bodies-giants` (23),
+`bodies-outer` (13), `moons-inner` (31), `moons-jovian` (18), `moons-outer` (12),
+`touch-controls` (47), `responsive` (40), `desktop-phases` (8),
+`desktop-lifecycle` (10), `desktop-states` (8), `touch-states` (28),
+`cosmic-scenes` (40), and `ordinary` (23). Each lane retains complete per-object
+or independent page sequences and compares its source trees on one runner.
+Keep Moon → Phobos → Deimos → Io together for Io's transient frames; the other
+moon lanes begin with a fully settled minimum view. All twenty cosmic zoom
+stops and all six far-sky directions retain their original page and input
+history. Per-lane elapsed clocks and input histories cover that lane; the local
+`all` capture retains the full ordering. Fourteen visual lanes, four browser
+sections, and one history job bound the heavy audit work to nineteen jobs;
+extra lanes add setup cost, so rebalance from measured timings rather than
+splitting indiscriminately. Functional screenshots live in four
 `helios-browser-<group>` artifacts; do not mistake one shard for the full suite.
 
 Keep full-resolution originals in the seven-day Actions artifacts, with run
-links and exact commit/tree identities in the pull request. Preserve evidence
-needed for a long-lived accepted baseline before artifact expiry. Do not commit
+links and exact commit/tree identities in the pull request. The pull-request
+reviewer is responsible for preserving evidence needed for a long-lived
+accepted baseline before artifact expiry, including the relevant original
+images, manifests and comparison indexes. Record where that evidence was
+retained; a run link alone cannot preserve expired originals. Do not commit
 routine audit screenshots or duplicate reports. Retain referenced README,
 provenance, and issue images; age alone is not evidence that a file is unused.
 
@@ -260,7 +336,8 @@ request; the issue body is its scope and acceptance contract.
 `main` is protected owner-approved production. `develop` is the protected
 long-lived **Alpha Development** integration branch. Neither accepts direct
 changes, force pushes, deletion, or bypassed checks. Both require pull requests
-and the exact `Audit / audit` check. GitHub Pages deploys only from `main`.
+and the exact `Audit / audit` check, bound to GitHub Actions (app `15368`).
+GitHub Pages deploys only from `main`.
 
 1. Refresh protected `develop`; confirm its commit/tree, passing Audit, and open
    work; then select the next dependency-ready issue.

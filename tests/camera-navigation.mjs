@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { CONFIG } from "../js/config.js";
 import { maximumCameraDistance, sceneHierarchyId } from "../js/galaxy.js";
+import { compactClearancesReady } from "./compact-focus.mjs";
 
 const controls = [
   ["orbit-left", "Orbit left", "ArrowLeft", 24, 0],
@@ -450,6 +451,40 @@ async function auditBodyMinimums(page, save) {
 }
 
 async function auditSelectedLayouts(page, label, touch, save) {
+  const readSelectedEarth = () => page.locator('[data-body-id="earth"]').evaluate((element) => {
+    if (element.hidden || !element.classList.contains("is-active")) return null;
+    const anchor = element.style.transform.match(/translate\(([-+\deE.]+)px,\s*([-+\deE.]+)px\)/);
+    const style = getComputedStyle(document.documentElement);
+    const clearances = { camera: parseFloat(style.getPropertyValue("--camera-clearance")),
+      dock: parseFloat(style.getPropertyValue("--dock-clearance")) };
+    const controls = [".topbar", "#body-card", "#camera-controls", "#dock", "#version-label"]
+      .map((selector) => document.querySelector(selector)).filter((control) => !control.hidden && control.getClientRects().length)
+      .map((control) => ({ id: control.id || control.className, ...control.getBoundingClientRect().toJSON() }));
+    return anchor ? { x: Number(anchor[1]), y: Number(anchor[2]), clearances, controls,
+      busy: document.querySelector("#viewport").getAttribute("aria-busy") } : null;
+  });
+  const sameSelectedLayout = (previous, current) => Boolean(previous && current
+    && compactClearancesReady(previous) && compactClearancesReady(current)
+    && JSON.stringify(previous.controls) === JSON.stringify(current.controls)
+    && Math.hypot(current.x - previous.x, current.y - previous.y) < 0.02);
+  const waitForSelectedEarth = async () => {
+    let previous;
+    for (let attempt = 0; attempt < 140; attempt += 1) {
+      await page.clock.runFor(50);
+      const current = await readSelectedEarth();
+      if (current?.busy === "false" && sameSelectedLayout(previous, current)) {
+        // Planet focus can still be easing after aria-busy becomes false.
+        // Render consecutive frames before preserving the selected-body view.
+        await page.clock.runFor(64);
+        const final = await readSelectedEarth();
+        assert.ok(final?.busy === "false" && sameSelectedLayout(current, final),
+          `${label}: selected Earth retains settled chrome and focus through capture preparation`);
+        return { ...final, settleSteps: attempt + 1, stepMilliseconds: 50, anchorTolerance: 0.02 };
+      }
+      previous = current;
+    }
+    throw new Error(`${label}: selected Earth did not become visible and settle`);
+  };
   await activate(page, "reset-button", touch);
   await page.locator('[data-body-id="earth"]').evaluate((element) => element.click());
   await stableSample(page);
@@ -467,7 +502,8 @@ async function auditSelectedLayouts(page, label, touch, save) {
         await settled(page);
       }
       const panel = expanded ? "open" : "closed";
-      evidence.push({ ...viewport, panel, controls: await auditLayout(page, `${label} ${name} ${panel}`) });
+      evidence.push({ ...viewport, panel, controls: await auditLayout(page, `${label} ${name} ${panel}`),
+        focus: await waitForSelectedEarth() });
       await save(`${name}-${panel}`);
     }
   }
