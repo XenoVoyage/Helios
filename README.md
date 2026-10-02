@@ -1,6 +1,6 @@
 # Helios
 
-[![Version v2026.10.2a](https://img.shields.io/badge/version-v2026.10.2a-66f7ff)](VERSION.txt)
+[![Version v2026.10.2b](https://img.shields.io/badge/version-v2026.10.2b-66f7ff)](VERSION.txt)
 [![MIT](https://img.shields.io/badge/license-MIT-a77bff)](LICENSE)
 
 An interactive 3D solar system and universe explorer.
@@ -37,14 +37,13 @@ Helios is a local page: no accounts, no telemetry, and no CDN. Marins Voyage: [X
 
 ## Run locally
 
+For a quick preview, use Node.js 24 and a WebGL browser:
+
 ```sh
-npm ci
-npx playwright install chromium
-npm test
 npm run serve
 ```
 
-Then open `http://127.0.0.1:4173/Helios/`. A WebGL browser is required. Opening `index.html` through another local static server also works.
+Then open `http://127.0.0.1:4173/Helios/`. The preview server uses only Node's standard library; no dependency or browser download is needed. Serving the checkout with another local static server also works.
 
 | Action | Desktop | Touch |
 | --- | --- | --- |
@@ -60,6 +59,16 @@ Then open `http://127.0.0.1:4173/Helios/`. A WebGL browser is required. Opening 
 ## Contributing
 
 Read the [Repository Standard](REPOSITORY_STANDARD.md) and the Helios [contributor instructions](AGENTS.md) before contributing. This page is the short human introduction. Issue flow, camera and scale contracts, and release rules live in `AGENTS.md`.
+
+Run the complete local verification before submitting changes:
+
+```sh
+npm ci
+npx playwright install chromium
+npm test
+```
+
+This includes the full browser audit and takes longer than starting a preview. The [verification contract](AGENTS.md#verification) explains the CI groups, visual comparisons, and separate physical-device evidence.
 
 ## Credits
 
