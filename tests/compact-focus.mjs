@@ -11,6 +11,34 @@ export function assertCompactLabelBounds(label, viewport, name) {
     && box.top >= 7 && box.bottom <= viewport.height - 7, `${name}: full-size label stays on screen`);
 }
 
+export function compactCaptureMetrics({ data, width, height, left, top }, sample, exclusions) {
+  let samples = 0, colored = 0, totalDifference = 0, luminance = 0, squaredLuminance = 0;
+  const radius = sample.radius * 0.6;
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const screenX = left + x + 0.5, screenY = top + y + 0.5;
+    if (Math.hypot(screenX - sample.x, screenY - sample.y) > radius) continue;
+    if (exclusions.some((box) => screenX >= box.left - 3 && screenX <= box.right + 3
+      && screenY >= box.top - 3 && screenY <= box.bottom + 3)) continue;
+    const offset = (y * width + x) * 4;
+    const difference = Math.abs(data[offset] - 2) + Math.abs(data[offset + 1] - 5) + Math.abs(data[offset + 2] - 12);
+    const value = data[offset] * 0.2126 + data[offset + 1] * 0.7152 + data[offset + 2] * 0.0722;
+    samples += 1;
+    totalDifference += difference;
+    luminance += value;
+    squaredLuminance += value * value;
+    if (difference > 12) colored += 1;
+  }
+  return { samples, coloredFraction: samples ? colored / samples : 0,
+    meanBackgroundDifference: samples ? totalDifference / samples : 0,
+    luminanceStdDev: samples ? Math.sqrt(Math.max(0, squaredLuminance / samples - (luminance / samples) ** 2)) : 0 };
+}
+
+export function assertCompactCaptureContent(metrics, name) {
+  assert.ok(metrics.samples >= 64, `${name}: saved PNG has enough unobstructed globe pixels`);
+  assert.ok(metrics.coloredFraction >= 0.5 && metrics.meanBackgroundDifference > 20 && metrics.luminanceStdDev > 3,
+    `${name}: saved PNG contains the rendered globe, not a cleared WebGL surface: ${JSON.stringify(metrics)}`);
+}
+
 export async function auditCompactFocus(browser, base, { onStill, onReport }) {
   const report = { observations: [], errors: [] };
   const context = await browser.newContext({ viewport: { width: 320, height: 568 },
@@ -43,7 +71,9 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
       const original = THREE.Scene.prototype.onAfterRender;
       const before = THREE.Scene.prototype.onBeforeRender, meshAfter = THREE.Mesh.prototype.onAfterRender;
       const meshes = new Map(), world = new THREE.Vector3(), projected = new THREE.Vector3(), scale = new THREE.Vector3();
-      let sample = null, targetId = "earth", drawn = false;
+      let sample = null, targetId = "earth", drawn = false, frame = 0, resizeEpoch = 0;
+      const resized = () => { resizeEpoch += 1; };
+      window.addEventListener("resize", resized);
       THREE.Scene.prototype.onBeforeRender = function (...args) { before.apply(this, args); drawn = false; };
       THREE.Mesh.prototype.onAfterRender = function (...args) {
         meshAfter.apply(this, args);
@@ -70,7 +100,11 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
         const label = document.querySelector(`[data-body-id="${id}"]`);
         const labelBox = label.getBoundingClientRect().toJSON();
         const labelAnchor = label.style.transform.match(/translate\(([-+\deE.]+)px,\s*([-+\deE.]+)px\)/);
-        sample = { id, x, y, radius: pixels, worldRadius: radius, depth, verticalProjection: camera.projectionMatrix.elements[5], ndc: projected.toArray(), drawn,
+        const gl = renderer.getContext();
+        sample = { id, frame: ++frame, resizeEpoch,
+          buffer: { width: gl.drawingBufferWidth, height: gl.drawingBufferHeight,
+            canvasWidth: renderer.domElement.width, canvasHeight: renderer.domElement.height },
+          x, y, radius: pixels, worldRadius: radius, depth, verticalProjection: camera.projectionMatrix.elements[5], ndc: projected.toArray(), drawn,
           label: { hidden: label.hidden, active: label.classList.contains("is-active"), box: labelBox,
             layoutWidth: label.offsetWidth, layoutHeight: label.offsetHeight,
             anchor: labelAnchor ? { x: Number(labelAnchor[1]), y: Number(labelAnchor[2]) } : null },
@@ -81,10 +115,13 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
           busy: document.querySelector("#viewport").getAttribute("aria-busy"),
           viewport: { width: innerWidth, height: innerHeight }, controls };
       };
-      return { sample: () => sample, target: (id) => { targetId = id; }, restore: () => {
+      return { sample: () => sample,
+        captureState: () => ({ resizeEpoch, frame, viewport: { width: innerWidth, height: innerHeight } }),
+        target: (id) => { targetId = id; }, restore: () => {
         THREE.Scene.prototype.onAfterRender = original;
         THREE.Scene.prototype.onBeforeRender = before;
         THREE.Mesh.prototype.onAfterRender = meshAfter;
+        window.removeEventListener("resize", resized);
       } };
     });
     const settled = async (id) => {
@@ -100,10 +137,11 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
       }
       throw new Error(`Compact selection failed to settle: ${JSON.stringify(previous)}`);
     };
-    const inspect = async (id, expanded, name) => {
-      const sample = await settled(id);
-      const observation = { name, expanded, passed: false, ...sample };
-      report.observations.push(observation);
+    const inspect = async (id, expanded, name, suppliedSample = null, existingObservation = null) => {
+      const sample = suppliedSample ?? await settled(id);
+      const observation = existingObservation ?? { name, expanded };
+      Object.assign(observation, sample, { passed: false });
+      if (!existingObservation) report.observations.push(observation);
       const sphere = { left: sample.x - sample.radius, right: sample.x + sample.radius,
         top: sample.y - sample.radius, bottom: sample.y + sample.radius };
       assert.ok(sample.radius > 0 && Number.isFinite(sample.radius), `${name}: finite rendered sphere`);
@@ -146,6 +184,62 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
       observation.passed = true;
       return sample;
     };
+    const capture = async (name) => {
+      const observation = report.observations.at(-1);
+      observation.passed = false;
+      const before = await observer.evaluate((value) => value.sample());
+      // fastForward delivers one RAF regardless of its jump. Run consecutive
+      // frames before capturing a resized surface, then validate the saved PNG.
+      await page.clock.runFor(64);
+      const sample = await observer.evaluate((value) => value.sample());
+      observation.capture = { frame: sample.frame, previousFrame: before.frame, resizeEpoch: sample.resizeEpoch,
+        buffer: sample.buffer, viewport: sample.viewport, metrics: null,
+        geometry: { id: sample.id, x: sample.x, y: sample.y, radius: sample.radius,
+          principalPoint: sample.principalPoint, ndc: sample.ndc, label: sample.label } };
+      assert.ok(sample.frame >= before.frame + 2, `${name}: capture follows consecutive application renders`);
+      assert.equal(sample.id, observation.id, `${name}: capture retains the inspected body`);
+      assert.deepEqual(sample.viewport, observation.viewport, `${name}: capture retains the inspected viewport`);
+      assert.equal(sample.resizeEpoch, observation.resizeEpoch, `${name}: resize is complete before capture`);
+      assert.deepEqual(sample.buffer, { width: sample.viewport.width, height: sample.viewport.height,
+        canvasWidth: sample.viewport.width, canvasHeight: sample.viewport.height }, `${name}: renderer uses the resized drawing buffer`);
+      assert.equal(sample.drawn, true, `${name}: capture follows a submitted globe`);
+      await inspect(observation.id, observation.expanded, name, sample, observation);
+      observation.passed = false;
+      const png = await onStill(page, name);
+      const capturedState = await observer.evaluate((value) => value.captureState());
+      observation.capture.afterSave = capturedState;
+      assert.deepEqual(capturedState.viewport, sample.viewport, `${name}: viewport remains unchanged through PNG acquisition`);
+      assert.equal(capturedState.resizeEpoch, sample.resizeEpoch, `${name}: no resize occurs during PNG acquisition`);
+      assert.ok(png?.length > 24, `${name}: capture returns the exact saved PNG bytes`);
+      const pixels = await page.evaluate(async ({ source, sample }) => {
+        const image = new Image();
+        const ready = new Promise((resolve, reject) => {
+          image.onload = resolve;
+          image.onerror = reject;
+        });
+        image.src = `data:image/png;base64,${source}`;
+        await ready;
+        if (image.naturalWidth !== sample.viewport.width || image.naturalHeight !== sample.viewport.height) {
+          throw new Error("Compact capture dimensions do not match the rendered viewport");
+        }
+        const radius = sample.radius * 0.6;
+        const left = Math.max(0, Math.floor(sample.x - radius)), top = Math.max(0, Math.floor(sample.y - radius));
+        const width = Math.min(image.naturalWidth, Math.ceil(sample.x + radius)) - left;
+        const height = Math.min(image.naturalHeight, Math.ceil(sample.y + radius)) - top;
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        context.drawImage(image, -left, -top);
+        const exclusions = [...document.querySelectorAll(".sky-label:not([hidden])")]
+          .map((element) => element.getBoundingClientRect().toJSON());
+        return { data: [...context.getImageData(0, 0, width, height).data], width, height, left, top, exclusions };
+      }, { source: png.toString("base64"), sample });
+      const metrics = compactCaptureMetrics(pixels, sample, [...sample.controls, ...pixels.exclusions]);
+      observation.capture.metrics = metrics;
+      assertCompactCaptureContent(metrics, name);
+      observation.passed = true;
+    };
     for (const [width, height] of [[320, 568], [568, 320]]) {
       await page.setViewportSize({ width, height });
       for (const body of BODIES) {
@@ -159,7 +253,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
           if (!expanded) cameraBefore = sample.camera;
           else assert.ok(Math.hypot(...sample.camera.map((value, index) => value - cameraBefore[index])) < 0.01,
             `${name}: opening Camera preserves its world position`);
-          if (["earth", "saturn", "ganymede"].includes(body.id)) await onStill(page, name);
+          if (["earth", "saturn", "ganymede"].includes(body.id)) await capture(name);
         }
       }
     }
@@ -174,7 +268,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
         assert.deepEqual(sample.principalPoint, { x: width / 2, y: height / 2 });
         assert.equal(sample.zoom, 1, "desktop restores the original projection");
       }
-      await onStill(page, name);
+      await capture(name);
     }
     await page.setViewportSize({ width: 568, height: 320 });
     const picked = await settled("earth");

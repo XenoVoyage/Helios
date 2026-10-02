@@ -28,9 +28,29 @@ import {
 } from "../js/bodies.js";
 import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
-import { assertCompactLabelBounds } from "./compact-focus.mjs";
+import { assertCompactLabelBounds, compactCaptureMetrics, assertCompactCaptureContent } from "./compact-focus.mjs";
 
 const appSource = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
+
+test("compact screenshot validation rejects cleared scene pixels even when HTML labels are painted", () => {
+  const width = 80, height = 80, data = new Uint8Array(width * height * 4);
+  const sample = { x: 40, y: 40, radius: 30 };
+  const label = { left: 20, right: 60, top: 18, bottom: 34 };
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    data.set(x >= label.left && x <= label.right && y >= label.top && y <= label.bottom
+      ? [255, 255, 255, 255] : [2, 5, 12, 255], (y * width + x) * 4);
+  }
+  const blank = compactCaptureMetrics({ data, width, height, left: 0, top: 0 }, sample, [label]);
+  assert.equal(blank.coloredFraction, 0, "overlaid text cannot count as rendered globe content");
+  assert.throws(() => assertCompactCaptureContent(blank, "cleared resize"), /cleared WebGL surface/);
+  assert.throws(() => assertCompactCaptureContent({ samples: 1000, coloredFraction: 1,
+    meanBackgroundDifference: 200, luminanceStdDev: 0 }, "uniform surface"), /cleared WebGL surface/);
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    if (Math.hypot(x + 0.5 - sample.x, y + 0.5 - sample.y) < 18) data.set([x * 2, y * 2, 150, 255], (y * width + x) * 4);
+  }
+  assert.doesNotThrow(() => assertCompactCaptureContent(
+    compactCaptureMetrics({ data, width, height, left: 0, top: 0 }, sample, [label]), "rendered globe"));
+});
 
 test("compact target measurement tolerates DOMRect roundoff but rejects smaller or clipped targets", () => {
   const label = { layoutWidth: 64, layoutHeight: 44, box: {
