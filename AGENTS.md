@@ -262,6 +262,13 @@ focus captures plus an 80-state check of all 20 bodies at 320×568 and 568×320,
 with Camera closed and open. It checks actual rendered globe/ring and label
 clearance, useful size, picking, rotation, and restoration of desktop framing.
 Its full inventory is 436 screenshots and 16 reports, before group manifests.
+After each deliberate compact-test viewport change, wait for the live viewport,
+canvas dimensions and actual WebGL drawing buffer to match before submitting
+frames. Poll with Node wall time under one ten-second deadline, including each
+page observation; keep simulation paused and submit no frames during readiness.
+Record initial/final dimensions, frame, resize epoch, polls and elapsed time.
+Missing/lost contexts, deadline exhaustion and stalled RPCs fail the audit;
+unresponsive RPCs use the existing bounded context-close/report path.
 After each compact-focus 50ms settling or 64ms pre-capture frame batch, wait for
 a WebGL2 fence to signal before submitting the next batch. Poll from separate
 browser evaluations with bounded Node wall-time delays; do not advance the page

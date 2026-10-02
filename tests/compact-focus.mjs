@@ -71,6 +71,59 @@ export function assertCompactCaptureState(expected, current, name) {
   assert.deepEqual(current, expected, `${name}: PNG acquisition preserves the exact frame, body, buffer and live geometry`);
 }
 
+export async function waitForCompactResize(observer, requested, telemetry, timing = {
+  now: () => performance.now(), pause: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  setTimer: setTimeout, clearTimer: clearTimeout,
+}) {
+  const started = timing.now(), timeout = 10_000;
+  Object.assign(telemetry, { requested: { ...requested }, timeoutMilliseconds: timeout, polls: 0, status: "pending" });
+  try {
+    while (true) {
+      const remaining = timeout - (timing.now() - started);
+      if (remaining <= 0) throw new Error("Compact resize readiness exceeded its 10000ms deadline");
+      let timer, current;
+      const expired = new Promise((resolve, reject) => {
+        timer = timing.setTimer(() => {
+          const error = new Error("Compact resize observation exceeded its wall-time deadline");
+          // A stalled page RPC needs the same direct context-close path as a stalled GPU RPC.
+          error.compactGpuRpcTimeout = true;
+          reject(error);
+        }, remaining);
+        timer?.unref?.();
+      });
+      try {
+        current = await Promise.race([observer.evaluate((value) => value.resizeState()), expired]);
+      } finally {
+        timing.clearTimer(timer);
+      }
+      telemetry.polls += 1;
+      telemetry.initial ??= current;
+      telemetry.observed = current;
+      assert.equal(current.playing, false, "Compact resize readiness keeps simulation paused");
+      assert.equal(current.contextLost, false, "Compact resize readiness retains its WebGL context");
+      assert.equal(current.frame, telemetry.initial.frame, "Compact resize readiness submits no application frames");
+      if (timing.now() - started >= timeout) throw new Error("Compact resize readiness exceeded its 10000ms deadline");
+      const { width, height } = requested;
+      if (current.viewport.width === width && current.viewport.height === height
+        && current.buffer.width === width && current.buffer.height === height
+        && current.buffer.canvasWidth === width && current.buffer.canvasHeight === height) {
+        telemetry.status = "completed";
+        return;
+      }
+      // setViewportSize can expose the new viewport before the window resize handler.
+      // Let that handler update the real buffer without advancing the fake page clock.
+      await timing.pause(Math.min(16, timeout - (timing.now() - started)));
+    }
+  } catch (error) {
+    telemetry.status = "failed";
+    telemetry.error = { name: error.name, message: error.message };
+    if (error.compactGpuRpcTimeout) telemetry.rpcDeadlineExceeded = true;
+    throw error;
+  } finally {
+    telemetry.elapsedMilliseconds = timing.now() - started;
+  }
+}
+
 // Runs in the page through JSHandle.evaluate; keep this function self-contained.
 export function compactGpuFence(observer, operation) {
   const gl = observer.gpuContext();
@@ -202,7 +255,7 @@ export async function captureCompactScreenshot(page, verifyState, acquisition) {
 }
 
 export async function auditCompactFocus(browser, base, { onStill, onReport }) {
-  const report = { observations: [], gpuWaits: [], errors: [] };
+  const report = { observations: [], gpuWaits: [], resizeWaits: [], errors: [] };
   const context = await browser.newContext({ viewport: { width: 320, height: 568 },
     deviceScaleFactor: 1, hasTouch: true, isMobile: true });
   const page = await context.newPage();
@@ -287,6 +340,16 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
           busy: document.querySelector("#viewport").getAttribute("aria-busy") };
       };
       return { sample: () => sample, gpuFence: null, gpuContext: () => gl,
+        resizeState: () => {
+          // The initial no-op resize precedes the observer's first rendered sample.
+          const canvas = document.querySelector("#viewport"), gpu = canvas?.getContext("webgl2");
+          if (!gpu) throw new Error("Compact resize readiness requires the existing WebGL2 context");
+          return { frame, resizeEpoch, viewport: { width: innerWidth, height: innerHeight },
+            buffer: { width: gpu.drawingBufferWidth, height: gpu.drawingBufferHeight,
+              canvasWidth: canvas.width, canvasHeight: canvas.height },
+            contextLost: gpu.isContextLost(),
+            playing: document.querySelector("#play-button").getAttribute("aria-pressed") === "true" };
+        },
         gpuFrame: () => ({ frame, id: sample.id, resizeEpoch,
           viewport: { width: innerWidth, height: innerHeight },
           buffer: { width: gl.drawingBufferWidth, height: gl.drawingBufferHeight,
@@ -309,6 +372,15 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
         window.removeEventListener("resize", resized);
       } };
     });
+    const resize = async (width, height) => {
+      await page.setViewportSize({ width, height });
+      const wait = { name: `compact-resize-${width}x${height}` };
+      report.resizeWaits.push(wait);
+      try { await waitForCompactResize(observer, { width, height }, wait); } catch (error) {
+        error.compactScenario = wait.name;
+        throw error;
+      }
+    };
     const gpuReady = async (name, phase) => {
       const wait = { name, phase };
       report.gpuWaits.push(wait);
@@ -456,7 +528,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
       observation.passed = true;
     };
     for (const [width, height] of [[320, 568], [568, 320]]) {
-      await page.setViewportSize({ width, height });
+      await resize(width, height);
       for (const body of BODIES) {
         await observer.evaluate((value, id) => value.target(id), body.id);
         await page.evaluate((id) => document.querySelector(`[data-body-id="${id}"]`).click(), body.id);
@@ -476,7 +548,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
     await observer.evaluate((value) => value.target("earth"));
     await page.evaluate(() => document.querySelector('[data-body-id="earth"]').click());
     for (const [width, height] of [[720, 501], [1440, 900]]) {
-      await page.setViewportSize({ width, height });
+      await resize(width, height);
       const name = `compact-focus-rotate-${width}x${height}`;
       const sample = await inspect("earth", false, name);
       if (width === 1440) {
@@ -485,7 +557,7 @@ export async function auditCompactFocus(browser, base, { onStill, onReport }) {
       }
       await capture(name);
     }
-    await page.setViewportSize({ width: 568, height: 320 });
+    await resize(568, 320);
     const picked = await settled("earth");
     await page.touchscreen.tap(picked.x, picked.y);
     assert.equal(await page.locator("#card-name").textContent(), "Earth", "off-axis globe picking selects the rendered world");

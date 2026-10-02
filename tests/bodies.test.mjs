@@ -31,7 +31,7 @@ import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
 import { assertCompactLabelBounds, compactCaptureMetrics, assertCompactCaptureContent,
   compactLayoutMatches, compactLayoutSettled, assertCompactCaptureState, captureCompactScreenshot,
-  waitForCompactGpu, auditCompactFocus } from "./compact-focus.mjs";
+  waitForCompactGpu, waitForCompactResize, auditCompactFocus } from "./compact-focus.mjs";
 
 const appSource = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
 
@@ -55,6 +55,118 @@ function compactGpuHarness(statuses = [11]) {
   return { events, timers, state, gl, handle, observer, timing,
     expire: () => { const timer = [...timers][0]; elapsed += timer.milliseconds; timer.callback(); } };
 }
+
+function compactResizeHarness() {
+  const harness = compactGpuHarness();
+  harness.handle.resizeState = () => ({ ...structuredClone(harness.state), contextLost: false });
+  return harness;
+}
+
+test("compact rotation waits for the actual resize before advancing frames or fencing GPU work", async () => {
+  const harness = compactResizeHarness(), readiness = {}, completion = {};
+  Object.assign(harness.state, { frame: 4955, resizeEpoch: 2,
+    viewport: { width: 1440, height: 900 },
+    buffer: { width: 720, height: 501, canvasWidth: 720, canvasHeight: 501 } });
+  const pause = harness.timing.pause;
+  harness.timing.pause = async (milliseconds) => {
+    await pause(milliseconds);
+    harness.state.resizeEpoch = 3;
+    harness.state.buffer = { width: 1440, height: 900, canvasWidth: 1440, canvasHeight: 900 };
+  };
+  await waitForCompactResize(harness.observer, { width: 1440, height: 900 }, readiness, harness.timing);
+  assert.deepEqual(harness.events, [["yield", 16]], "readiness neither submits a frame nor inserts a fence");
+  assert.equal(readiness.initial.buffer.width, 720);
+  assert.equal(readiness.initial.resizeEpoch, 2);
+  assert.equal(readiness.observed.resizeEpoch, 3);
+  assert.equal(readiness.initial.frame, readiness.observed.frame);
+  assert.equal(readiness.status, "completed");
+  assert.equal(readiness.polls, 2);
+  assert.equal(readiness.elapsedMilliseconds, 16);
+  harness.events.push(["runFor", 50]);
+  harness.state.frame += 3;
+  await waitForCompactGpu(harness.observer, completion, harness.timing);
+  assert.deepEqual(harness.events.slice(0, 3), [["yield", 16], ["runFor", 50], ["fence", 10, 0]]);
+  assert.deepEqual(completion.submitted, harness.state);
+  assert.equal(completion.status, "completed");
+});
+
+test("compact resize readiness requires viewport, canvas and drawing buffer agreement", async () => {
+  for (const mismatch of ["viewport", "buffer", "canvas"]) {
+    const harness = compactResizeHarness(), readiness = {}, requested = { width: 320, height: 568 };
+    if (mismatch === "viewport") harness.state.viewport.width = 319;
+    else if (mismatch === "buffer") harness.state.buffer.width = 319;
+    else harness.state.buffer.canvasWidth = 319;
+    const pause = harness.timing.pause;
+    harness.timing.pause = async (milliseconds) => {
+      await pause(milliseconds);
+      harness.state.viewport.width = harness.state.buffer.width = harness.state.buffer.canvasWidth = 320;
+    };
+    await waitForCompactResize(harness.observer, requested, readiness, harness.timing);
+    assert.equal(readiness.polls, 2, `${mismatch} disagreement cannot pass the first observation`);
+    assert.deepEqual(harness.events, [["yield", 16]]);
+    assert.equal(harness.timers.size, 0);
+  }
+});
+
+test("initial compact viewport readiness works before any rendered sample exists", async () => {
+  const harness = compactResizeHarness(), readiness = {};
+  harness.state.frame = 0;
+  harness.state.resizeEpoch = 0;
+  harness.handle.gpuFrame = () => assert.fail("no submitted GPU frame exists yet");
+  await waitForCompactResize(harness.observer, { width: 320, height: 568 }, readiness, harness.timing);
+  assert.equal(readiness.status, "completed");
+  assert.equal(readiness.polls, 1);
+  assert.equal(readiness.observed.frame, 0);
+  assert.deepEqual(harness.events, []);
+});
+
+test("compact resize readiness fails on context loss, unpausing, frame advance or observation errors", async () => {
+  for (const kind of ["lost", "playing", "frame", "missing"]) {
+    const harness = compactResizeHarness(), readiness = {}, read = harness.handle.resizeState;
+    if (kind === "lost") harness.handle.resizeState = () => ({ ...read(), contextLost: true });
+    if (kind === "playing") harness.state.playing = true;
+    if (kind === "missing") harness.handle.resizeState = () => { throw new Error("missing existing WebGL2 context"); };
+    if (kind === "frame") {
+      harness.state.buffer.width = 319;
+      const pause = harness.timing.pause;
+      harness.timing.pause = async (milliseconds) => { await pause(milliseconds); harness.state.frame += 1; };
+    }
+    await assert.rejects(waitForCompactResize(harness.observer, { width: 320, height: 568 }, readiness, harness.timing));
+    assert.equal(readiness.status, "failed");
+    assert.ok(!harness.events.some(([event]) => event === "fence"));
+    assert.equal(harness.timers.size, 0);
+  }
+});
+
+test("compact resize readiness has one deadline even when the page stays responsive", async () => {
+  const harness = compactResizeHarness(), readiness = {};
+  harness.state.buffer.width = 319;
+  await assert.rejects(waitForCompactResize(harness.observer, { width: 320, height: 568 }, readiness, harness.timing),
+    /resize readiness exceeded its 10000ms deadline/);
+  assert.equal(readiness.elapsedMilliseconds, 10_000);
+  assert.equal(readiness.status, "failed");
+  assert.equal(readiness.rpcDeadlineExceeded, undefined, "responsive mismatches still permit ordinary failure diagnostics");
+  assert.ok(harness.events.every(([event]) => event === "yield"));
+  assert.equal(harness.timers.size, 0);
+});
+
+test("a stalled compact resize observation fails at its deadline and observes late rejection", async () => {
+  const harness = compactResizeHarness(), readiness = {};
+  let rejectPending;
+  harness.observer.evaluate = () => new Promise((resolve, reject) => { rejectPending = reject; });
+  const waiting = waitForCompactResize(harness.observer, { width: 320, height: 568 }, readiness, harness.timing);
+  const rejected = assert.rejects(waiting, (error) => error.compactGpuRpcTimeout === true
+    && /resize observation exceeded/.test(error.message));
+  await new Promise(setImmediate);
+  harness.expire();
+  await rejected;
+  rejectPending(new Error("late resize observation failure"));
+  await new Promise(setImmediate);
+  assert.equal(readiness.elapsedMilliseconds, 10_000);
+  assert.equal(readiness.rpcDeadlineExceeded, true);
+  assert.equal(readiness.status, "failed");
+  assert.equal(harness.timers.size, 0);
+});
 
 test("compact GPU completion yields between polls without adding or changing rendered frames", async () => {
   for (const ready of [11, 12]) {
