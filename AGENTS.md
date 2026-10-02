@@ -8,10 +8,12 @@ standard owns reusable policy.
 **Repository Standard:** [Repository Standard](REPOSITORY_STANDARD.md)
 **Standard Status:** adopting
 
-`adopting` is intentional until the required physical touch-device review, the
-remaining third-party provenance gaps, and the required-check source binding or
-documented exception are closed. Do not claim `verified` from automated checks
-alone.
+`adopting` is intentional until retained physical touch-device evidence and the
+remaining provenance gaps are complete. The owner reported earlier manual
+testing and waived its missing record for that release in
+[#73](https://github.com/XenoVoyage/Helios/issues/73#issuecomment-5823496477);
+that historical exception is not a verified device matrix. Do not claim
+`verified` from automated checks alone.
 
 ## Priorities
 
@@ -110,10 +112,12 @@ default names), and All; All packs eligible names inside the viewport with a
 responsive collision budget. Extra-zoom sky from the tail through Virgo is a
 camera-centered spherical point-density illustration with unresolved bright
 concentrations and dark gaps. It has no cube faces, named generated objects, or
-claimed survey coordinates. The full disk, neighborhood, Local Group, and Virgo
-are catalog neighbors against that field, not a scatter of invented nearby
-galaxies. After Virgo, seven measured group anchors lead into 42,927 public
-2MRS galaxy directions with approximate redshift distances; there are no
+claimed survey coordinates. The neighborhood and Local Group use catalog
+neighbors against that field. Virgo's center uses the catalog M87 direction
+and cluster distance; its 58 unnamed galaxy sprites are a fixed-seed
+illustration, not measured member positions. After Virgo, seven measured group
+anchors lead into 42,927 public 2MRS galaxy directions with approximate
+redshift distances; there are no
 invented web connections. Beyond the survey's 300 Mpc display cap, a small
 first-party density illustration provides continuity to the Planck-style CMB
 shell. That shell is deliberately drawn at the particle-horizon display radius.
@@ -217,6 +221,33 @@ context only, not an active owner gate.
 - Compare rendered output with the recorded task base and the owner-approved
   visual baseline. Browser automation is not physical-device proof.
 
+### Physical touch-device verification
+
+When recording physical verification, use Safari on a supported iPhone/iPad
+and Chrome on a supported Android device, in portrait and landscape. Record
+the exact commit/tree and URL, date, tester, device, OS/browser versions,
+viewport, DPR, available WebGL renderer, and network/cache state in the issue
+or pull request. Mark each check pass, fail, or untested; a reported earlier
+test without this record does not fill a matrix cell.
+
+1. Load the page; check WebGL startup/fallback, first interaction, and errors.
+2. Orbit with one finger, pinch both ways, select a body, clear it, and close
+   its card. Confirm gestures do not zoom or scroll the page accidentally.
+3. Check 44px targets, focus order/visibility with a keyboard when available,
+   text scaling, safe areas, and the dock/card/credits in both orientations.
+   Focus Earth and Saturn at the normal focus distance and confirm their cards
+   leave the selected world visible; rotate while a card is open. Also check
+   minimum zoom, where intentional globe cropping is allowed.
+4. Traverse the Solar System, Milky Way, Local Group, Virgo, 2MRS/web, and CMB
+   views. Check the first deep zoom, label transitions, and lighting, including
+   both faces of Saturn's rings without changing their approved shading.
+5. Exercise maximum time speed, background/resume, and repeated rotation/zoom;
+   record freezes, reloads, lost gestures, or memory-pressure symptoms.
+
+Attach representative device screenshots or a short recording with the
+results. Keep failures in focused issues and unavailable devices explicitly
+untested. The historical disposition of #73 does not certify later changes.
+
 ### Audit execution and evidence
 
 The required `Audit / audit` job aggregates static/HTTP checks, all four browser
@@ -265,8 +296,11 @@ splitting indiscriminately. Functional screenshots live in four
 `helios-browser-<group>` artifacts; do not mistake one shard for the full suite.
 
 Keep full-resolution originals in the seven-day Actions artifacts, with run
-links and exact commit/tree identities in the pull request. Preserve evidence
-needed for a long-lived accepted baseline before artifact expiry. Do not commit
+links and exact commit/tree identities in the pull request. The pull-request
+reviewer is responsible for preserving evidence needed for a long-lived
+accepted baseline before artifact expiry, including the relevant original
+images, manifests and comparison indexes. Record where that evidence was
+retained; a run link alone cannot preserve expired originals. Do not commit
 routine audit screenshots or duplicate reports. Retain referenced README,
 provenance, and issue images; age alone is not evidence that a file is unused.
 
@@ -281,7 +315,8 @@ request; the issue body is its scope and acceptance contract.
 `main` is protected owner-approved production. `develop` is the protected
 long-lived **Alpha Development** integration branch. Neither accepts direct
 changes, force pushes, deletion, or bypassed checks. Both require pull requests
-and the exact `Audit / audit` check. GitHub Pages deploys only from `main`.
+and the exact `Audit / audit` check, bound to GitHub Actions (app `15368`).
+GitHub Pages deploys only from `main`.
 
 1. Refresh protected `develop`; confirm its commit/tree, passing Audit, and open
    work; then select the next dependency-ready issue.
