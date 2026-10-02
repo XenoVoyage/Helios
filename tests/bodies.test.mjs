@@ -104,6 +104,34 @@ test("compact focus keeps Mercury eligible through fractional Camera-open settli
   }
 });
 
+test("minimum landscape keeps the widest world label and globe clear with Camera open", () => {
+  // PR179's rendered Ganymede failure: a 99px layout target plus its 1px
+  // projection reserve cannot fit the former 99.375px strip beside the card.
+  const obstacles = [
+    { left: 4, right: 144.625, top: 2, bottom: 53.59375 },
+    { left: 244, right: 564, top: 4, bottom: 186.375 },
+    { left: 4, right: 212, top: 100, bottom: 208 },
+    { left: 0, right: 568, top: 204, bottom: 316 },
+    { left: 4, right: 104.984375, top: 46, bottom: 106 },
+  ];
+  const node = { labelWidth: 99, labelHeight: 44 }, radius = 11.56061564;
+  assert.deepEqual(compactFocusFrame(568, 320, radius, node.labelWidth, node.labelHeight, obstacles),
+    { x: 284, y: 160, zoom: 1 }, "the former card leaves no valid label seat");
+  obstacles[1].left += 4;
+  const frame = compactFocusFrame(568, 320, radius, node.labelWidth, node.labelHeight, obstacles);
+  assert.equal(frame.zoom, 1, "the corrected card keeps Ganymede at its normal apparent size");
+  const fits = runInNewContext(`${appSource.slice(appSource.indexOf("function bodyLabelFits("),
+    appSource.indexOf("function placeBodyLabel("))}\nbodyLabelFits`, {
+    BODY_LABEL_CLEARANCE: 8, bodyLabelObstacles: obstacles,
+  });
+  for (const dx of [-0.05, 0, 0.05]) for (const dy of [-0.05, 0, 0.05]) {
+    assert.equal(fits(frame.x + dx, frame.y + dy, node, 568, 320), true,
+      "the widest label retains its full target and projection reserve");
+  }
+  for (const box of obstacles) assert.ok(frame.x + radius <= box.left || frame.x - radius >= box.right
+    || frame.y + radius <= box.top || frame.y - radius >= box.bottom, "the entire globe clears chrome");
+});
+
 function labelTouchInput() {
   const makeSurface = (id) => {
     const captures = new Set();
