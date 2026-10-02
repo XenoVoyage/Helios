@@ -5560,13 +5560,11 @@ async function auditDesktopBodies() {
 
 async function auditTouch() {
   await auditCompactFocus(browser, base, {
-    onStill: async (page, name, options = {}) => {
-      const png = await page.screenshot(options);
+    onStill: async (name, png) => {
       if (screenshotDir) {
         await mkdir(screenshotDir, { recursive: true });
         await writeFile(path.join(screenshotDir, `${name}.png`), png);
       }
-      return png;
     },
     onReport: async (report) => {
       if (screenshotDir) await writeFile(path.join(screenshotDir, "compact-focus.json"), JSON.stringify(report, null, 2) + "\n");

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
+import { errors } from "playwright";
 import * as THREE from "../vendor/three.module.min.js";
 import { CONFIG, compactFocusFrame, formatDaysPerSecond, pinchZoomDistance } from "../js/config.js";
 import {
@@ -29,9 +30,97 @@ import {
 import { equatorialToScene, equatorialVectorToScene } from "../js/sky.js";
 import { bindFocusHelpers, createFocusHelpers } from "../js/helpers.js";
 import { assertCompactLabelBounds, compactCaptureMetrics, assertCompactCaptureContent,
-  compactLayoutMatches, compactLayoutSettled } from "./compact-focus.mjs";
+  compactLayoutMatches, compactLayoutSettled, assertCompactCaptureState, captureCompactScreenshot } from "./compact-focus.mjs";
 
 const appSource = await readFile(new URL("../js/app.js", import.meta.url), "utf8");
+
+test("compact PNG acquisition returns the original bytes without recovery on success", async () => {
+  const png = Buffer.from("original PNG bytes"), acquisition = {}, calls = [];
+  let verifications = 0;
+  const result = await captureCompactScreenshot({ screenshot: async (options) => { calls.push(options); return png; } },
+    async () => { verifications += 1; }, acquisition);
+  assert.equal(result, png);
+  assert.deepEqual(calls, [{ timeout: 30_000 }]);
+  assert.equal(verifications, 2, "the same state is verified before and after ordinary acquisition");
+  assert.equal(acquisition.recovered, false);
+  assert.equal(acquisition.attempts[0].status, "captured");
+  assert.ok(acquisition.attempts[0].elapsedMilliseconds >= 0);
+});
+
+test("compact PNG acquisition records one bounded recovery after a genuine screenshot timeout", async () => {
+  const timeout = new errors.TimeoutError("page.screenshot: Timeout 30000ms exceeded."), acquisition = {}, calls = [];
+  const png = Buffer.from("recovered PNG bytes");
+  let verifications = 0;
+  const result = await captureCompactScreenshot({ screenshot: async (options) => {
+    calls.push(options);
+    if (calls.length === 1) throw timeout;
+    return png;
+  } }, async () => { verifications += 1; }, acquisition);
+  assert.equal(result, png, "the recovery returns its actual bytes, not an earlier buffer");
+  assert.deepEqual(calls, [{ timeout: 30_000 }, { timeout: 10_000 }]);
+  assert.equal(verifications, 3, "state is checked before acquisition, before recovery and after recovery");
+  assert.equal(acquisition.recovered, true);
+  assert.deepEqual(acquisition.attempts.map(({ status }) => status), ["failed", "captured"]);
+  assert.deepEqual(acquisition.attempts[0].error, { name: "TimeoutError", message: timeout.message });
+});
+
+test("compact PNG acquisition does not retry other errors or a second timeout", async () => {
+  const pretender = Object.assign(new Error("not a Playwright timeout"), { name: "TimeoutError" });
+  for (const failure of [pretender, new Error("Target page, context or browser has been closed"),
+    new assert.AssertionError({ message: "invalid screenshot state" })]) {
+    let calls = 0;
+    const acquisition = {};
+    await assert.rejects(captureCompactScreenshot({ screenshot: async () => { calls += 1; throw failure; } },
+      async () => {}, acquisition), (error) => error === failure);
+    assert.equal(calls, 1);
+    assert.equal(acquisition.recovered, false);
+  }
+  const first = new errors.TimeoutError("first acquisition"), second = new errors.TimeoutError("recovery acquisition");
+  let calls = 0;
+  const acquisition = {};
+  await assert.rejects(captureCompactScreenshot({ screenshot: async () => { throw ++calls === 1 ? first : second; } },
+    async () => {}, acquisition), (error) => error === second);
+  assert.equal(calls, 2, "there is no third acquisition or retry-until-green loop");
+  assert.equal(acquisition.recovered, false);
+  assert.deepEqual(acquisition.attempts.map(({ error }) => error.message), [first.message, second.message]);
+});
+
+test("compact capture state failures cannot authorize another screenshot", async () => {
+  for (const [failVerification, initialTimeout, expectedCalls] of [[1, false, 0], [2, false, 1], [2, true, 1], [3, true, 2]]) {
+    const failure = new errors.TimeoutError("state verification failed"), acquisition = {};
+    let calls = 0, verifications = 0;
+    await assert.rejects(captureCompactScreenshot({ screenshot: async () => {
+      calls += 1;
+      if (initialTimeout && calls === 1) throw new errors.TimeoutError("page.screenshot timed out");
+      return Buffer.from("PNG");
+    } }, async () => { if (++verifications === failVerification) throw failure; }, acquisition), (error) => error === failure);
+    assert.equal(calls, expectedCalls);
+  }
+});
+
+test("compact PNG state proof rejects changed frames, selection, layout, buffers and simulation", () => {
+  const layout = { resizeEpoch: 2, viewport: { width: 568, height: 320 }, cameraExpanded: false,
+    clearances: { camera: 44, dock: 100 }, controls: [{ id: "dock", left: 8, right: 560, top: 212, bottom: 312, width: 552, height: 100 }] };
+  const expected = { frame: 91, resizeEpoch: 2, viewport: layout.viewport,
+    sample: { ...layout, frame: 91, id: "ganymede", x: 200, y: 100, radius: 20, camera: [1, 2, 3] },
+    live: layout, hit: "viewport", playing: false, date: "2000-01-01",
+    buffer: { width: 568, height: 320, canvasWidth: 568, canvasHeight: 320 },
+    selectedLabels: [{ id: "ganymede", hidden: false, box: { left: 168, top: 60, width: 64, height: 44 } }] };
+  assert.doesNotThrow(() => assertCompactCaptureState(expected, structuredClone(expected), "frozen"));
+  for (const change of [
+    (value) => { value.frame += 1; }, (value) => { value.resizeEpoch += 1; },
+    (value) => { value.sample.id = "earth"; }, (value) => { value.sample.x += 1; },
+    (value) => { value.sample.camera[0] += 1; }, (value) => { value.viewport.width += 1; },
+    (value) => { value.buffer.width += 1; }, (value) => { value.live.controls[0].top += 1; },
+    (value) => { value.selectedLabels[0].box.left += 1; }, (value) => { value.selectedLabels[0].hidden = true; },
+    (value) => { value.playing = true; }, (value) => { value.date = "2000-01-02"; },
+    (value) => { value.hit = "body-card"; },
+  ]) {
+    const current = structuredClone(expected);
+    change(current);
+    assert.throws(() => assertCompactCaptureState(expected, current, "changed"), assert.AssertionError);
+  }
+});
 
 test("compact layout settling rejects the observed delayed 48px Camera clearance reflow", () => {
   // Develop's Io-open render saw the expanded panel before ResizeObserver

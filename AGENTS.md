@@ -262,6 +262,12 @@ focus captures plus an 80-state check of all 20 bodies at 320×568 and 568×320,
 with Camera closed and open. It checks actual rendered globe/ring and label
 clearance, useful size, picking, rotation, and restoration of desktop framing.
 Its full inventory is 436 screenshots and 16 reports, before group manifests.
+Compact focus PNG acquisition permits one 10-second recovery only after the
+initial 30-second screenshot call raises Playwright's `TimeoutError`. Retain
+both attempts in `compact-focus.json` and prove the exact paused frame, body,
+viewport, drawing buffer and live geometry remain unchanged. Geometry, PNG
+content, browser and file-write failures are never retried; a second acquisition
+failure fails the audit. This bounded recovery does not replace any PNG check.
 
 Each comparison run freezes `main` once and uses the event's exact develop base
 and candidate head. Functional PR tests use GitHub's proposed merge checkout;
